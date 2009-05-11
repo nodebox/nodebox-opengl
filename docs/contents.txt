@@ -1,0 +1,11 @@
+.. _contents:
+
+==============================
+NodeBox documentation contents
+==============================
+
+.. toctree::
+   :maxdepth: 2
+
+   index
+   ref/index

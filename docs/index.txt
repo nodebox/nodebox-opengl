@@ -1,0 +1,11 @@
+.. _index:
+
+=====================
+NodeBox documentation
+=====================
+
+Welcome to NodeBox.
+
+The graphics layer
+==================
+:ref:`Graphics Context <ref-context>`
