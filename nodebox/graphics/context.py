@@ -1281,7 +1281,7 @@ class Transition(object):
 
 class Layer(list):
 
-    def __init__(self, x=0, y=0, width=None, height=None, origin=(0.5,0.5), scale=1.0, angle=0, opacity=1.0, duration=1.0, parent=None):
+    def __init__(self, x=0, y=0, width=None, height=None, origin=(0.5,0.5), scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None):
         self.parent    = None
         self._x        = Transition(x)
         self._y        = Transition(y)
@@ -1290,7 +1290,7 @@ class Layer(list):
         self._dx       = Transition(origin[0])
         self._dy       = Transition(origin[1])
         self._scale    = Transition(scale)
-        self._rotation = Transition(angle)
+        self._rotation = Transition(rotation)
         self._opacity  = Transition(opacity, interpolation=LINEAR)
         self.duration  = duration
         self.top       = True # draw on top of or beneath parent?
