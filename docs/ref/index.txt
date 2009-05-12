@@ -7,3 +7,190 @@ API Reference
    :maxdepth: 1
 
    context
+
+API DOCUMENTATION
+=================
+
+Color(gray, base=1.0)
+Color(gray, a, base=1.0)
+Color(r, g, b, base=1.0)
+Color(r, g, b, a, base=1.0)
+Color.r
+Color.g
+Color.b
+Color.a
+
+clr = color()
+background()
+fill()
+stroke()
+nofill()
+nostroke()
+strokewidth()
+
+clr = rgba(h, s, b, a)
+clr = hsba(r, g, b, a)
+clr = darker(clr, step=0.2)
+clr = lighter(clr, step=0.2)
+
+===================================================
+
+push()
+pop()
+translate()
+rotate()
+scale()
+reset()
+
+===================================================
+
+Point(x, y)
+Point.x
+Point.y
+
+line()
+rect()
+ellipse()
+arrow()
+
+===================================================
+
+BezierPath()
+path = BezierPath.copy()
+BezierPath.moveto()
+BezierPath.lineto()
+BezierPath.curveto()
+BezierPath.closepath()
+BezierPath.rect()
+BezierPath.ellipse()
+BezierPath.draw()
+BezierPath.point(t)
+BezierPath.points(amount=2, start=0.0, end=1.0)
+BezierPath.addpoint(t)
+BezierPath.length
+BezierPath.contours
+BezierPath.contains(x, y)
+BezierPath.bounds()
+
+beginpath()
+moveto()
+lineto()
+curveto()
+closepath()
+endpath()
+findpath()
+
+===================================================
+
+imagesize()
+image(img, x=0, y=0, width=None, height=None, 
+	alpha=1.0, 
+	color=(1,1,1), 
+	quad=(0,0,0,0,0,0,0,0), 
+	filter=None, 
+	data=None, 
+	draw=True
+)
+cache(img, id)
+adjust(r=0, g=0, b=0)
+distort(dx1=0, dy1=0, dx2=0, dy2=0, dx3=0, dy3=0, dx4=0, dy4=0)
+crop(img, x=0, y=0, width=None, height=None)
+
+===================================================
+
+Pixels(img)
+Pixels[i] = clr
+clr = color(Pixels[i], base=255)
+Pixels.update()
+img = Pixels
+
+===================================================
+
+Animation(img1, img2, img3, ..., transition=FADE, duration=1.0)
+Animation.transition
+Animation.duration
+Animation.update()
+Animation.current
+Animation.next
+Animation.time
+Animation.draw()
+
+===================================================
+
+def my_draw_offscreen(buffer):
+	...
+offscreen.draw = my_draw_offscreen
+img = offscreen.render()
+
+===================================================
+
+img = render(img, filter1, filter2, ...)
+img = blur(img, scale=1.0, n=1, kernel=5)
+img = colorize(img, color=(1,1,1,1), bias=(0,0,0,0))
+img = gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR)
+
+image(img, filter=blur(scale=1.0))
+image(img, filter=colorize(color=(1,1,1,1)))
+
+===================================================
+
+font("Times New Roman", 12)
+fontname()
+fontsize()
+lineheight()
+align
+text()
+textwidth()
+textheight()
+textmetrics()
+
+===================================================
+
+random(v1=1.0, v2=None, bias=None)
+grid()
+files()
+
+===================================================
+
+Layer(x=0, y=0, origin=(0,0), scale=1.0, angle=0, alpha=1.0, duration=1.0, parent=None)
+Layer.append(layer)
+Layer.x
+Layer.y
+Layer.origin
+Layer.scale
+Layer.angle
+Layer.update()
+Layer.done
+Layer.render()
+
+def my_layer_draw(layer):
+	...
+layer = Layer()
+layer.draw = my_layer_draw
+canvas.append(layer)
+
+===================================================
+
+canvas.name
+canvas.append()
+canvas.fps
+canvas.width
+canvas.height
+canvas.fullscreen
+canvas.mouse
+canvas.cursor
+canvas.mouse_pressed
+canvas.mouse_released
+canvas.mouse_dragged
+canvas.mouse_scrolled
+canvas.key_pressed
+canvas.key_released
+canvas.setup
+canvas.draw
+canvas.update()
+canvas.clear()
+canvas.run()
+img = canvas.screenshot()
+canvas.save()
+
+ximport()

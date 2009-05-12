@@ -14,6 +14,6 @@ setup(
     version = version.replace(' ', '-'),
     url = 'http://www.nodebox.net/',
     author = 'Frederik De Bleser, Tom De Smedt',
-    description = '.',
+    description = 'A Python framework that lets you create interactive 2D visuals using OpenGL.',
     packages = packages,
 )
