@@ -1281,7 +1281,7 @@ class Transition(object):
 
 class Layer(list):
 
-    def __init__(self, x=0, y=0, width=None, height=None, origin=(0.5,0.5), scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None):
+    def __init__(self, x=0, y=0, width=None, height=None, origin=(0.5,0.5), scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None, name=None):
         self.parent    = None
         self._x        = Transition(x)
         self._y        = Transition(y)
@@ -1296,7 +1296,7 @@ class Layer(list):
         self.top       = True # draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
-        self.name      = None
+        self.name      = name
     
     def append(self, layer):
         list.append(self, layer)
