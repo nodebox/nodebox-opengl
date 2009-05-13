@@ -13,7 +13,7 @@ class Label(Layer):
         self.fill = fill
         
     def draw(self):
-        text(self.text, self.x, self.y, width=self.width, 
+        text(self.text, 0, 0, width=self.width, 
             font=self.font, fontsize=self.fontsize, lineheight=self.lineheight, align=self.align,
             fill=self.fill)
 
