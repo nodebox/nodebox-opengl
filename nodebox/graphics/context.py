@@ -1602,6 +1602,9 @@ class Canvas(list):
     def draw(self):
         self.clear()
         
+    def draw_over(self):
+        """"Override this method to draw once all the layers have been drawn."""
+        
     def stop(self):
         pass
 
@@ -1774,6 +1777,12 @@ class Canvas(list):
             layer._update()
             layer._draw()
         glPopMatrix()
+        
+        # Draw over the layers
+        glPushMatrix()
+        self.draw_over()
+        glPopMatrix()
+
         self._window.flip()
 
     def _update(self):
