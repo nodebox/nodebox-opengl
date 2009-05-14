@@ -1346,7 +1346,6 @@ class Transition(object):
 RELATIVE = "relative"
 ABSOLUTE = "absolute"
 
-<<<<<<< .mine
 class Layer(list, Prototype):
 
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
@@ -1363,9 +1362,6 @@ class Layer(list, Prototype):
         Prototype.__init__(self) # facilitates extension on the fly.
         self.name      = None
         self.parent    = parent
-=======
-    def __init__(self, x=0, y=0, width=None, height=None, origin=(0.5,0.5), scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None, name=None):
-        self.parent    = None
         self._x        = Transition(x)
         self._y        = Transition(y)
         self._width    = Transition(width)
@@ -1380,17 +1376,12 @@ class Layer(list, Prototype):
         self.top       = True # draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
-<<<<<<< .mine
 
     def copy(self, parent=None):
         layer = Prototype.copy(self)
         layer.parent = parent
         return layer
 
-=======
-        self.name      = name
-    
->>>>>>> .r863
     def append(self, layer):
         list.append(self, layer)
         layer.parent = self
