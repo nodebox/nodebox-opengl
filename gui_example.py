@@ -4,7 +4,7 @@ import pyglet
 from pyglet.gl import *
 
 from nodebox.graphics import Layer, Canvas, Color, \
-    canvas, gradient, run, size, rect, color, background, random, rotate, text
+    canvas, colorplane, run, size, rect, color, background, random, rotate, text
 
 from nodebox.gui import Label, Button, Slider
 
@@ -18,6 +18,7 @@ class EditableObject(Layer):
         self.r = 1.0
         self.g = 0.0
         self.b = 0.0
+        self.relative_origin = (0.5,0.5)
         self.duration = 0.2
 
     def draw(self):
@@ -32,7 +33,7 @@ class ToolBar(Layer):
         self.duration = 0.1
         
     def draw(self):
-        gradient(0, 0, self.width, self.height, color(0.8, 0.8, 0.85, self._opacity.now), color(0.7, 0.7, 0.7, self._opacity.now))
+        colorplane(0, 0, self.width, self.height, color(0.8, 0.8, 0.85, self._opacity.now), color(0.7, 0.7, 0.7, self._opacity.now))
         rect(0, self.height-1, self.width, 1, fill=color(0.7, 0.7, 0.7, self._opacity.now))
         
     def on_mouse_enter(self, x, y):
@@ -47,7 +48,7 @@ class ScaleUp(Button):
     
     def on_action(self):
         global editableObject
-        editableObject.scale *= 2.0
+        editableObject.scaling *= 2.0
         scaler.rotation += 5
         
     def draw(self):
@@ -58,7 +59,7 @@ class ScaleDown(Button):
     
     def on_action(self):
         global editableObject
-        editableObject.scale *= 0.5
+        editableObject.scaling *= 0.5
         scaler.rotation -= 5
 
     def draw(self):
@@ -94,7 +95,7 @@ class Scaler(Slider):
     
     def on_action(self):
         global editableObject
-        editableObject.scale = self.value
+        editableObject.scaling = self.value
         
 class Rotator(Slider):
     def __init__(self, **kwargs):

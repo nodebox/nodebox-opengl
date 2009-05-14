@@ -11,13 +11,15 @@ from pyglet import image  as pyglet_image
 from pyglet import font   as pyglet_font
 from pyglet import window as pyglet_window
 
-from math import cos, sin, pi, floor
+from math import cos, sin, radians, pi, floor
 from time import time
 from random import choice, shuffle, random as rnd
 from new import instancemethod
 from glob import glob
 from os.path import basename
 from StringIO import StringIO
+
+import geometry
 
 #import bezier
 # XXX - Do this at the end, when we have defined BezierPath, which is needed in the bezier module.
@@ -205,9 +207,11 @@ def color_mixin(**kwargs):
     stroke = kwargs.get("stroke", _stroke)
     return (fill, stroke)   
 
-#--- GRADIENT ----------------------------------------------------------------------------------------
+#--- COLORPLANE --------------------------------------------------------------------------------------
 
-def gradient(x, y, width, height, *a):
+def colorplane(x, y, width, height, *a):
+    """ Draws a rectangle that emits a different fill color from each corner.
+    """
     if len(a) == 2:
         # Top and bottom colors.
         clr1, clr2, clr3, clr4 = a[0], a[0], a[1], a[1]
@@ -240,6 +244,8 @@ def gradient(x, y, width, height, *a):
 
 #--- TRANSFORMATIONS ---------------------------------------------------------------------------------
 # Unlike NodeBox, all transformations are CORNER-mode and originate from the bottom-left corner.
+
+Transform = geometry.AffineTransform
 
 def push():
     glPushMatrix()
@@ -319,7 +325,8 @@ def rect(x, y, width, height, **kwargs):
             glEnd()
 
 _ellipse_cache = {}
-def ellipse(x, y, width, height, segments=50, **kwargs):
+ELLIPSE_SEGMENTS = 50
+def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
     """ Draws an ellipse with center located at x, y.
     The current stroke and fill color are applied.
     """
@@ -374,21 +381,27 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
     raise NotImplementedError
     
 #--- RECTANGLE ---------------------------------------------------------------------------------------
-# The rect class is used for calculating intersections between rectangles and to store
-# bounding information.
+# The rect class is used for calculating intersections between rectangles 
+# and to store bounding information.
 
 class Rect(object):
     
     def __init__(self, x=0.0, y=0.0, width=0.0, height=0.0):
-        self.x, self.y, self.width, self.height = float(x), float(y), float(width), float(height)
-        
-    def _is_empty(self):
+        self.x = float(x)
+        self.y = float(y) 
+        self.width  = float(width)
+        self.height = float(height)
+
+    def copy(self):
+        return Rect(self.x, self.y, self.width, self.height)
+
+    @property
+    def is_empty(self):
         r = self.normalized()
         return r.width <= 0.0 or r.height <= 0.0
-    is_empty = property(_is_empty)
         
     def normalized(self):
-        r = copy(self)
+        r = self.copy()
         if r.width < 0:
             r.x += r.width
             r.width = -r.width
@@ -397,31 +410,37 @@ class Rect(object):
             r.height = -r.height
         return r
         
-    def united(self, r):
+    def united(self, rect):
+        """ Returns a rectangle that encompasses the union of the two.
+        """
         r1 = self.normalized()
-        r2 = r.normalized()
+        r2 = rect.normalized()
         u = Rect()
         u.x = min(r1.x, r2.x)
         u.y = min(r1.y, r2.y)
-        u.width = max(r1.x + r1.width, r2.x + r2.width) - u.x
+        u.width  = max(r1.x + r1.width,  r2.x + r2.width)  - u.x
         u.height = max(r1.y + r1.height, r2.y + r2.height) - u.y
         return u
         
-    def intersects(self, r):
+    def intersects(self, rect):
+        """ Returns a rectangle that encompasses the intersection of the two.
+        """
         r1 = self.normalized()
-        r2 = r.normalized()
-        return max(r1.x, r2.x) < min(r1.x + r1.width, r2.x + r2.width) and \
+        r2 = rect.normalized()
+        return max(r1.x, r2.x) < min(r1.x + r1.width,  r2.x + r2.width) and \
                max(r1.y, r2.y) < min(r1.y + r1.height, r2.y + r2.height)
 
     def contains(self, obj):
+        """ Returns True if the given point or rectangle falls within the bounds.
+        """
         if isinstance(obj, Point):
             r = self.normalized()
             return obj.x >= r.x and obj.x <= r.x + r.width and \
                    obj.y >= r.y and obj.y <= r.y + r.height
-        elif isinstance(obj, Rect):
+        if isinstance(obj, Rect):
             r1 = self.normalized()
             r2 = obj.normalized()
-            return r2.x >= r1.x and r2.x + r2.width <= r1.x + r1.width and \
+            return r2.x >= r1.x and r2.x + r2.width  <= r1.x + r1.width and \
                    r2.y >= r1.y and r2.y + r2.height <= r1.y + r1.height
             
     def __eq__(self, r):
@@ -433,9 +452,6 @@ class Rect(object):
            
     def __repr__(self):
         return "Rect(%.1f, %.1f, %.1f, %.1f)" % (self.x, self.y, self.width, self.height)
-        
-    def __copy__(self):
-        return Rect(self.x, self.y, self.width, self.height)
 
 #--- PATH --------------------------------------------------------------------------------------------
 # A BezierPath class with lineto(), curveto() and moveto() commands.
@@ -496,6 +512,7 @@ class BezierPath(list):
             self.extend([pt.copy() for pt in path])
         self._kwargs = kwargs
         self._segment_cache = None
+        self._bounds = None
     
     def copy(self):
         return BezierPath(self, **self._kwargs)
@@ -503,26 +520,26 @@ class BezierPath(list):
     def moveto(self, x, y):
         """ Add a new point to the path at x, y.
         """
-        self._segment_cache = None
+        self._segment_cache = self._bounds = None
         self.append(PathElement(MOVETO, x, y, x, y, x, y))
     
     def lineto(self, x, y):
         """ Add a line from the previous point to x, y.
         """
-        self._segment_cache = None
+        self._segment_cache = self._bounds = None
         self.append(PathElement(LINETO, x, y, x, y, x, y))
         
     def curveto(self, x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
         """ Add a Bezier-curve from the previous to x3, y3.
         The curvature is determined by control handles x1, y1 and x2, y2.
         """
-        self._segment_cache = None
+        self._segment_cache = self._bounds = None
         self.append(PathElement(CURVETO, x3, y3, x1, y1, x2, y2, segments))
     
     def closepath(self):
         """ Add a line from the previous point to the last MOVETO.
         """
-        self._segment_cache = None
+        self._segment_cache = self._bounds = None
         self.append(PathElement(CLOSE, 0, 0, 0, 0, 0, 0))
     
     def _draw_line(self, x0, y0, x1, y1):
@@ -552,7 +569,17 @@ class BezierPath(list):
                     elif pt.cmd == LINETO:
                         self._draw_line(x0, y0, pt.x, pt.y)
                     elif pt.cmd == CURVETO:
-                        self._draw_curve(x0, y0, pt.ctrl1.x, pt.ctrl1.y, pt.ctrl2.x, pt.ctrl2.y, pt.x, pt.y, pt._segments)
+                        self._draw_curve(
+                            x0, 
+                            y0, 
+                            pt.ctrl1.x, 
+                            pt.ctrl1.y, 
+                            pt.ctrl2.x, 
+                            pt.ctrl2.y, 
+                            pt.x, 
+                            pt.y, 
+                            pt._segments
+                        )
                     elif pt.cmd == MOVETO:
                         closeto = pt
                         glEnd() # close this contour and start the next
@@ -571,7 +598,7 @@ class BezierPath(list):
         self.lineto(x, y+height)
         self.lineto(x, y)
     
-    def ellipse(self, x, y, width, height, segments=50):
+    def ellipse(self, x, y, width, height, segments=ELLIPSE_SEGMENTS):
         """ Add an ellipse to the path.
         """
         # Contrary to NodeBox, it is actually faster to draw each ellipse separately
@@ -627,35 +654,30 @@ class BezierPath(list):
         return bezier.contours(self)
 
     def contains(self, x, y, precision=100):
-        """ Ray casting algorithm.
-        Determines how many times a horizontal ray starting from the point 
-        intersects with the sides of the polygon. 
-        If it is an even number of times, the point is outside, if odd, inside.
-        The algorithm does not always report correctly when the point is very close to the boundary.
+        """ Returns True when point (x,y) falls within the contours of the path.
         """
-        odd = False
-        points = list(self.points(precision))
-        for i in range(len(points)):
-            x0, y0 = points[i].x, points[i].y
-            x1, y1 = points[(i+1)%n].x, points[(i+1)%n].y
-            if (y0 < y and y1 >= y) or (y1 < y and y0 >= y):
-                if x0 + (y-y0) / (y1-y0) * (x1-x0) < x:
-                    odd = not odd
-        return odd
+        px, py, pw, ph = self.bounds
+        if px <= x <= px+pw and \
+           py <= y <= py+ph:
+            # Ray casting algorithm:
+            points = [(pt.x,pt.y) for pt in self.points(precision)]
+            return geometry.point_in_polygon(points, x, y)
+        return False
 
     @property
     def bounds(self, precision=100):
         """ Returns a (x, y, width, height)-tuple of the approximate path dimensions.
         """
-        l = t = float( "inf")
-        r = b = float("-inf")
-        for pt in self.points(precision):
-            if pt.x < l: l = pt.x
-            if pt.y < t: t = pt.y
-            if pt.x > r: r = pt.x
-            if pt.y > b: b = pt.y
-        return l, t, r-l, b-t
-
+        if self._bounds == None:
+            l = t = float( "inf")
+            r = b = float("-inf")
+            for pt in self.points(precision):
+                if pt.x < l: l = pt.x
+                if pt.y < t: t = pt.y
+                if pt.x > r: r = pt.x
+                if pt.y > b: b = pt.y
+            self._bounds = (l, t, r-l, b-t)
+        return self._bounds
 
 def drawpath(path, **kwargs):
     """ Draws the given BezierPath (or list of PathElements).
@@ -1025,7 +1047,7 @@ def multiply(image=None, blend=None, opacity=1.0):
 
 LINEAR = "linear"
 RADIAL = "radial"
-def xgradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
+def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     """ Returns a linear or radial texture of the given size.
     The gradient is rendered in a power-2 dimension image and then scaled down,
     e.g. width=700 renders a gradient in width=1024.
@@ -1042,7 +1064,6 @@ def xgradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     image(img, 0, 0, width, height, filter=filter)
     offscreen.pop()
     return offscreen.image
-        
 
 #=====================================================================================================
 
@@ -1107,6 +1128,10 @@ def align(mode=None):
 
 _text_cache = {}
 def text(str, x, y, width=None, draw=True, cached=True, **kwargs):
+    """ Draws the string at the given position, with the current font().
+    Lines of text will stretch the given width before breaking to the next line.
+    Small pieces of text can be kept in cache.
+    """
     fill, stroke = color_mixin(**kwargs)
     if fill is None:
         fill = Color(0)
@@ -1114,17 +1139,17 @@ def text(str, x, y, width=None, draw=True, cached=True, **kwargs):
     fontsize   = kwargs.get("fontsize", _fontsize)
     lineheight = kwargs.get("lineheight", _lineheight)
     align      = kwargs.get("align", _align)
-    id = (str, fontname, fontsize)
+    id = (str, fontname, fontsize, width, lineheight, align)
     if id in _text_cache:
         txt = _text_cache[id]
     else:
         txt = pyglet_font.Text(font(fontname, fontsize), str, color=list(fill))
+        txt.width = width
+        txt.halign = align
+        txt.line_height = lineheight*fontsize
         if cached:
             # Caching is meant for text labels, we shouldn't cache entire pages.
             _text_cache[id] = txt
-    txt.width = width
-    txt.halign = align
-    txt.line_height = lineheight*fontsize
     if draw:
         push()
         translate(x, y)
@@ -1190,6 +1215,45 @@ def grid(cols, rows, colwidth=1, rowheight=1, shuffled=False):
 
 def files(path="*"):
     return glob(path)
+
+#=====================================================================================================
+
+#--- PROTOTYPE ----------------------------------------------------------------------------------------
+
+class Prototype:
+    
+    def __init__(self):
+        self._bound = {}
+            
+    def bind(self, function, method=None):
+        """ Creates an object method from the given function
+        The function is expected to take the object (i.e. self) as first parameter.
+        The method parameter specifies the method name to bind to (function's name by default).
+        """
+        if not method: 
+            method = function.__name__
+        setattr(self, method, instancemethod(function, self))
+        self._bound[method] = function
+    
+    def _copy_attr(self, x):
+        if isinstance(x, (list, tuple)):
+            return [self._copy_attr(v) for v in x]
+        if isinstance(x, dict):
+            return dict([(k, self._copy_attr(v)) for k,v in x.items()])
+        if hasattr(x, "copy"):
+            return x.copy()
+        return x
+    
+    def copy(self, *args, **kwargs):
+        # Create an object of the same subclass.
+        p = self.__class__(*args, **kwargs)
+        # Copy all the properties.
+        # Copy all the dynamic methods.
+        for k,v in self.__dict__.items():
+            p.__dict__[k] = self._copy_attr(v)
+        for method, function in self._bound.items():
+            p.bind(function, method)
+        return p
 
 #=====================================================================================================
 
@@ -1274,13 +1338,32 @@ class Transition(object):
 
 #--- LAYER -------------------------------------------------------------------------------------------
 # The Layer class is responsible for the following:
-# - it has a draw() method to patch, all sorts of NodeBox drawing commands can be put here,
+# - it has a draw() method to override; all sorts of NodeBox drawing commands can be put here,
 # - it has a transformation origin point and rotates/scales its drawn items as a group,
 # - it has child layers that transform relative to this layer,
 # - when its attributes (position, scale, angle, ...) change, they will tween smoothly over time. 
 
-class Layer(list):
+RELATIVE = "relative"
+ABSOLUTE = "absolute"
 
+<<<<<<< .mine
+class Layer(list, Prototype):
+
+    def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
+                 scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None):
+        """ Creates a new drawing layer that can be appended to the canvas.
+        The duration defines the time (seconds) it takes to animate transformations or opacity.
+        When the animation has terminated, layer.done=True.
+        """
+        if origin == CENTER:
+            origin = (0.5,0.5), 
+            origin_mode = RELATIVE
+        else:
+            origin_mode = ABSOLUTE
+        Prototype.__init__(self) # facilitates extension on the fly.
+        self.name      = None
+        self.parent    = parent
+=======
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0.5,0.5), scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None, name=None):
         self.parent    = None
         self._x        = Transition(x)
@@ -1289,6 +1372,7 @@ class Layer(list):
         self._height   = Transition(height)
         self._dx       = Transition(origin[0])
         self._dy       = Transition(origin[1])
+        self._origin   = origin_mode
         self._scale    = Transition(scale)
         self._rotation = Transition(rotation)
         self._opacity  = Transition(opacity, interpolation=LINEAR)
@@ -1296,8 +1380,17 @@ class Layer(list):
         self.top       = True # draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
+<<<<<<< .mine
+
+    def copy(self, parent=None):
+        layer = Prototype.copy(self)
+        layer.parent = parent
+        return layer
+
+=======
         self.name      = name
     
+>>>>>>> .r863
     def append(self, layer):
         list.append(self, layer)
         layer.parent = self
@@ -1310,13 +1403,11 @@ class Layer(list):
         return self._width.get()
     def _get_height(self):
         return self._height.get()
-    def _get_origin(self):
-        return (self._dx, self._dy)
-    def _get_scale(self): 
+    def _get_scale(self):
         return self._scale.get()
-    def _get_rotation(self): 
+    def _get_rotation(self):
         return self._rotation.get()
-    def _get_opacity(self): 
+    def _get_opacity(self):
         return self._opacity.get()
 
     def _set_x(self, x):
@@ -1327,11 +1418,7 @@ class Layer(list):
         self._width.set(width, self.duration)
     def _set_height(self, height):
         self._height.set(height, self.duration)
-    def _set_origin(self, xy):
-        assert len(xy) == 2, "_set_origin requires a tuple with two floats"
-        self._dx.set(xy[0], self.duration)
-        self._dy.set(xy[1], self.duration)
-    def _set_scale(self, scale): 
+    def _set_scale(self, scale):
         self._scale.set(scale, self.duration)
     def _set_rotation(self, rotation):
         self._rotation.set(rotation, self.duration)
@@ -1342,33 +1429,76 @@ class Layer(list):
     y        = property(_get_y, _set_y)
     width    = property(_get_width, _set_width)
     height   = property(_get_height, _set_height)
-    origin   = property(_get_origin, _set_origin)
-    scale    = property(_get_scale, _set_scale)
+    scaling  = property(_get_scale, _set_scale)
     rotation = property(_get_rotation, _set_rotation)
     opacity  = property(_get_opacity, _set_opacity)
     
-    @property
-    def abs_x(self):
-        if self.parent == None:
-            return self.x
-        return self.x + self.parent.abs_x
-
-    @property
-    def abs_y(self):
-        if self.parent == None:
-            return self.y
-        return self.y + self.parent.abs_y
-
-    # Origin as a number between  0.0-1.0, based on the layer's width and height.
+    def _get_origin(self, relative=False):
+        """ Returns the point (x,y) from which all layer transformations originate.
+        When relative=True, x and y are defined percentually (0.0-1.0) in terms of with and height.
+        In some cases x=0 or y=0 is returned:
+        - For an infinite layer (width=None or height=None), we can't deduct the absolute origin
+          from coordinates stored relatively (e.g. what is infinity*0.5?).
+        - Vice versa, for an infinite layer we can't deduct the relative origin from coordinates
+          stored absolute (e.g. what is 200/infinity?).
+        """
+        dx = self._dx.current
+        dy = self._dy.current
+        w = self._width.current
+        h = self._height.current
+        # Origin is stored as absolute coordinates and we want it relative.
+        if self._origin == ABSOLUTE and relative:
+            if w == None: w = 0
+            if h == None: h = 0
+            dx = w!=0 and dx/w or 0
+            dy = h!=0 and dy/h or 0
+        # Origin is stored as relative coordinates and we want it absolute.
+        elif self._origin == RELATIVE and not relative:
+            dx = w!=None and dx*w or 0
+            dy = h!=None and dy*h or 0
+        return dx, dy
+    
+    def _set_origin(self, x, y, relative=False):
+        """ Sets the transformation origin point in either absolute or relative coordinates.
+        """
+        self._dx.set(x, self.duration)
+        self._dy.set(y, self.duration)
+        self._origin = relative and RELATIVE or ABSOLUTE
+    
+    def origin(self, x=None, y=None, relative=False):
+        """ Sets or returns the point (x,y) from which all layer transformations originate.
+        """
+        if x != None:
+            if x == CENTER: 
+                x, y, relative = 0.5, 0.5, True
+            if y != None: 
+                self._set_origin(x, y, relative)
+        return self._get_origin(relative)
+    
     def _get_relative_origin(self):
-        return self._dx.get() * self._width.get(), self._dy.get() * self._height.get()
+        return self.origin(relative=True)
     def _set_relative_origin(self, xy):
-        self._dx.set(xy[0] * self._width.get())
-        self._dy.set(xy[1] * self._height.get())
+        self._set_origin(xy[0], xy[1], relative=True)
     relative_origin = property(_get_relative_origin, _set_relative_origin)
     
+    def _get_absolute_origin(self):
+        return self.origin(relative=False)
+    def _set_absolute_origin(self, xy):
+        self._set_origin(xy[0], xy[1], relative=False)
+    absolute_origin = property(_get_absolute_origin, _set_absolute_origin)
+    
+    def translate(self, x, y):
+        self.x += x
+        self.y += y
+        
+    def rotate(self, angle):
+        self.rotation += angle
+        
+    def scale(self, f):
+        self.scaling *= f
+    
     def _update(self):
-        """ Called each frame from canvas.update() to update the layer transitions.
+        """ Called each frame from canvas._update() to update the layer transitions.
         """
         self._x.update()
         self._y.update()
@@ -1379,14 +1509,13 @@ class Layer(list):
         self._scale.update()
         self._rotation.update()
         self._opacity.update()
-        # Allow overriding code to do custom updating.
         self.update()
-        # Update child layers
         for layer in self:
             layer._update()
             
     def update(self):
-        """Override this method to provide custom updating code."""
+        """Override this method to provide custom updating code.
+        """
         pass
     
     @property
@@ -1409,25 +1538,21 @@ class Layer(list):
         if self.hidden:
             return
         glPushMatrix()
-        
-        # Calculate the origin point
-        ox = self._dx.current * self._width.current
-        oy = self._dy.current * self._height.current
-        
-        # Center the contents around the origin point
-        glTranslatef(ox, oy, 0)
+        # Be careful that the transformations happen in the same order in Layer._transform().
+        # translate => flip => rotate => scale => origin.
+        # Center the contents around the origin point.
+        dx, dy = self.origin(relative=False)
+        #glTranslatef(dx, dy, 0)
         glTranslatef(self._x.current, self._y.current, 0)
+        if self.flipped:
+            glScalef(-1, 1, 1)
         glRotatef(self._rotation.current, 0, 0, 1)
-        # TODO: Fixed flipped layers
-        #if self.flipped:
-        #    glScalef(-1, 1, 1)
         glScalef(self._scale.current, self._scale.current, 1)
-        # Translate back to the current point
-        glTranslatef(-ox, -oy, 0)
+        glTranslatef(-dx, -dy, 0)
+        # Draw contents: 
+        # layers on top first, then my own contents, then layers below.
         for layer in filter(lambda x: not x.top, self):
             layer._draw()
-        # Actually draw the contents of the layer.
-        # This method is normally subclassed.
         self.draw()
         for layer in filter(lambda x: x.top, self):
             layer._draw()
@@ -1435,24 +1560,98 @@ class Layer(list):
         
     def draw(self):
         """Override this method to provide custom drawing code for this layer.
+        At this point, the layer is correctly transformed.
+        """
+        pass
+            
+    def layer_at(self, x, y, clipped=True, transformed=True, _covered=False):
+        """ Returns the topmost layer containing the mouse position, None otherwise.
+        With clipped=True, no parts of child layers outside the parent's bounds are checked.
+        """
         
-        At this point, the layer is already transformed correctly."""
-        
-    def layer_at(self, x, y):
-        if not self.hit_test(x, y): return None
-        for layer in self:
-            child_layer = layer.layer_at(x, y)
-            if child_layer is not None:
-                return child_layer
+        if _covered:
+            # An ancestor is blocking this layer, so we can't select it.
+            return None
+        hit = self.contains(x, y, transformed)        
+        if clipped:
+            # If (x,y) is not inside the clipped bounds, return None.
+            # Each child is drawn on top of the previous child,
+            # so we hit test them in reverse order (highest-first).
+            # If children protruding beyond the layer's bounds are clipped,
+            # we only need to look at children on top of the layer.
+            if not hit: return None
+            children = reversed(self)
+            children = filter(lambda layer: layer.top, children)
         else:
+            # Otherwise, traverse all children on-top-first to avoid
+            # selecting a child underneath the layer that is in reality
+            # covered by a peer on top of the layer further down the list.
+            children = reversed(self)
+            children = sorted(children, cmp=lambda a,b: b.top-a.top)
+        for child in children:
+            # Ancestors higher up may be covering the child,
+            # so we keep a recursive covered-state.
+            _covered = _covered or (hit and not child.top)
+            child = child.layer_at(x, y, clipped, transformed, _covered)
+            # A child is visible when it is on top of this layer,
+            # or when a part of it protrudes from underneath this layer.
+            # The protruding part can only be seen when clipped=False.
+            if child != None:
+                visible = child.top or (not clipped and not hit)
+                if visible:
+                    return child
+        if hit:
             return self
-
-    def hit_test(self, x, y):
-        return (0 <= x - self.x <= self.width and
-                0 <= y - self.y <= self.height)
-                
-    #### Events ####
+        else:
+            return None
     
+    def _transform(self, local=True):
+        """ Returns the transformation matrix of the layer:
+        a calculated state of its translation, rotation and scaling.
+        If local=False, prepends all transformations of the parent layers,
+        e.g. you get the actual transformation state of a nested layer.
+        """
+        tf = Transform()
+        if not local and self.parent != None:
+            tf.prepend(self.parent._transform(local=False))
+        # Be careful that the transformations happen in the same order in Layer._draw).
+        # translate => flip => rotate => scale => origin.
+        dx, dy = self.origin(relative=False)
+        #tf.translate(dx, dy)
+        tf.translate(self._x.current, self._y.current)
+        if self.flipped:
+            t.scale(-1, 1, 1)
+        tf.rotate(self._rotation.current)
+        tf.scale(self._scale.current, self._scale.current)
+        tf.translate(-dx, -dy)
+        return tf
+    
+    # Recursive x and y values.
+    def _Ex(self): return self._x.current + (self.parent and self.parent._Ex() or 0)
+    def _Ey(self): return self._y.current + (self.parent and self.parent._Ey() or 0)
+    
+    def contains(self, x, y, transformed=True):
+        """ Returns True if (x,y) falls within the bounds of the layer.
+        Useful for GUI elements: with transformed=False the calculations are much faster;
+        and it will report correctly as long as the layer (or parent layer)
+        is not rotated or scaled, and has its origin at (0,0).
+        """
+        w = self._width.current
+        h = self._height.current
+        if not transformed:
+            x0 = self._Ex() 
+            y0 = self._Ey()
+            return x0 <= x and y0 <= y \
+               and (w == None or x <= x0+w) \
+               and (h == None or y <= y0+h)
+        # Find the transformed bounds of the layer:
+        tf = self._transform(local=not transformed)
+        p = tf.map([(0,0), (w,0), (w,h), (0,h)])
+        return geometry.point_in_polygon(p, x, y)
+        
+    hit_test = contains
+        
+    # These methods are meant to be overridden or patched with Layer.bind().
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers): pass
     def on_mouse_enter(self, x, y): pass
     def on_mouse_leave(self, x, y): pass
@@ -1461,41 +1660,20 @@ class Layer(list):
     def on_mouse_release(self, x, y, button, modifiers): pass
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y): pass
         
-    #### Binding ####
-
-    def bind(self, function):
-        """Creates a Layer method from the given function. 
-        The function is expected to take Layer (i.e. self) as first parameter.
-        Layer.draw() can be implemented by inheriting the class or by patching the method:
-        class MyDraw:
-            def draw(self):
-                ...
-        OR
-        def draw(layer):
-            ...
-        layer = Layer()
-        layer.bind(draw)
-        """
-        setattr(self, function.__name__, instancemethod(function, self))
-
-    #### Copy ####
-
-    def copy(self, parent=None):
-        l = layer()
-        l.parent = parent
-        for attr in ["_x", "_y", "_dx", "_dy", "_scale", "_rotation", "_opacity", "draw", "top", "flipped", "hidden"]:
-            setattr(l, attr, getattr(self, attr).copy())
-        for layer in self:
-            l.append(layer.copy(parent=l))
-        return l
-        
     def __repr__(self):
-        if self.name is not None:
-            name_repr = "name=%s, " % self.name
-        else:
-            name_repr = ""
-        return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, angle=%.2f, opacity=%.2f, duration=%.2f)" % \
-            (name_repr, self.x, self.y, self.scale, self.rotation, self.opacity, self.duration)
+        print self.duration
+        return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, rotation=%.2f, opacity=%.2f, duration=%.2f)" % (
+            self.name != None and "name='"+self.name+"', " or "", 
+            self.x, 
+            self.y, 
+            self.scaling, 
+            self.rotation, 
+            self.opacity, 
+            self.duration
+        )
+
+def layer(*args, **kwargs):
+    return Layer(*args, **kwargs)
 
 #=====================================================================================================
 
@@ -1532,7 +1710,7 @@ KEY_DOWN      = "down"
 KEY_LEFT      = "left"
 KEY_RIGHT     = "right"
 
-# Modifiers - in key_pressed(), check for: modifiers & SHIFT
+# Modifiers - in on_key_press(), check for: modifiers & SHIFT
 SHIFT   = KEYCODE.MOD_SHIFT
 CTRL    = KEYCODE.MOD_CTRL
 OPTION  = ALT = KEYCODE.MOD_OPTION
@@ -1574,14 +1752,16 @@ class Canvas(list):
 
     def __init__(self, config=None):
         self._window = pyglet_window.Window(visible=False, config=config)
-        self._window.on_mouse_drag = self._on_mouse_drag
-        self._window.on_mouse_enter = self._on_mouse_enter
-        self._window.on_mouse_leave = self._on_mouse_leave
-        self._window.on_mouse_motion = self._on_mouse_motion
-        self._window.on_mouse_press = self._on_mouse_press
+        self._window.on_mouse_drag    = self._on_mouse_drag
+        self._window.on_mouse_enter   = self._on_mouse_enter
+        self._window.on_mouse_leave   = self._on_mouse_leave
+        self._window.on_mouse_motion  = self._on_mouse_motion
+        self._window.on_mouse_press   = self._on_mouse_press
         self._window.on_mouse_release = self._on_mouse_release
-        self._window.on_mouse_scroll = self._on_mouse_scroll
-        self._window.on_close        = self._stop
+        self._window.on_mouse_scroll  = self._on_mouse_scroll
+        self._window.on_key_press     = self._on_key_press
+        self._window.on_key_release   = self._on_key_release
+        self._window.on_close         = self._stop
         self.fps     = None # frames per second
         self._frame  = 0    # current frame
         self._t      = 0    # last frame time
@@ -1663,10 +1843,11 @@ class Canvas(list):
     cursor = property(_get_cursor, _set_cursor)
     
     def layer_at(self, x, y):
-        """Find a layer at the specified coordinates.
-        
-        This method returns None if no layer was found."""
-        for layer in self:
+        """Find the layer at the specified coordinates.
+        This method returns None if no layer was found.
+        """
+        #return None
+        for layer in reversed(self):
             l = layer.layer_at(x, y)
             if l is not None:
                 return l
@@ -1726,16 +1907,22 @@ class Canvas(list):
         self._dragging_layer = None
         self.on_mouse_release(x, y, button, modifiers)
         layer = self.layer_at(x, y)
-        if layer is None: return
-        layer.on_mouse_release(x, y, button, modifiers)
+        if layer is not None:
+            layer.on_mouse_release(x, y, button, modifiers)
         
     def _on_mouse_scroll(self, x, y, scroll_x, scroll_y):
         self.on_mouse_scroll(x, y, scroll_x, scroll_y)
         layer = self.layer_at(x, y)
-        if layer is None: return
-        layer.on_mouse_scroll(x, y, scroll_x, scroll_y)
+        if layer is not None:
+            layer.on_mouse_scroll(x, y, scroll_x, scroll_y)
 
-    # These methods are meant to be overridden
+    def _on_key_press(self, keycode, modifiers):
+        self.on_key_press(keycode, modifiers)
+
+    def _on_key_release(self, keycode, modifiers):
+        self.on_key_release(keycode, modifiers)
+
+    # These methods are meant to be overridden or patched with Canvas.bind().
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers): pass
     def on_mouse_enter(self, x, y): pass
     def on_mouse_leave(self, x, y): pass
@@ -1743,6 +1930,10 @@ class Canvas(list):
     def on_mouse_press(self, x, y, button, modifiers): pass
     def on_mouse_release(self, x, y, button, modifiers): pass
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y): pass
+    def on_key_press(self, keycode, modifiers):
+        if keycode == KEYCODE.ESCAPE:
+            self.done = True
+    def on_key_release(self, keycode, modifiers): pass
 
     def _setup(self):
         # Set the window color, this will be transparent in saved images:
@@ -1759,19 +1950,14 @@ class Canvas(list):
         self._runs = True
 
     def _draw(self):
-
         """Draws the canvas and the underlying layers.
-        
-        This method should give the same result each time it gets drawn;
-        only _update should advance state.
+        This method gives the same result each time it gets drawn; only _update() advances state.
         """
-
-        # Draw my own contents
+        # Draw user-defined contents.
         glPushMatrix()
         self.draw()
         glPopMatrix()
-        
-        # Draw the layers
+        # Draw the layers.
         glPushMatrix()
         for layer in self:
             layer._update()
@@ -1786,12 +1972,9 @@ class Canvas(list):
         self._window.flip()
 
     def _update(self):
-
         """Updates the canvas and the underlying layers.
-        
-        This method does not actually draw anything, it only update state.
+        This method does not actually draw anything, it only updates the state.
         """
-
         if not self._runs:
             self._setup()
         global TIME
@@ -1824,7 +2007,7 @@ class Canvas(list):
     def _get_done(self):
         return self._window.has_exit
     def _set_done(self, done=False):
-        # Do canvas.done = True to close the drawing window.
+        # Do canvas.done=True to close the drawing window.
         if done:
             self._stop()
     done = property(_get_done, _set_done)
@@ -1863,8 +2046,10 @@ class Canvas(list):
             glDisable(GL_LINE_SMOOTH)
             #glDisable(GL_POLYGON_SMOOTH)
 
-    def bind(self, function):
-        setattr(self, function.__name__, instancemethod(function, self))
+    def bind(self, function, method=None):
+        if not method: 
+            method = function.__name__
+        setattr(self, method, instancemethod(function, self))
 
 #--- LIBRARIES ---------------------------------------------------------------------------------------
 # Import the library and assign it a _ctx variable containing the current context.
@@ -1928,7 +2113,7 @@ def screenshot(crop=(0,0,0,0)):
 buffer = screenshot
 
 def mouse():
-    return (canvas.mouse.x, canvas,mouse.y)
+    return (canvas.mouse.x, canvas.mouse.y)
     
 def cursor(mode=None):
     """ Sets the current mouse cursor (DEFAULT, CROSS, HAND, HIDDEN, TEXT or WAIT).

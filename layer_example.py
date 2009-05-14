@@ -11,7 +11,7 @@ class RotatedObject(Layer):
     
     def __init__(self, *args, **kwargs):
         super(RotatedObject, self).__init__(*args, **kwargs)
-        self.origin = (1.0, 0.5)
+        self.relative_origin = (1.0, 0.5)
         self.rotation = 1.0
         
     def update(self):
@@ -21,5 +21,5 @@ class RotatedObject(Layer):
     def draw(self):
         rect(0, 0, self.width, self.height, fill=color(1.0, 0.0, 0.0))
 
-canvas.append(RotatedObject(400, 400, 100, 100))
+canvas.append(RotatedObject(350, 350, 100, 100))
 canvas.run()

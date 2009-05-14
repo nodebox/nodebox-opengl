@@ -53,16 +53,16 @@ def draw():
         c += 0.1
     a += 0.1
     b += 0.05
-    text("hello", 20, 20, fill=color(0,0,0))
+    text("hello world", 20, 20)
     translate(200, 200)
     ###
 
-    buff = screenshot()    
+    buff = screenshot(crop=(1,1,1,1))    
 
 l = Layer()
 #l.draw = draw
 
-def key_pressed(keycode, modifiers):
+def on_key_press(canvas, keycode, modifiers):
     print keycode, key(keycode), modifiers&SHIFT
     if keycode == KEYCODE.ESCAPE:
         canvas.done = True
@@ -70,7 +70,7 @@ def key_pressed(keycode, modifiers):
 #canvas.fps = 100
 canvas.setup = setup
 canvas.draw = draw
-canvas.key_pressed = key_pressed
+canvas.bind(on_key_press)
 run()
 
 #from context import profile
