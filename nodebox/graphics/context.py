@@ -246,6 +246,13 @@ def colorplane(x, y, width, height, *a):
 # Unlike NodeBox, all transformations are CORNER-mode and originate from the bottom-left corner.
 
 Transform = geometry.AffineTransform
+# Example: getting a transformed path.
+# t = Transform()
+# t.rotate(45)
+# p = BezierPath()
+# p.rect(10,10,100,70)
+# p = t.transform_path(p)
+# p.contains(x,y) # now we can check if the mouse is in the transformed shape.
 
 def push():
     glPushMatrix()
@@ -378,7 +385,23 @@ def arrow(x, y, width, **kwargs):
             glEnd()
 
 def star(x, y, points=20, outer=100, inner=50, **kwargs):
-    raise NotImplementedError
+    """ Draws a star with the given points, outer radius and inner radius.
+    """
+    p = BezierPath(**kwargs)
+    p.moveto(x, y)
+    for i in range(0, int(2*points)+1):
+        angle = i * pi / points
+        dx = sin(angle)
+        dy = cos(angle)
+        if i % 2:
+            radius = inner
+        else:
+            radius = outer
+        dx = x + radius*dx
+        dy = y + radius*dy
+        p.lineto(dx,dy)
+    p.closepath()
+    p.draw()
     
 #--- RECTANGLE ---------------------------------------------------------------------------------------
 # The rect class is used for calculating intersections between rectangles 
@@ -625,7 +648,7 @@ class BezierPath(list):
     def points(self, amount=2, start=0.0, end=1.0):
         """ Returns a list of PathElements along the path.
         """
-        # To omit the last point on closed paths: end = 1 - 1.0/amount
+        # To omit the last point on closed paths: end=1-1.0/amount
         n = end - start
         d = n
         if amount>1: 
@@ -1229,6 +1252,19 @@ class Prototype:
         """ Creates an object method from the given function
         The function is expected to take the object (i.e. self) as first parameter.
         The method parameter specifies the method name to bind to (function's name by default).
+        For example, we can define a Layer's custom draw() method in two ways.
+        - By subclassing:
+            class MyLayer(Layer):
+                def draw(layer):
+                    pass
+            layer = MyLayer()
+            layer.draw()
+        - By function binding:
+            def my_draw(layer):
+                pass
+            layer = Layer()
+            layer.bind(my_draw, "draw")
+            layer.draw()
         """
         if not method: 
             method = function.__name__
@@ -1376,6 +1412,8 @@ class Layer(list, Prototype):
         self.top       = True # draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
+        # Cache the local transformation matrix.
+        self._transform_cache = None
 
     def copy(self, parent=None):
         layer = Prototype.copy(self)
@@ -1402,16 +1440,22 @@ class Layer(list, Prototype):
         return self._opacity.get()
 
     def _set_x(self, x):
+        self._transform_cache = None
         self._x.set(x, self.duration)
     def _set_y(self, y):
+        self._transform_cache = None
         self._y.set(y, self.duration)
     def _set_width(self, width):
+        self._transform_cache = None
         self._width.set(width, self.duration)
     def _set_height(self, height):
+        self._transform_cache = None
         self._height.set(height, self.duration)
     def _set_scale(self, scale):
+        self._transform_cache = None
         self._scale.set(scale, self.duration)
     def _set_rotation(self, rotation):
+        self._transform_cache = None
         self._rotation.set(rotation, self.duration)
     def _set_opacity(self, opacity):
         self._opacity.set(opacity, self.duration)
@@ -1452,6 +1496,7 @@ class Layer(list, Prototype):
     def _set_origin(self, x, y, relative=False):
         """ Sets the transformation origin point in either absolute or relative coordinates.
         """
+        self._transform_cache = None
         self._dx.set(x, self.duration)
         self._dy.set(y, self.duration)
         self._origin = relative and RELATIVE or ABSOLUTE
@@ -1566,22 +1611,20 @@ class Layer(list, Prototype):
         hit = self.contains(x, y, transformed)        
         if clipped:
             # If (x,y) is not inside the clipped bounds, return None.
-            # Each child is drawn on top of the previous child,
-            # so we hit test them in reverse order (highest-first).
             # If children protruding beyond the layer's bounds are clipped,
             # we only need to look at children on top of the layer.
+            # Each child is drawn on top of the previous child,
+            # so we hit test them in reverse order (highest-first).
             if not hit: return None
-            children = reversed(self)
-            children = filter(lambda layer: layer.top, children)
+            children = filter(lambda layer: layer.top, reversed(self))
         else:
-            # Otherwise, traverse all children on-top-first to avoid
+            # Otherwise, traverse all children in on-top-first order to avoid
             # selecting a child underneath the layer that is in reality
-            # covered by a peer on top of the layer further down the list.
-            children = reversed(self)
-            children = sorted(children, cmp=lambda a,b: b.top-a.top)
+            # covered by a peer on top of the layer, further down the list.
+            children = sorted(reversed(self), cmp=lambda a,b: b.top-a.top)
         for child in children:
             # Ancestors higher up may be covering the child,
-            # so we keep a recursive covered-state.
+            # so we keep a recursive covered-state to verify visibility.
             _covered = _covered or (hit and not child.top)
             child = child.layer_at(x, y, clipped, transformed, _covered)
             # A child is visible when it is on top of this layer,
@@ -1602,19 +1645,23 @@ class Layer(list, Prototype):
         If local=False, prepends all transformations of the parent layers,
         e.g. you get the actual transformation state of a nested layer.
         """
-        tf = Transform()
+        if self._transform_cache == None:
+            tf = Transform()
+            # Be careful that the transformations happen in the same order in Layer._draw).
+            # translate => flip => rotate => scale => origin.
+            dx, dy = self.origin(relative=False)
+            #tf.translate(dx, dy)
+            tf.translate(self._x.current, self._y.current)
+            if self.flipped:
+                t.scale(-1, 1, 1)
+            tf.rotate(self._rotation.current)
+            tf.scale(self._scale.current, self._scale.current)
+            tf.translate(-dx, -dy)
+            self._transform_cache = tf
+        tf = self._transform_cache.copy()
         if not local and self.parent != None:
+            # Accumulate all the parent layer transformations.
             tf.prepend(self.parent._transform(local=False))
-        # Be careful that the transformations happen in the same order in Layer._draw).
-        # translate => flip => rotate => scale => origin.
-        dx, dy = self.origin(relative=False)
-        #tf.translate(dx, dy)
-        tf.translate(self._x.current, self._y.current)
-        if self.flipped:
-            t.scale(-1, 1, 1)
-        tf.rotate(self._rotation.current)
-        tf.scale(self._scale.current, self._scale.current)
-        tf.translate(-dx, -dy)
         return tf
     
     # Recursive x and y values.

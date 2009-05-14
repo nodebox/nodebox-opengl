@@ -4,7 +4,7 @@
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 
 from math import sqrt, pow
-from math import sin, cos, atan2, degrees, radians, pi as PI
+from math import sin, cos, atan2, degrees, radians, pi
 
 #=====================================================================================================
 
@@ -113,6 +113,7 @@ def point_in_polygon(points, x, y):
 #=====================================================================================================
 
 #--- AFFINE TRANSFORM --------------------------------------------------------------------------------
+# Based on http://www.senocular.com/flash/tutorials/transformmatrix/
 
 class AffineTransform:
     
@@ -121,7 +122,6 @@ class AffineTransform:
         that preserves collinearity and ratio of distance between points.
         Linear transformations include rotation, translation, scaling, shear.
         """
-        # Based on http://www.senocular.com/flash/tutorials/transformmatrix/
         if isinstance(transform, AffineTransform):
             self.matrix = list(transform.matrix)
         else:
@@ -183,7 +183,7 @@ class AffineTransform:
         self.matrix = self._mmult([1,0,0, 0,1,0, x,y,1], self.matrix)
     
     def rotate(self, degrees=0, radians=0):
-        radians = degrees and degrees*PI/180 or radians
+        radians = degrees and degrees*pi/180 or radians
         c = cos(radians)
         s = sin(radians)
         self.matrix = self._mmult([c,s,0, -s,c,0, 0,0,1], self.matrix)
