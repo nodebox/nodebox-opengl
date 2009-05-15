@@ -94,7 +94,7 @@ def curvelength(x0, y0, x1, y1, x2, y2, x3, y3, n=20):
     xi = x0
     yi = y0
 
-    for i in range(n):
+    for i in xrange(n):
         t = 1.0 * (i+1) / n
         pt_x, pt_y, pt_c1x, pt_c1y, pt_c2x, pt_c2y = \
             curvepoint(t, x0, y0, x1, y1, x2, y2, x3, y3)
@@ -348,7 +348,7 @@ def findpath(points, curvature=1.0):
     if curvature == 0:
         path = BezierPath(None)
         path.moveto(points[0].x, points[0].y)
-        for i in range(len(points)): 
+        for i in xrange(len(points)): 
             path.lineto(points[i].x, points[i].y)
         return path
         
@@ -360,12 +360,12 @@ def findpath(points, curvature=1.0):
     ax = {1: (points[2].x-points[0].x-dx[0]) / 4}
     ay = {1: (points[2].y-points[0].y-dy[0]) / 4}
     
-    for i in range(2, len(points)-1):
+    for i in xrange(2, len(points)-1):
         bi[i] = -1 / (curvature + bi[i-1])
         ax[i] = -(points[i+1].x-points[i-1].x-ax[i-1]) * bi[i]
         ay[i] = -(points[i+1].y-points[i-1].y-ay[i-1]) * bi[i]
         
-    r = range(1, len(points)-1)
+    r = xrange(1, len(points)-1)
     r.reverse()
     for i in r:
         dx[i] = ax[i] + dx[i+1] * bi[i]
@@ -373,7 +373,7 @@ def findpath(points, curvature=1.0):
 
     path = BezierPath(None)
     path.moveto(points[0].x, points[0].y)
-    for i in range(len(points)-1):
+    for i in xrange(len(points)-1):
         path.curveto(points[i].x + dx[i], 
                      points[i].y + dy[i],
                      points[i+1].x - dx[i+1], 
@@ -412,7 +412,7 @@ def insert_point(path, t):
     
     new_path = BezierPath(None)
     new_path.moveto(path[0].x, path[0].y)
-    for j in range(1, len(path)):
+    for j in xrange(1, len(path)):
         if j == i+1:
             if pt_cmd == CURVETO:
                 new_path.curveto(pt_h1x, pt_h1y,

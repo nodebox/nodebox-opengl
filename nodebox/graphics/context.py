@@ -1,4 +1,4 @@
-# NodeBox for OpenGL Painter
+# NodeBox for OpenGL, 2D painter
 # Authors: Frederik De Bleser, Tom De Smedt
 # License: GPL (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
@@ -245,14 +245,14 @@ def colorplane(x, y, width, height, *a):
 #--- TRANSFORMATIONS ---------------------------------------------------------------------------------
 # Unlike NodeBox, all transformations are CORNER-mode and originate from the bottom-left corner.
 
-Transform = geometry.AffineTransform
-# Example: getting a transformed path.
+# Example: using Transform to get a transformed path.
 # t = Transform()
 # t.rotate(45)
 # p = BezierPath()
 # p.rect(10,10,100,70)
 # p = t.transform_path(p)
 # p.contains(x,y) # now we can check if the mouse is in the transformed shape.
+Transform = geometry.AffineTransform
 
 def push():
     glPushMatrix()
@@ -260,16 +260,16 @@ def push():
 def pop():
     glPopMatrix()
 
-def translate(x, y, z=0):
-    glTranslatef(x, y, z)
+def translate(x, y):
+    glTranslatef(x, y, 0)
 
-def rotate(degrees, x=0, y=0, z=1):
-    glRotatef(degrees, x, y, z)
+def rotate(degrees):
+    glRotatef(degrees, 0, 0, 1)
 
-def scale(x, y=None, z=1):
+def scale(x, y=None):
     if y == None: 
         y = x
-    glScalef(x, y, z)
+    glScalef(x, y, 1)
 
 def reset():
     """ Resets the transform state of the layer or canvas.
@@ -280,30 +280,13 @@ def reset():
 def transform(mode=None):
     raise NotImplementedError
     
-def skew(x, y, z=0):
+def skew(x, y):
     raise NotImplementedError
 
 #--- PRIMITIVES --------------------------------------------------------------------------------------
 # Point, line, rect, ellipse, arrow.
 
-class Point:
-    
-    def __init__(self, x, y, z=0):
-        self.x = x
-        self.y = y
-        self.z = z
-        
-    def __repr__(self):
-        return "Point(x=%.2f, y=%.2f, z=%.2f)" % (self.x, self.y, self.z)
-        
-    def __eq__(self, pt):
-        if not isinstance(pt, Point): return False
-        return self.x == pt.x \
-           and self.y == pt.y \
-           and self.z == pt.z
-    
-    def __ne__(self, pt):
-        return not self.__eq__(pt)
+Point = geometry.Point
 
 def line(x0, y0, x1, y1, **kwargs):
     """ Draws a straight line from x0, y0 to x1, y1 with the current stroke color.
@@ -344,7 +327,7 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
             path = glGenLists(1)
             glNewList(path, GL_COMPILE)
             glBegin(mode);
-            for i in range(segments):
+            for i in xrange(segments):
                 t = 2*pi * float(i)/segments
                 glVertex2f(cos(t)*0.5, sin(t)*0.5);
             glEnd();
@@ -389,7 +372,7 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
     """
     p = BezierPath(**kwargs)
     p.moveto(x, y)
-    for i in range(0, int(2*points)+1):
+    for i in xrange(0, int(2*points)+1):
         angle = i * pi / points
         dx = sin(angle)
         dy = cos(angle)
@@ -403,79 +386,6 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
     p.closepath()
     p.draw()
     
-#--- RECTANGLE ---------------------------------------------------------------------------------------
-# The rect class is used for calculating intersections between rectangles 
-# and to store bounding information.
-
-class Rect(object):
-    
-    def __init__(self, x=0.0, y=0.0, width=0.0, height=0.0):
-        self.x = float(x)
-        self.y = float(y) 
-        self.width  = float(width)
-        self.height = float(height)
-
-    def copy(self):
-        return Rect(self.x, self.y, self.width, self.height)
-
-    @property
-    def is_empty(self):
-        r = self.normalized()
-        return r.width <= 0.0 or r.height <= 0.0
-        
-    def normalized(self):
-        r = self.copy()
-        if r.width < 0:
-            r.x += r.width
-            r.width = -r.width
-        if r.height < 0:
-            r.y += r.height
-            r.height = -r.height
-        return r
-        
-    def united(self, rect):
-        """ Returns a rectangle that encompasses the union of the two.
-        """
-        r1 = self.normalized()
-        r2 = rect.normalized()
-        u = Rect()
-        u.x = min(r1.x, r2.x)
-        u.y = min(r1.y, r2.y)
-        u.width  = max(r1.x + r1.width,  r2.x + r2.width)  - u.x
-        u.height = max(r1.y + r1.height, r2.y + r2.height) - u.y
-        return u
-        
-    def intersects(self, rect):
-        """ Returns a rectangle that encompasses the intersection of the two.
-        """
-        r1 = self.normalized()
-        r2 = rect.normalized()
-        return max(r1.x, r2.x) < min(r1.x + r1.width,  r2.x + r2.width) and \
-               max(r1.y, r2.y) < min(r1.y + r1.height, r2.y + r2.height)
-
-    def contains(self, obj):
-        """ Returns True if the given point or rectangle falls within the bounds.
-        """
-        if isinstance(obj, Point):
-            r = self.normalized()
-            return obj.x >= r.x and obj.x <= r.x + r.width and \
-                   obj.y >= r.y and obj.y <= r.y + r.height
-        if isinstance(obj, Rect):
-            r1 = self.normalized()
-            r2 = obj.normalized()
-            return r2.x >= r1.x and r2.x + r2.width  <= r1.x + r1.width and \
-                   r2.y >= r1.y and r2.y + r2.height <= r1.y + r1.height
-            
-    def __eq__(self, r):
-        if not isinstance(r, Rect): return False
-        return self.x == r.x \
-           and self.y == r.y \
-           and self.width == r.width \
-           and self.height == r.height
-           
-    def __repr__(self):
-        return "Rect(%.1f, %.1f, %.1f, %.1f)" % (self.x, self.y, self.width, self.height)
-
 #--- PATH --------------------------------------------------------------------------------------------
 # A BezierPath class with lineto(), curveto() and moveto() commands.
 # It has all the path math functionality from NodeBox and a ray casting algorithm for contains().
@@ -572,7 +482,7 @@ class BezierPath(list):
     def _draw_curve(self, x0, y0, x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
         # Curves are interpolated from a number of straight line segments.
         xi, yi = x0, y0
-        for i in range(segments):
+        for i in xrange(segments):
             xj, yj, vx1, vy1, vx2, vy2 = bezier.curvepoint(float(i)/segments, x0, y0, x1, y1, x2, y2, x3, y3)
             glVertex2f(xi, yi)
             glVertex2f(xj, yj)
@@ -653,7 +563,7 @@ class BezierPath(list):
         d = n
         if amount>1: 
             d = n / (amount-1)
-        for i in range(amount):
+        for i in xrange(amount):
             yield self.point(start+d*i)
     
     def addpoint(self, t):
@@ -679,9 +589,9 @@ class BezierPath(list):
     def contains(self, x, y, precision=100):
         """ Returns True when point (x,y) falls within the contours of the path.
         """
-        px, py, pw, ph = self.bounds
-        if px <= x <= px+pw and \
-           py <= y <= py+ph:
+        bx, by, bw, bh = self.bounds
+        if bx <= x <= bx+bw and \
+           by <= y <= by+bh:
             # Ray casting algorithm:
             points = [(pt.x,pt.y) for pt in self.points(precision)]
             return geometry.point_in_polygon(points, x, y)
@@ -768,7 +678,7 @@ def endclip():
 #--- IMAGE -------------------------------------------------------------------------------------------
 # Caching, drawing, pixels, offscreen buffer and filters.
 
-pow2 = [2**n for n in range(20)]
+pow2 = [2**n for n in xrange(20)]
 def ceil2(x):
     """ Returns the nearest power of 2 that is higher than x, e.g. 700 => 1024.
     """
@@ -889,7 +799,7 @@ class Pixels(list):
         return len(self._data) / 4
     
     def __iter__(self):
-        for i in range(len(self)):
+        for i in xrange(len(self)):
             yield self[i]
     
     def __getitem__(self, i):
@@ -902,14 +812,14 @@ class Pixels(list):
         # User is responsible for keeping channel values between 0 and 255.
         if isinstance(v, Color):
             v = [int(v[0]*255), int(v[1]*255), int(v[2]*255), int(v[3]*255)]
-        for j in range(4):
+        for j in xrange(4):
             self._data[i*4+j] = v[j]
     
     def __getslice__(self, i, j):
-        return [self[i+n] for n in range(j-i)]
+        return [self[i+n] for n in xrange(j-i)]
     
     def __setslice__(self, i, j, seq):
-        for n in range(j-i):
+        for n in xrange(j-i):
             self[i+n] = seq[n]
     
     def update(self):
@@ -928,6 +838,7 @@ pixels = Pixels
 
 #--- ANIMATION ---------------------------------------------------------------------------------------
 # A sequence of images displayed in a loop.
+# Useful for storing pre-rendered effects like explosions etc.
 
 FADE = "fade"
 
@@ -1050,7 +961,7 @@ def blur(image=None, scale=1.0, n=1, kernel=5):
     """
     filter = Blur(image, scale, kernel)
     if image: 
-        return render(image, [filter for i in range(n)])
+        return render(image, [filter for i in xrange(n)])
     return filter
 
 def colorize(image=None, color=(1,1,1,1), bias=(0,0,0,0)):
@@ -1227,8 +1138,8 @@ def random(v1=1.0, v2=None, bias=None):
     return x
 
 def grid(cols, rows, colwidth=1, rowheight=1, shuffled=False):
-    rows = range(int(rows))
-    cols = range(int(cols))
+    rows = xrange(int(rows))
+    cols = xrange(int(cols))
     if shuffled:
         shuffle(rows)
         shuffle(cols)
@@ -1290,6 +1201,32 @@ class Prototype:
         for method, function in self._bound.items():
             p.bind(function, method)
         return p
+
+#=====================================================================================================
+
+#--- EVENT LISTENER -----------------------------------------------------------------------------------
+
+class EventListener:
+    
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        pass
+    def on_mouse_enter(self, x, y):
+        pass
+    def on_mouse_leave(self, x, y):
+        pass
+    def on_mouse_motion(self, x, y, dx, dy):
+        pass
+    def on_mouse_press(self, x, y, button, modifiers):
+        pass
+    def on_mouse_release(self, x, y, button, modifiers):
+        pass
+    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        pass
+    
+    def on_key_press(self, keycode, modifiers):
+        pass
+    def on_key_release(self, keycode, modifiers):
+        pass
 
 #=====================================================================================================
 
@@ -1604,7 +1541,9 @@ class Layer(list, Prototype):
         """ Returns the topmost layer containing the mouse position, None otherwise.
         With clipped=True, no parts of child layers outside the parent's bounds are checked.
         """
-        
+        if self.hidden:
+            # Don't do costly operations on layers the user can't see.
+            return None
         if _covered:
             # An ancestor is blocking this layer, so we can't select it.
             return None
@@ -1621,7 +1560,7 @@ class Layer(list, Prototype):
             # Otherwise, traverse all children in on-top-first order to avoid
             # selecting a child underneath the layer that is in reality
             # covered by a peer on top of the layer, further down the list.
-            children = sorted(reversed(self), cmp=lambda a,b: b.top-a.top)
+            children = sorted(reversed(self), key=lambda layer: not layer.top)
         for child in children:
             # Ancestors higher up may be covering the child,
             # so we keep a recursive covered-state to verify visibility.
@@ -1699,7 +1638,6 @@ class Layer(list, Prototype):
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y): pass
         
     def __repr__(self):
-        print self.duration
         return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, rotation=%.2f, opacity=%.2f, duration=%.2f)" % (
             self.name != None and "name='"+self.name+"', " or "", 
             self.x, 
@@ -1710,8 +1648,21 @@ class Layer(list, Prototype):
             self.duration
         )
 
+class InteractiveLayer(Layer, EventListener):
+    pass
+
 def layer(*args, **kwargs):
-    return Layer(*args, **kwargs)
+    """ Returns a new layer with the given properties.
+    By default, interactive=True and a InteractiveLayer is returned that implements EventListener.
+    Interactive layers receive events from the canvas.
+    If a layer doesn't need events, use interactive=False.
+    That way it won't hit test every frame (which requires the transformation matrix and ray casting).
+    """
+    interactive = kwargs.get("interactive", True)
+    if interactive:
+        return InteractiveLayer(*args, **kwargs)
+    else:
+        return Layer(*args, **kwargs)
 
 #=====================================================================================================
 
@@ -1786,10 +1737,17 @@ def key(code):
 
 VERY_LIGHT_GREY = 0.95
 
-class Canvas(list):
+class Canvas(list, EventListener):
 
     def __init__(self, config=None):
         self._window = pyglet_window.Window(visible=False, config=config)
+        self.fps     = None # frames per second
+        self._frame  = 0    # current frame
+        self._t      = 0    # last frame time
+        self._mouse  = Point(0,0)
+        self._cursor = DEFAULT
+        self._runs   = False
+        self._buffer = None
         self._window.on_mouse_drag    = self._on_mouse_drag
         self._window.on_mouse_enter   = self._on_mouse_enter
         self._window.on_mouse_leave   = self._on_mouse_leave
@@ -1800,31 +1758,9 @@ class Canvas(list):
         self._window.on_key_press     = self._on_key_press
         self._window.on_key_release   = self._on_key_release
         self._window.on_close         = self._stop
-        self.fps     = None # frames per second
-        self._frame  = 0    # current frame
-        self._t      = 0    # last frame time
-        self._mouse  = Point(0,0)
-        self._cursor = DEFAULT
-        self._runs   = False
-        self._buffer = None
-        self._current_layer = None
-        self._dragging_layer = None
-        self._entered_layers = []
-        
-    def setup(self):
-        pass
-        
-    def update(self):
-        pass
-        
-    def draw(self):
-        self.clear()
-        
-    def draw_over(self):
-        """"Override this method to draw once all the layers have been drawn."""
-        
-    def stop(self):
-        pass
+        self._dragged_layer  = None
+        self._current_layer  = None
+        self._current_layers = []
 
     def _get_name(self):
         return self._window.caption
@@ -1879,80 +1815,78 @@ class Canvas(list):
     def _get_cursor(self):
         return self._cursor
     cursor = property(_get_cursor, _set_cursor)
+        
+    #### Event dispatchers ####
     
-    def layer_at(self, x, y):
+    def layer_at(self, x, y, interactive=False):
         """Find the layer at the specified coordinates.
         This method returns None if no layer was found.
+        With interactive=True, only checks layers that implement EventHandler.
         """
-        #return None
         for layer in reversed(self):
-            l = layer.layer_at(x, y)
-            if l is not None:
-                return l
+            if not interactive or isinstance(layer, EventListener):
+                layer = layer.layer_at(x, y)
+                if layer is not None:
+                    return layer
         return None
-        
-    #### Events ####
     
     def _on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         self.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
-        if self._dragging_layer is None: return
-        self._dragging_layer.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
+        if self._dragged_layer != None: 
+            self._dragged_layer.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
         
     def _on_mouse_enter(self, x, y):
         self.on_mouse_enter(x, y)
-        layer = self.layer_at(x, y)
-        if layer is None: return
-        layer.on_mouse_enter(x, y)
         
     def _on_mouse_leave(self, x, y):
         self.on_mouse_leave(x, y)
-        layer = self.layer_at(x, y)
-        if layer is None: return
-        layer.on_mouse_leave(x, y)
+        for layer in self._current_layers:
+            layer.on_mouse_leave(x, y)
+        self._dragged_layer  = None
+        self._current_layer  = None
+        self._current_layers = []
         
     def _on_mouse_motion(self, x, y, dx, dy):
-        self._mouse.x, self._mouse.y = x, y
+        self._mouse.x = x
+        self._mouse.y = y
         self.on_mouse_motion(x, y, dx, dy)
-        # Check if the existing entered layers are still entered.
-        layers_to_remove = []
-        for l in self._entered_layers:
-            if not l.hit_test(x, y):
-                layers_to_remove.append(l)
-        # Remove all marked layers
-        for l in layers_to_remove:
-            l.on_mouse_leave(x, y)
-            self._entered_layers.remove(l)
-        # Get the deepest nested layer. All layers in the hierarchy, up to the root,
-        # will receive the on_mouse_enter event.
-        current_layer = deepest_layer = self.layer_at(x, y)
-        if current_layer is None: return
-        while current_layer is not None:
-            if current_layer not in self._entered_layers:
-                self._entered_layers.append(current_layer)
-                current_layer.on_mouse_enter(x, y)
-            current_layer = current_layer.parent
-        # Only the deepest nested layer will receive the mouse motion event.
-        deepest_layer.on_mouse_motion(x, y, dx, dy)
+        # Find the layers that were previously entered and now being left.
+        leaving = []
+        for layer in self._current_layers:
+            if not layer.contains(x,y):
+                leaving.append(layer)
+        # Leave the marked layers.
+        for layer in leaving:
+            layer.on_mouse_leave(x, y)
+            self._current_layers.remove(layer)
+        # Get the topmost interactive layer over which the mouse is hovering.
+        # The layer and all of its parents in the hierarchy receive the on_mouse_enter event.
+        # The layer itself also receives the on_mouse_motion event.
+        self._current_layer = layer = self.layer_at(x, y, interactive=True)
+        if layer != None:
+            while layer != None:
+                if layer not in self._current_layers:
+                    self._current_layers.append(layer)
+                    layer.on_mouse_enter(x, y)
+                layer = layer.parent
+            self._current_layer.on_mouse_motion(x, y, dx, dy)
     
     def _on_mouse_press(self, x, y, button, modifiers):
         self.on_mouse_press(x, y, button, modifiers)
-        layer = self.layer_at(x, y)
-        if layer is None: return
-        self._dragging_layer = layer
-        layer.on_mouse_press(x, y, button, modifiers)
+        if self._current_layer != None:
+            self._current_layer.on_mouse_press(x, y, button, modifiers)
+            self._dragged_layer = self._current_layer
         
     def _on_mouse_release(self, x, y, button, modifiers):
-        self._dragging_layer = None
         self.on_mouse_release(x, y, button, modifiers)
-        layer = self.layer_at(x, y)
-        if layer is not None:
-            layer.on_mouse_release(x, y, button, modifiers)
+        if self._dragged_layer != None:
+            self._dragged_layer.on_mouse_release(x, y, button, modifiers)
+        self._dragged_layer = None
         
     def _on_mouse_scroll(self, x, y, scroll_x, scroll_y):
         self.on_mouse_scroll(x, y, scroll_x, scroll_y)
-        layer = self.layer_at(x, y)
-        if layer is not None:
-            layer.on_mouse_scroll(x, y, scroll_x, scroll_y)
+        if self._dragged_layer != None:
+            self._current_layer.on_mouse_scroll(x, y, scroll_x, scroll_y)
 
     def _on_key_press(self, keycode, modifiers):
         self.on_key_press(keycode, modifiers)
@@ -1960,18 +1894,31 @@ class Canvas(list):
     def _on_key_release(self, keycode, modifiers):
         self.on_key_release(keycode, modifiers)
 
-    # These methods are meant to be overridden or patched with Canvas.bind().
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers): pass
-    def on_mouse_enter(self, x, y): pass
-    def on_mouse_leave(self, x, y): pass
-    def on_mouse_motion(self, x, y, dx, dy): pass
-    def on_mouse_press(self, x, y, button, modifiers): pass
-    def on_mouse_release(self, x, y, button, modifiers): pass
-    def on_mouse_scroll(self, x, y, scroll_x, scroll_y): pass
+    # Event methods are meant to be overridden or patched with Canvas.bind().
     def on_key_press(self, keycode, modifiers):
+        """ The default behavior is to exit the application when ESC is pressed.
+        """
         if keycode == KEYCODE.ESCAPE:
             self.done = True
-    def on_key_release(self, keycode, modifiers): pass
+
+    #### Main loop: setup-draw-update-stop ####
+        
+    def setup(self):
+        pass
+        
+    def update(self):
+        pass
+        
+    def draw(self):
+        self.clear()
+        
+    def draw_over(self):
+        """" Override this method to draw once all the layers have been drawn.
+        """
+        pass
+        
+    def stop(self):
+        pass
 
     def _setup(self):
         # Set the window color, this will be transparent in saved images:
@@ -1998,15 +1945,13 @@ class Canvas(list):
         # Draw the layers.
         glPushMatrix()
         for layer in self:
-            layer._update()
+            #layer._update() # XXX already done in _update()
             layer._draw()
         glPopMatrix()
-        
-        # Draw over the layers
+        # Draw over the layers.
         glPushMatrix()
         self.draw_over()
         glPopMatrix()
-
         self._window.flip()
 
     def _update(self):
@@ -2019,23 +1964,24 @@ class Canvas(list):
         TIME = time()
         if self.fps == None or TIME-self._t > 1.0/self.fps:
             self._window.dispatch_events()
+            # Advance the frame timer.
             self._frame += 1
             self._t = TIME
-            # Update the canvas
+            # Update the canvas.
             self.update()
-            # Update the layers
+            # Update the layers.
             for layer in self:
                 layer._update()
+
+    def _stop(self):
+        self.stop()
+        self._window.close()
+        exit(0)
 
     def clear(self):
         """ Clears the previous frame from the canvas.
         """
         glClear(GL_COLOR_BUFFER_BIT)
-    
-    def _stop(self):
-        self.stop()
-        self._window.close()
-        exit(0)
     
     def run(self):
         while not self.done:
@@ -2049,6 +1995,8 @@ class Canvas(list):
         if done:
             self._stop()
     done = property(_get_done, _set_done)
+
+    #### Image export ####
 
     def screenshot(self, crop=(0,0,0,0)):
         """ Returns a screenshot of the current frame as a texture.

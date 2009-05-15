@@ -71,7 +71,7 @@ def circle_line_intersection(cx, cy, radius, x1, y1, x2, y2, infinite=False):
 	dy = y2-y1
 	A = dx*dx + dy*dy
 	B = 2 * (dx*(x1-cx) + dy*(y1-cy))
-	C = pow(x1-cx, 2) + pow(y1-cy, 2) - pow(radius, 2)
+	C = pow(x1-cx, 2) + pow(y1-cy, 2) - radius*radius
 	det = B*B - 4*A*C
 	if A <= 0.0000001 or det < 0: 
 	    return []
@@ -101,7 +101,7 @@ def point_in_polygon(points, x, y):
     """
     odd = False
     n = len(points)
-    for i in range(n):
+    for i in xrange(n):
         j = i<n-1 and i+1 or 0
         x0, y0 = points[i][0], points[i][1]
         x1, y1 = points[j][0], points[j][1]
@@ -221,3 +221,101 @@ class AffineTransform:
     
     def map(self, points):
         return [self.apply(*pt) for pt in points]
+
+#=====================================================================================================
+
+#--- POINT -------------------------------------------------------------------------------------------
+
+class Point:
+    
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        
+    def __repr__(self):
+        return "Point(x=%.2f, y=%.2f)" % (self.x, self.y)
+        
+    def __eq__(self, pt):
+        if not isinstance(pt, Point): return False
+        return self.x == pt.x \
+           and self.y == pt.y
+    
+    def __ne__(self, pt):
+        return not self.__eq__(pt)
+
+#--- BOUNDS ------------------------------------------------------------------------------------------
+
+class Bounds:
+    
+    def __init__(self, x, y, width, height):
+        """ Creates a bounding box.
+        The bounding box is an untransformed rectangle that encompasses a shape or group of shapes.
+        """
+        # Normalize if width or height is negative.
+        if width < 0: x, width = x+width,  -width
+        if height < 0: y, height = y+height, -height
+        self.x = x
+        self.y = y
+        self.width = width 
+        self.height = height
+    
+    def copy(self):
+        return Bounds(self.x, self.y, self.width, self.height)
+    
+    def __iter__(self):
+        """ You can conveniently unpack bounds: x,y,w,h = Bounds(0,0,100,100)
+        """
+        for p in (self.x, self.y, self.width, self.height):
+            return p
+
+    def intersects(self, b):
+        """ Return True if a part of the two bounds overlaps.
+        """
+        return max(self.x, b.x) < min(self.x+self.width, b.x+b.width) \
+           and max(self.y, b.y) < min(self.y+self.height, b.y+b.height)
+    
+    def intersection(self, b):
+        """ Returns bounds that encompass the intersection of the two.
+        If there is no overlap between the two, None is returned.
+        """
+        if not self.intersects(b): 
+            return None
+        mx, my = max(self.x, b.x), max(self.y, b.y)
+        return Bounds(mx, my, 
+            min(self.x+self.width, b.x+b.width) - mx, 
+            min(self.y+self.height, b.x+b.height) - my)
+    
+    def union(self, b):
+        """ Returns bounds that encompass the union of the two.
+        """
+        mx, my = min(self.x, b.x), min(self.y, b.y)
+        return Bounds(mx, my, 
+            max(self.x+self.width, b.x+b.width) - mx, 
+            max(self.y+self.height, b.x+b.height) - my)
+
+    def contains(self, *a):
+        """ Returns True if the given point or rectangle falls within the bounds.
+        """
+        if len(a) == 2: a = [Point(a[0], a[1])]
+        if len(a) == 1:
+            a = a[0]
+            if isinstance(a, Point):
+                return a.x >= self.x and a.x <= self.x+self.width \
+                   and a.y >= self.y and a.y <= self.y+self.height
+            if isinstance(a, Bounds):
+                return a.x >= self.x and a.x+a.width <= self.x+self.width \
+                   and a.y >= self.y and a.y+a.height <= self.y+self.height
+            
+    def __eq__(self, b):
+        if not isinstance(b, Bounds): 
+            return False
+        return self.x == b.x \
+           and self.y == b.y \
+           and self.width == b.width \
+           and self.height == b.height
+    
+    def __ne__(self, b):
+        return not self.__eq__(b)
+    
+    def __repr__(self):
+        return "Bounds(%.1f, %.1f, %.1f, %.1f)" % (self.x, self.y, self.width, self.height)
