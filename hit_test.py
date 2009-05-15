@@ -4,7 +4,7 @@ def draw(layer):
     fill(layer.clr)
     rect(0, 0, layer.width, layer.height)
 
-l1 = layer(120, 40, 100, 100, origin=(0.5,1.25))
+l1 = layer(300, 200, 100, 100, origin=(0.5,1.25))
 l1.name =""
 l1.clr = color(1,0,0,0.75)
 l1.rotate(45)
@@ -22,7 +22,7 @@ canvas.append(l1)
 l2 = layer(50,30,100,100, origin=(0,0))
 l2.name = "yellow"
 l2.clr = color(1,1,0,0.5)
-l2.top = choice((True,False))
+l2.top = True#choice((True,False))
 l2.rotate(0)
 l2.bind(draw, "draw")
 l1.append(l2)
@@ -30,21 +30,21 @@ l1.append(l2)
 l3 = layer(30,30,100,100, origin=(0,0))
 l3.name = "blue"
 l3.clr = color(0,0,1)
-l3.top = choice((True,False))
+l3.top = False#choice((True,False))
 l3.bind(draw, "draw")
 l2.append(l3)
 
 l4 = layer(80,0,100,100, origin=(0,0))
 l4.name = "pink"
 l4.clr = color(1,0,0.5)
-l4.top = choice((True,False))
+l4.top = False#choice((True,False))
 l4.rotate(20)
 l4.bind(draw, "draw")
 l2.append(l4)
 
 def canvas_draw():
     
-    #canvas.clear()
+    canvas.clear()
     #l1.duration=0
     #l1.rotate(1)
     
@@ -70,13 +70,18 @@ def canvas_draw():
     L = l1.layer_at(canvas.mouse.x, canvas.mouse.y, clipped=False)
     if L != None:
         print "mouse is over ", L.name
-    
+
     #fill(0)
     #p = BezierPath()
     #p.ellipse(50,50,50,50)
     #if p.contains(canvas.mouse.x, canvas.mouse.y):
     #    print "mouse is over the black oval"
     #drawpath(p)
+
+def on_mouse_press(c,x,y,dx,dy):
+    choice((l1,l2,l3,l4)).rotate(random(30))
+    choice((l1,l2,l3,l4)).top = choice((True,False))
+canvas.bind(on_mouse_press)
 
 canvas.draw = canvas_draw
 canvas.run()

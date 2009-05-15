@@ -1351,6 +1351,8 @@ class Layer(list, Prototype):
         self.hidden    = False
         # Cache the local transformation matrix.
         self._transform_cache = None
+        self._transform_state = 0
+        self._transform_stack = None
 
     def copy(self, parent=None):
         layer = Prototype.copy(self)
@@ -1483,6 +1485,8 @@ class Layer(list, Prototype):
         self._rotation.update()
         self._opacity.update()
         self.update()
+        if not self.done:
+            self._transform_cache = None
         for layer in self:
             layer._update()
             
@@ -1547,7 +1551,7 @@ class Layer(list, Prototype):
         if _covered:
             # An ancestor is blocking this layer, so we can't select it.
             return None
-        hit = self.contains(x, y, transformed)        
+        hit = self.contains(x, y, transformed)
         if clipped:
             # If (x,y) is not inside the clipped bounds, return None.
             # If children protruding beyond the layer's bounds are clipped,
@@ -1562,17 +1566,14 @@ class Layer(list, Prototype):
             # covered by a peer on top of the layer, further down the list.
             children = sorted(reversed(self), key=lambda layer: not layer.top)
         for child in children:
-            # Ancestors higher up may be covering the child,
-            # so we keep a recursive covered-state to verify visibility.
+            # An ancestor (e.g. grandparent) may be covering the child.
+            # This happens when it hit tested and is somewhere on top of the child.
+            # We keep a recursive covered-state to verify visibility.
+            # The covered-state starts as False, but stays True once it switches.
             _covered = _covered or (hit and not child.top)
             child = child.layer_at(x, y, clipped, transformed, _covered)
-            # A child is visible when it is on top of this layer,
-            # or when a part of it protrudes from underneath this layer.
-            # The protruding part can only be seen when clipped=False.
             if child != None:
-                visible = child.top or (not clipped and not hit)
-                if visible:
-                    return child
+                return child
         if hit:
             return self
         else:
@@ -1649,7 +1650,7 @@ class Layer(list, Prototype):
         )
 
 class InteractiveLayer(Layer, EventListener):
-    pass
+    enabled = True
 
 def layer(*args, **kwargs):
     """ Returns a new layer with the given properties.
@@ -1824,7 +1825,7 @@ class Canvas(list, EventListener):
         With interactive=True, only checks layers that implement EventHandler.
         """
         for layer in reversed(self):
-            if not interactive or isinstance(layer, EventListener):
+            if not interactive or (isinstance(layer, EventListener) and layer.enabled):
                 layer = layer.layer_at(x, y)
                 if layer is not None:
                     return layer
