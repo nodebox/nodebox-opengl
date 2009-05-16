@@ -104,7 +104,7 @@ def background(*a):
     """
     global _background
     _background = color(*a)
-    glClearColor(_background.r, _background.g, _background.b, _background.a)
+    glClearColor(_background[0], _background[1], _background[2], _background[3])
     return _background
 
 def fill(*a):
@@ -1286,13 +1286,14 @@ class Transition(object):
         return TIME >= self._t1
     
     def update(self):
-        """ Calculates the new current value.
+        """ Calculates the new current value. Returns True when done.
         The transition approaches the desired value according to the interpolation:
         - LINEAR: even transition over the given duration time,
         - SMOOTH: transition goes slower at the end.
         """
         if TIME >= self._t1:
             self._vi = self._v1
+            return True
         else:
             # Calculate t, the elapsed time as a number between 0.0 and 1.0.
             t = (TIME - self._t0) / (self._t1 - self._t0)
@@ -1308,6 +1309,7 @@ class Transition(object):
                     self._v1, \
                     self._t1, 
                     self._v1)
+            return False
 
 #--- LAYER -------------------------------------------------------------------------------------------
 # The Layer class is responsible for the following:
@@ -1349,10 +1351,9 @@ class Layer(list, Prototype):
         self.top       = True # draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
-        # Cache the local transformation matrix.
-        self._transform_cache = None
-        self._transform_state = 0
-        self._transform_stack = None
+        self._transform_state = 0    # the cache version ID
+        self._transform_cache = None # the local transformation matrix
+        self._transform_stack = None # the cumulative transformation matrix
 
     def copy(self, parent=None):
         layer = Prototype.copy(self)
@@ -1475,18 +1476,18 @@ class Layer(list, Prototype):
     def _update(self):
         """ Called each frame from canvas._update() to update the layer transitions.
         """
-        self._x.update()
-        self._y.update()
-        self._width.update()
-        self._height.update()
-        self._dx.update()
-        self._dy.update()
-        self._scale.update()
-        self._rotation.update()
+        done = self._x.update() \
+           and self._y.update() \
+           and self._width.update() \
+           and self._height.update() \
+           and self._dx.update() \
+           and self._dy.update() \
+           and self._scale.update() \
+           and self._rotation.update()
+        if not done: # i.e. the layer is being transformed
+            self._transform_cache = None
         self._opacity.update()
         self.update()
-        if not self.done:
-            self._transform_cache = None
         for layer in self:
             layer._update()
             
@@ -1578,7 +1579,23 @@ class Layer(list, Prototype):
             return self
         else:
             return None
-    
+
+    def _transform_is_dated(self):
+        """ Returns True when the cumulative transformation matrix needs to be recalculated.
+        This happens when the local transform state changes, or when the transform state
+        of any parent layer changes.
+        """
+        dated = False
+        state = self._transform_state
+        layer = self.parent
+        while layer != None:
+            dated = layer._transform_state > state 
+            state = layer._transform_state
+            layer = layer.parent
+            if dated:
+                break
+        return dated
+        
     def _transform(self, local=True):
         """ Returns the transformation matrix of the layer:
         a calculated state of its translation, rotation and scaling.
@@ -1586,27 +1603,42 @@ class Layer(list, Prototype):
         e.g. you get the actual transformation state of a nested layer.
         """
         if self._transform_cache == None:
-            tf = Transform()
+            # Calculate the local transformation matrix.
             # Be careful that the transformations happen in the same order in Layer._draw).
             # translate => flip => rotate => scale => origin.
+            tf = Transform()
             dx, dy = self.origin(relative=False)
             #tf.translate(dx, dy)
             tf.translate(self._x.current, self._y.current)
             if self.flipped:
-                t.scale(-1, 1, 1)
+                tf.scale(-1, 1, 1)
             tf.rotate(self._rotation.current)
             tf.scale(self._scale.current, self._scale.current)
             tf.translate(-dx, -dy)
+            self._transform_state += 1
             self._transform_cache = tf
-        tf = self._transform_cache.copy()
-        if not local and self.parent != None:
-            # Accumulate all the parent layer transformations.
-            tf.prepend(self.parent._transform(local=False))
-        return tf
+            self._transform_stack = None
+        if local:
+            # Return the local transformation matrix.
+            # If it didn't exist we just created it.
+            return self._transform_cache
+        else:
+            # Return the cumulative transformation matrix.
+            # All of the parent's transformation states need to be up to date.
+            # If not, we have to recalculate everything.
+            if self._transform_stack == None \
+            or self._transform_is_dated():
+                self._transform_stack = self._transform_cache.copy()
+                if self.parent != None:
+                    # Accumulate all the parent layer transformations.
+                    # In the process, we update the transformation state of any outdated parent.
+                    self._transform_stack.prepend(self.parent._transform(local=False))
+                    self._transform_state = self.parent._transform_state
+            return self._transform_stack            
     
-    # Recursive x and y values.
-    def _Ex(self): return self._x.current + (self.parent and self.parent._Ex() or 0)
-    def _Ey(self): return self._y.current + (self.parent and self.parent._Ey() or 0)
+    # Recursive (i.e. cumulative) x and y values.
+    def _Ex(self): return self._x.current + (self.parent!=None and self.parent._Ex() or 0)
+    def _Ey(self): return self._y.current + (self.parent!=None and self.parent._Ey() or 0)
     
     def contains(self, x, y, transformed=True):
         """ Returns True if (x,y) falls within the bounds of the layer.
@@ -1623,7 +1655,7 @@ class Layer(list, Prototype):
                and (w == None or x <= x0+w) \
                and (h == None or y <= y0+h)
         # Find the transformed bounds of the layer:
-        tf = self._transform(local=not transformed)
+        tf = self._transform(local=False)
         p = tf.map([(0,0), (w,0), (w,h), (0,h)])
         return geometry.point_in_polygon(p, x, y)
         
@@ -1654,7 +1686,7 @@ class InteractiveLayer(Layer, EventListener):
 
 def layer(*args, **kwargs):
     """ Returns a new layer with the given properties.
-    By default, interactive=True and a InteractiveLayer is returned that implements EventListener.
+    By default, interactive=True and an InteractiveLayer is returned that implements EventListener.
     Interactive layers receive events from the canvas.
     If a layer doesn't need events, use interactive=False.
     That way it won't hit test every frame (which requires the transformation matrix and ray casting).
@@ -1759,9 +1791,10 @@ class Canvas(list, EventListener):
         self._window.on_key_press     = self._on_key_press
         self._window.on_key_release   = self._on_key_release
         self._window.on_close         = self._stop
-        self._dragged_layer  = None
-        self._current_layer  = None
-        self._current_layers = []
+        self._current_layers = []   # layers that the mouse moves over
+        self._current_layer  = None # topmost layer the mouse moves over
+        self._dragged_layer  = None # layer being dragged by the mouse
+
 
     def _get_name(self):
         return self._window.caption
@@ -1913,10 +1946,11 @@ class Canvas(list, EventListener):
     def draw(self):
         self.clear()
         
-    def draw_over(self):
+    def draw_overlay(self):
         """" Override this method to draw once all the layers have been drawn.
         """
         pass
+    draw_over = draw_overlay
         
     def stop(self):
         pass
@@ -1925,8 +1959,7 @@ class Canvas(list, EventListener):
         # Set the window color, this will be transparent in saved images:
         glClearColor(VERY_LIGHT_GREY, VERY_LIGHT_GREY, VERY_LIGHT_GREY, 0)
         glLoadIdentity()
-        # Enable alpha transparency:
-        glEnable(GL_BLEND)
+        glEnable(GL_BLEND) # enable alpha transparency
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.clear()
         self.anti_aliasing()
@@ -1936,27 +1969,23 @@ class Canvas(list, EventListener):
         self._runs = True
 
     def _draw(self):
-        """Draws the canvas and the underlying layers.
+        """Draws the canvas and its layers.
         This method gives the same result each time it gets drawn; only _update() advances state.
         """
-        # Draw user-defined contents.
         glPushMatrix()
         self.draw()
         glPopMatrix()
-        # Draw the layers.
         glPushMatrix()
         for layer in self:
-            #layer._update() # XXX already done in _update()
             layer._draw()
         glPopMatrix()
-        # Draw over the layers.
         glPushMatrix()
-        self.draw_over()
+        self.draw_overlay()
         glPopMatrix()
         self._window.flip()
 
     def _update(self):
-        """Updates the canvas and the underlying layers.
+        """Updates the canvas and its layers.
         This method does not actually draw anything, it only updates the state.
         """
         if not self._runs:
@@ -1965,12 +1994,9 @@ class Canvas(list, EventListener):
         TIME = time()
         if self.fps == None or TIME-self._t > 1.0/self.fps:
             self._window.dispatch_events()
-            # Advance the frame timer.
             self._frame += 1
             self._t = TIME
-            # Update the canvas.
             self.update()
-            # Update the layers.
             for layer in self:
                 layer._update()
 
