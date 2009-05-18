@@ -1208,6 +1208,9 @@ class Prototype:
 
 class EventListener:
     
+    # Receive events from the canvas? (for layers this means doing hit testing)
+    enabled = True
+    
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         pass
     def on_mouse_enter(self, x, y):
@@ -1321,7 +1324,7 @@ class Transition(object):
 RELATIVE = "relative"
 ABSOLUTE = "absolute"
 
-class Layer(list, Prototype):
+class Layer(list, Prototype, EventListener):
 
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
                  scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None):
@@ -1348,7 +1351,7 @@ class Layer(list, Prototype):
         self._rotation = Transition(rotation)
         self._opacity  = Transition(opacity, interpolation=LINEAR)
         self.duration  = duration
-        self.top       = True # draw on top of or beneath parent?
+        self.top       = True  # draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
         self._transform_state = 0    # the cache version ID
@@ -1580,13 +1583,13 @@ class Layer(list, Prototype):
         else:
             return None
 
-    def _transform_is_dated(self):
+    def _transform_is_outdated(self):
         """ Returns True when the cumulative transformation matrix needs to be recalculated.
         This happens when the local transform state changes, or when the transform state
         of any parent layer changes.
         """
         dated = False
-        state = self._transform_state
+        state = self._transform_state # integer version ID
         layer = self.parent
         while layer != None:
             dated = layer._transform_state > state 
@@ -1604,7 +1607,7 @@ class Layer(list, Prototype):
         """
         if self._transform_cache == None:
             # Calculate the local transformation matrix.
-            # Be careful that the transformations happen in the same order in Layer._draw).
+            # Be careful that the transformations happen in the same order in Layer._draw().
             # translate => flip => rotate => scale => origin.
             tf = Transform()
             dx, dy = self.origin(relative=False)
@@ -1620,14 +1623,14 @@ class Layer(list, Prototype):
             self._transform_stack = None
         if local:
             # Return the local transformation matrix.
-            # If it didn't exist we just created it.
+            # If it didn't exist we have just cached it.
             return self._transform_cache
         else:
             # Return the cumulative transformation matrix.
-            # All of the parent's transformation states need to be up to date.
-            # If not, we have to recalculate everything.
+            # All of the parents' transformation states need to be up to date.
+            # If not, we have to recalculate the whole chain.
             if self._transform_stack == None \
-            or self._transform_is_dated():
+            or self._transform_is_outdated():
                 self._transform_stack = self._transform_cache.copy()
                 if self.parent != None:
                     # Accumulate all the parent layer transformations.
@@ -1661,15 +1664,6 @@ class Layer(list, Prototype):
         
     hit_test = contains
         
-    # These methods are meant to be overridden or patched with Layer.bind().
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers): pass
-    def on_mouse_enter(self, x, y): pass
-    def on_mouse_leave(self, x, y): pass
-    def on_mouse_motion(self, x, y, dx, dy): pass
-    def on_mouse_press(self, x, y, button, modifiers): pass
-    def on_mouse_release(self, x, y, button, modifiers): pass
-    def on_mouse_scroll(self, x, y, scroll_x, scroll_y): pass
-        
     def __repr__(self):
         return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, rotation=%.2f, opacity=%.2f, duration=%.2f)" % (
             self.name != None and "name='"+self.name+"', " or "", 
@@ -1681,21 +1675,7 @@ class Layer(list, Prototype):
             self.duration
         )
 
-class InteractiveLayer(Layer, EventListener):
-    enabled = True
-
-def layer(*args, **kwargs):
-    """ Returns a new layer with the given properties.
-    By default, interactive=True and an InteractiveLayer is returned that implements EventListener.
-    Interactive layers receive events from the canvas.
-    If a layer doesn't need events, use interactive=False.
-    That way it won't hit test every frame (which requires the transformation matrix and ray casting).
-    """
-    interactive = kwargs.get("interactive", True)
-    if interactive:
-        return InteractiveLayer(*args, **kwargs)
-    else:
-        return Layer(*args, **kwargs)
+layer = Layer
 
 #=====================================================================================================
 
@@ -1855,10 +1835,10 @@ class Canvas(list, EventListener):
     def layer_at(self, x, y, interactive=False):
         """Find the layer at the specified coordinates.
         This method returns None if no layer was found.
-        With interactive=True, only checks layers that implement EventHandler.
+        With interactive=True, only checks layers that have Layer.enabled=True.
         """
         for layer in reversed(self):
-            if not interactive or (isinstance(layer, EventListener) and layer.enabled):
+            if not interactive or layer.enabled:
                 layer = layer.layer_at(x, y)
                 if layer is not None:
                     return layer

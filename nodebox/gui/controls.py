@@ -1,7 +1,7 @@
-from nodebox.graphics import InteractiveLayer, Color
+from nodebox.graphics import Layer, Color
 from nodebox.graphics import rect, color, text, LEFT
 
-class Label(InteractiveLayer):
+class Label(Layer):
 
     def __init__(self, text="", font='Verdana', fontsize=8, lineheight=1.0, align=LEFT, fill=color(0), **kwargs):
         super(Label, self).__init__(**kwargs)
@@ -17,7 +17,7 @@ class Label(InteractiveLayer):
             font=self.font, fontsize=self.fontsize, lineheight=self.lineheight, align=self.align,
             fill=self.fill)
 
-class Button(InteractiveLayer):
+class Button(Layer):
     
     def __init__(self, text="", **kwargs):
         super(Button, self).__init__(**kwargs)
@@ -45,7 +45,7 @@ class Button(InteractiveLayer):
     def on_action(self):
         pass
         
-class Slider(InteractiveLayer):
+class Slider(Layer):
     
     def __init__(self, value=0.0, min_value=0.0, max_value=100.0, **kwargs):
         super(Slider, self).__init__(**kwargs)

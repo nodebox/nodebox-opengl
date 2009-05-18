@@ -26,11 +26,11 @@ def coordinates(x0, y0, distance, angle):
     return (x0 + cos(radians(angle)) * distance,
             y0 + sin(radians(angle)) * distance)
 
-def rotate(x, y, x0, y0, angle):
+def rotate(x, y, x0, y0, degrees):
     """ Returns the coordinates of (x,y) rotated around origin (x0,y0).
     """
     x, y = x-x0, y-y0
-    a, b = cos(radians(angle)), sin(radians(angle))
+    a, b = cos(radians(degrees)), sin(radians(degrees))
     return (x*a-y*b+x0, y*a+x*b+y0)
 
 def reflect(x0, y0, x1, y1, d=1.0, a=180):

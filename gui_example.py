@@ -3,7 +3,7 @@ from time import time
 import pyglet
 from pyglet.gl import *
 
-from nodebox.graphics import InteractiveLayer, Canvas, Color, \
+from nodebox.graphics import Layer, Canvas, Color, \
     canvas, colorplane, run, size, rect, color, background, random, rotate, text
 
 from nodebox.gui import Label, Button, Slider
@@ -11,7 +11,7 @@ from nodebox.gui import Label, Button, Slider
 size(700, 700)
 WIDTH, HEIGHT = 700, 700
 
-class EditableObject(InteractiveLayer):
+class EditableObject(Layer):
     
     def __init__(self, **kwargs):
         super(EditableObject, self).__init__(**kwargs)
@@ -24,7 +24,7 @@ class EditableObject(InteractiveLayer):
     def draw(self):
         rect(0, 0, self.width, self.height, fill=color(self.r, self.g, self.b, self.opacity))
         
-class ToolBar(InteractiveLayer):
+class ToolBar(Layer):
     
     def __init__(self, **kwargs):
         super(ToolBar, self).__init__(**kwargs)
