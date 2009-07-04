@@ -1327,18 +1327,19 @@ ABSOLUTE = "absolute"
 class Layer(list, Prototype, EventListener):
 
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
-                 scale=1.0, rotation=0, opacity=1.0, duration=1.0, parent=None):
+                 scale=1.0, rotation=0, opacity=1.0, duration=1.0, name=None, 
+                 parent=None):
         """ Creates a new drawing layer that can be appended to the canvas.
         The duration defines the time (seconds) it takes to animate transformations or opacity.
         When the animation has terminated, layer.done=True.
         """
         if origin == CENTER:
-            origin = (0.5,0.5), 
+            origin = (0.5,0.5)
             origin_mode = RELATIVE
         else:
             origin_mode = ABSOLUTE
         Prototype.__init__(self) # facilitates extension on the fly.
-        self.name      = None
+        self.name      = name
         self.parent    = parent
         self._x        = Transition(x)
         self._y        = Transition(y)
