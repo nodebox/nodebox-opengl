@@ -1480,14 +1480,14 @@ class Layer(list, Prototype, EventListener):
     def _update(self):
         """ Called each frame from canvas._update() to update the layer transitions.
         """
-        done = self._x.update() \
-           and self._y.update() \
-           and self._width.update() \
-           and self._height.update() \
-           and self._dx.update() \
-           and self._dy.update() \
-           and self._scale.update() \
-           and self._rotation.update()
+        done  = self._x.update()
+        done &= self._y.update()
+        done &= self._width.update()
+        done &= self._height.update()
+        done &= self._dx.update()
+        done &= self._dy.update()
+        done &= self._scale.update()
+        done &= self._rotation.update()
         if not done: # i.e. the layer is being transformed
             self._transform_cache = None
         self._opacity.update()
@@ -1640,9 +1640,17 @@ class Layer(list, Prototype, EventListener):
                     self._transform_state = self.parent._transform_state
             return self._transform_stack            
     
-    # Recursive (i.e. cumulative) x and y values.
-    def _Ex(self): return self._x.current + (self.parent!=None and self.parent._Ex() or 0)
-    def _Ey(self): return self._y.current + (self.parent!=None and self.parent._Ey() or 0)
+    def absolute_position(self, root=None):
+        """ Returns the absolute (x,y) position (i.e. cumulative with parent position).
+        """
+        x = 0
+        y = 0
+        layer = self
+        while layer != None and layer != root:
+            x += layer.x
+            y += layer.y
+            layer = layer.parent
+        return x, y
     
     def contains(self, x, y, transformed=True):
         """ Returns True if (x,y) falls within the bounds of the layer.
@@ -1650,11 +1658,10 @@ class Layer(list, Prototype, EventListener):
         and it will report correctly as long as the layer (or parent layer)
         is not rotated or scaled, and has its origin at (0,0).
         """
-        w = self._width.current
-        h = self._height.current
+        w = self._width.current or float("inf")
+        h = self._height.current or float("inf")
         if not transformed:
-            x0 = self._Ex() 
-            y0 = self._Ey()
+            x0, y0 = self.absolute_position()
             return x0 <= x and y0 <= y \
                and (w == None or x <= x0+w) \
                and (h == None or y <= y0+h)
@@ -1664,6 +1671,12 @@ class Layer(list, Prototype, EventListener):
         return geometry.point_in_polygon(p, x, y)
         
     hit_test = contains
+
+    def traverse(self, visit=lambda layer: None):
+        """ Recurses the layer structure and calls visit() on each child layer.
+        """
+        visit(self)
+        [layer.traverse(visit) for layer in self]
         
     def __repr__(self):
         return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, rotation=%.2f, opacity=%.2f, duration=%.2f)" % (
