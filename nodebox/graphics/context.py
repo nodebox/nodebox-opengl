@@ -1467,6 +1467,10 @@ class Layer(list, Prototype, EventListener):
         self._set_origin(xy[0], xy[1], relative=False)
     absolute_origin = property(_get_absolute_origin, _set_absolute_origin)
     
+    @property
+    def bounds(self):
+        return geometry.Bounds(self.x, self.y, self.width, self.height)
+    
     def translate(self, x, y):
         self.x += x
         self.y += y
@@ -1688,6 +1692,9 @@ class Layer(list, Prototype, EventListener):
             self.opacity, 
             self.duration
         )
+        
+    def __hash__(self):
+        return hash(id(self))
 
 layer = Layer
 
