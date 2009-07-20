@@ -988,9 +988,9 @@ def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     Remember to cache the gradient and reuse it when possible.
     """
     if type == "radial":
-        filter = RadialGradient(None, clr1, clr2)
+        filter = RadialGradient(None, tuple(clr1), tuple(clr2))
     else:
-        filter = LinearGradient(None, clr1, clr2)
+        filter = LinearGradient(None, tuple(clr1), tuple(clr2))
     img = pyglet_image.Texture.create(ceil2(width), ceil2(height))
     offscreen.width = width
     offscreen.height = height
