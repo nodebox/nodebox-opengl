@@ -373,19 +373,19 @@ class FBO:
         glGenFramebuffersEXT(1, byref(self.id))
         self.width  = width
         self.height = height
-        # self._depthbuffer = self._init_depthbuffer(width, height)
+        #self._depthbuffer = self._init_depthbuffer(width, height)
         self._texture = self._init_texture(width, height)
         self.draw = FBO_draw
     
     def _init_depthbuffer(self, width, height):
         # A depth buffer is used in 3D to decide which elements hide the ones behind.
         id = c_uint(0)
-        glGenRenderbuffersEXT(1, byref(id));
+        glGenRenderbuffersEXT(1, byref(id))
         glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, id)
-        glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH24_STENCIL8_EXT, width, height)
+        glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH_COMPONENT, width, height)
         glFramebufferRenderbufferEXT(
-            GL_FRAMEBUFFER_EXT, 
-            GL_DEPTH_ATTACHMENT_EXT, 
+            GL_FRAMEBUFFER_EXT,
+            GL_DEPTH_ATTACHMENT_EXT,
             GL_RENDERBUFFER_EXT,
             id
         )
@@ -416,14 +416,16 @@ class FBO:
         # Update depth buffer and texture when width or height changes.
         if self._texture.width != self.width \
         or self._texture.height != self.height:
-            glDeleteRenderbuffersEXT(1, self._depthbuffer)
-            self._depthbuffer = self._init_depthbuffer(self.width, self.height)
+            #glDeleteRenderbuffersEXT(1, self._depthbuffer)
+            #self._depthbuffer = self._init_depthbuffer(self.width, self.height)
             self._texture = self._init_texture(self.width, self.height)        
     
     def push(self):
         """ Between push() and pop(), all drawing is done offscreen on FBO.texture.
         """
         self.refresh()
+        # XXX - don't we need to clear the previous buffer, like:
+        #self._texture = self._init_texture(self.width, self.height)
         glBindTexture(self._texture.target, self._texture.id)
         #glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         #glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR)
@@ -453,7 +455,7 @@ class FBO:
     def __del__(self):
         try:
             glDeleteFramebuffersEXT(1, self.id)
-            glDeleteRenderbuffersEXT(1, self._depthbuffer)
+            #glDeleteRenderbuffersEXT(1, self._depthbuffer)
         except:
             pass
 
