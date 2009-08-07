@@ -130,7 +130,7 @@ def nofill():
     _fill = None
 
 def nostroke():
-    """ No current stroke colors
+    """ No current stroke color.
     """
     global _stroke
     _stroke = None
@@ -301,7 +301,7 @@ def line(x0, y0, x1, y1, **kwargs):
 
 def rect(x, y, width, height, **kwargs):
     """ Draws a rectangle with bottom left corner at x, y.
-    The current stroke and fill color are applied.
+        The current stroke and fill color are applied.
     """
     fill, stroke = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
@@ -318,7 +318,7 @@ _ellipse_cache = {}
 ELLIPSE_SEGMENTS = 50
 def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
     """ Draws an ellipse with center located at x, y.
-    The current stroke and fill color are applied.
+        The current stroke and fill color are applied.
     """
     if not segments in _ellipse_cache:
         # Cache both a filled and outlined ellipse for the given number of segments.
@@ -464,7 +464,7 @@ class BezierPath(list):
         
     def curveto(self, x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
         """ Add a Bezier-curve from the previous to x3, y3.
-        The curvature is determined by control handles x1, y1 and x2, y2.
+            The curvature is determined by control handles x1, y1 and x2, y2.
         """
         self._segment_cache = self._bounds = None
         self.append(PathElement(CURVETO, x3, y3, x1, y1, x2, y2, segments))
@@ -549,7 +549,7 @@ class BezierPath(list):
 
     def point(self, t, precision=10):
         """ Calculates point at time t (0.0-1.0) on the path.
-        See the linear interpolation math in bezier.py.
+            See the linear interpolation math in bezier.py.
         """
         if self._segment_cache == None:
             self._segment_cache = bezier.length(self, segmented=True, n=precision)
@@ -679,6 +679,7 @@ def endclip():
 # Caching, drawing, pixels, offscreen buffer and filters.
 
 pow2 = [2**n for n in xrange(20)]
+
 def ceil2(x):
     """ Returns the nearest power of 2 that is higher than x, e.g. 700 => 1024.
     """
@@ -691,7 +692,7 @@ class ImageError(Exception): pass
 _image_cache = {}
 def load_image(img, data=None):
     """ Returns a (cached) texture based on the given image filename, Pixel object, byte data.
-    If the given image is already a texture, simply return it.
+        If the given image is already a texture, simply return it.
     """
     # Image texture stored in cache, referenced by file path.
     if isinstance(img, str) and img in _image_cache:
@@ -710,11 +711,11 @@ def load_image(img, data=None):
     elif isinstance(data, str):
         return pyglet_image.load(None, file=StringIO(data)).get_texture()
     # Don't know how to handle this image.
-    raise ImageError, "unknown image "+str(img.__class__)
+    raise ImageError, "unknown image type: "+str(img.__class__)
 
 def cache(img, id):
     """ Store the given image in cache, referenced by id (which can then be passed to image()).
-    This is useful for procedurally rendered images (which are not stored in cache by default).
+        This is useful for procedurally rendered images (which are not stored in cache by default).
     """
     _image_cache[id] = img
     return img
@@ -722,8 +723,8 @@ def cache(img, id):
 def image(img, x=0, y=0, width=None, height=None, 
           alpha=1.0, color=(1,1,1), quad=(0,0,0,0,0,0,0,0), filter=None, data=None, draw=True):
     """ Draws the image at x, y, scaling it to the given with and height.
-    The image's transparency can be set with alpha (0.0-1.0).
-    Applies the given color adjustment, quad distortion and filter (one filter can be specified).
+        The image's transparency can be set with alpha (0.0-1.0).
+        Applies the given color adjustment, quad distortion and filter (one filter can be specified).
     """
     img = load_image(img, data)
     if draw:
@@ -764,20 +765,20 @@ def imagesize(img):
 
 def adjust(r=0, g=0, b=0):
     """ Returns a tuple with increased (>0) or decreased (<0) R,G,B intensities.
-    Use this to set the image() color-parameter.
+        Use this to set the image() color-parameter.
     """
     m = max(r, g, b)
     return r+1-m, g+1-m, b+1-m
     
 def distort(dx1=0, dy1=0, dx2=0, dy2=0, dx3=0, dy3=0, dx4=0, dy4=0):
     """ Returns a tuple with corner offsets.
-    Use this to set the image() quad-parameter.
+        Use this to set the image() quad-parameter.
     """
     return (dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4)
 
 def crop(img, x=0, y=0, width=None, height=None):
     """ Returns the given (x,y,width,heigth)-region from the image.
-    Use this to pass cropped image files to image().
+        Use this to pass cropped image files to image().
     """
     img = load_image(img)
     if width  == None: width  = img.width
@@ -789,14 +790,33 @@ def crop(img, x=0, y=0, width=None, height=None):
 class Pixels(list):
     
     def __init__(self, img):
-        """ A list of color values (0-255) for each pixel in the given image.
+        """ A list of RGBA color values (0-255) for each pixel in the given image.
+            The Pixels object can be passed to the image() command.
         """
-        self._raw  = load_image(img).get_image_data()
-        self._data = self._raw.get_data("RGBA", self._raw.width*4)
+        self._img  = load_image(img).get_image_data()
+        # A negative pitch means the pixels are stored from bottom row to top row.
+        self._flipped = self._img.pitch < 0
+        # Data yields a byte array if no conversions was necessary
+        # or a byte string otherwise - which needs to be converted.
+        data = self._img.get_data("BGRA", self._img.width*4 * (-1,1)[self._flipped])
+        if isinstance(data, str):
+            data = map(ord, list(data))
+        # BGRA-formatted images seem to store values from -1 to -256.
+        if len(data) > 0 and data[0] < 0:
+            data = [(256+v)%256 for v in data]
+        self._pixels = data
         self._texture  = None
     
+    @property
+    def width(self):
+        return self._img.width
+
+    @property
+    def height(self):
+        return self._img.height
+
     def __len__(self):
-        return len(self._data) / 4
+        return len(self._pixels) / 4
     
     def __iter__(self):
         for i in xrange(len(self)):
@@ -805,7 +825,7 @@ class Pixels(list):
     def __getitem__(self, i):
         # clr = color(Pixels[i], base=255)
         # Users need to wrap the list in a Color themselves for performance.
-        return self._data[i*4:i*4+4]
+        return self._pixels[i*4:i*4+4]
     
     def __setitem__(self, i, v):
         # Pixels[i] = color()
@@ -813,7 +833,7 @@ class Pixels(list):
         if isinstance(v, Color):
             v = [int(v[0]*255), int(v[1]*255), int(v[2]*255), int(v[3]*255)]
         for j in xrange(4):
-            self._data[i*4+j] = v[j]
+            self._pixels[i*4+j] = v[j]
     
     def __getslice__(self, i, j):
         return [self[i+n] for n in xrange(j-i)]
@@ -821,18 +841,31 @@ class Pixels(list):
     def __setslice__(self, i, j, seq):
         for n in xrange(j-i):
             self[i+n] = seq[n]
+            
+    def get(self, i, j):
+        """ Returns the pixel at row i, column j.
+        """
+        return self[i+j*self._img.width]
+    
+    def set(self, i, j, v):
+        """ Sets the pixel at row i, column j.
+        """
+        self[i+j*self._img.width] = v
     
     def update(self):
         """ Pixels.update() must be called to refresh the image.
         """
-        self._raw.set_data("RGBA", self._raw.width*4, self._data)
-        self._texture = self._raw.get_texture()
+        data = self._pixels
+        data = "".join(map(chr, data))
+        self._img.set_data("RGBA", -self._img.width*4, data)
+        self._texture = self._img.get_texture()
         
     @property
     def texture(self):
         if self._texture == None:
             self.update()
         return self._texture
+    img = texture
 
 pixels = Pixels
 
@@ -911,7 +944,7 @@ offscreen = FBO(640, 480)
 
 def render(img, *filters):
     """ A rendering chain that applies all the given filters on the image.
-    The image is rendered offscreen and then returned.
+        The image is rendered offscreen and then returned.
     """
     img = load_image(img)
     if len(filters) == 1 and isinstance(filters[0], (list, tuple)):
@@ -966,7 +999,7 @@ def blur(image=None, scale=1.0, n=1, kernel=5):
 
 def colorize(image=None, color=(1,1,1,1), bias=(0,0,0,0)):
     """ Returns a colorize filter (if image=None) or a rendered, colorized image (if given).
-    The image's pixels are multiplied by given color, and the bias is then added.
+        The image's pixels are multiplied by given color, and the bias is then added.
     """
     filter = Colorize(image, color, bias)
     if image:
@@ -983,9 +1016,9 @@ LINEAR = "linear"
 RADIAL = "radial"
 def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     """ Returns a linear or radial texture of the given size.
-    The gradient is rendered in a power-2 dimension image and then scaled down,
-    e.g. width=700 renders a gradient in width=1024.
-    Remember to cache the gradient and reuse it when possible.
+        The gradient is rendered in a power-2 dimension image and then scaled down,
+        e.g. width=700 renders a gradient in width=1024.
+        Remember to cache the gradient and reuse it when possible.
     """
     if type == "radial":
         filter = RadialGradient(None, tuple(clr1), tuple(clr2))
@@ -1063,8 +1096,8 @@ def align(mode=None):
 _text_cache = {}
 def text(str, x, y, width=None, draw=True, cached=True, **kwargs):
     """ Draws the string at the given position, with the current font().
-    Lines of text will stretch the given width before breaking to the next line.
-    Small pieces of text can be kept in cache.
+        Lines of text will stretch the given width before breaking to the next line.
+        Small pieces of text can be kept in cache.
     """
     fill, stroke = color_mixin(**kwargs)
     if fill is None:
@@ -1124,7 +1157,7 @@ def _rnd_exp(bias=0.5):
 
 def random(v1=1.0, v2=None, bias=None):
     """ Returns a number between v1 and v2, including v1 but not v2.
-    The bias (0.0-1.0) represents preference towards lower or higher numbers.
+        The bias (0.0-1.0) represents preference towards lower or higher numbers.
     """
     if v2 == None:
         v1, v2 = 0, v1
@@ -1161,21 +1194,21 @@ class Prototype:
             
     def bind(self, function, method=None):
         """ Creates an object method from the given function
-        The function is expected to take the object (i.e. self) as first parameter.
-        The method parameter specifies the method name to bind to (function's name by default).
-        For example, we can define a Layer's custom draw() method in two ways.
-        - By subclassing:
-            class MyLayer(Layer):
-                def draw(layer):
+            The function is expected to take the object (i.e. self) as first parameter.
+            The method parameter specifies the method name to bind to (function's name by default).
+            For example, we can define a Layer's custom draw() method in two ways.
+            - By subclassing:
+                class MyLayer(Layer):
+                    def draw(layer):
+                        pass
+                layer = MyLayer()
+                layer.draw()
+            - By function binding:
+                def my_draw(layer):
                     pass
-            layer = MyLayer()
-            layer.draw()
-        - By function binding:
-            def my_draw(layer):
-                pass
-            layer = Layer()
-            layer.bind(my_draw, "draw")
-            layer.draw()
+                layer = Layer()
+                layer.bind(my_draw, "draw")
+                layer.draw()
         """
         if not method: 
             method = function.__name__
@@ -1290,9 +1323,9 @@ class Transition(object):
     
     def update(self):
         """ Calculates the new current value. Returns True when done.
-        The transition approaches the desired value according to the interpolation:
-        - LINEAR: even transition over the given duration time,
-        - SMOOTH: transition goes slower at the end.
+            The transition approaches the desired value according to the interpolation:
+            - LINEAR: even transition over the given duration time,
+            - SMOOTH: transition goes slower at the end.
         """
         if TIME >= self._t1:
             self._vi = self._v1
@@ -1330,8 +1363,8 @@ class Layer(list, Prototype, EventListener):
                  scale=1.0, rotation=0, opacity=1.0, duration=1.0, name=None, 
                  parent=None):
         """ Creates a new drawing layer that can be appended to the canvas.
-        The duration defines the time (seconds) it takes to animate transformations or opacity.
-        When the animation has terminated, layer.done=True.
+            The duration defines the time (seconds) it takes to animate transformations or opacity.
+            When the animation has terminated, layer.done=True.
         """
         if origin == CENTER:
             origin = (0.5,0.5)
@@ -1414,12 +1447,12 @@ class Layer(list, Prototype, EventListener):
     
     def _get_origin(self, relative=False):
         """ Returns the point (x,y) from which all layer transformations originate.
-        When relative=True, x and y are defined percentually (0.0-1.0) in terms of with and height.
-        In some cases x=0 or y=0 is returned:
-        - For an infinite layer (width=None or height=None), we can't deduct the absolute origin
-          from coordinates stored relatively (e.g. what is infinity*0.5?).
-        - Vice versa, for an infinite layer we can't deduct the relative origin from coordinates
-          stored absolute (e.g. what is 200/infinity?).
+            When relative=True, x and y are defined percentually (0.0-1.0) in terms of with and height.
+            In some cases x=0 or y=0 is returned:
+            - For an infinite layer (width=None or height=None), we can't deduct the absolute origin
+              from coordinates stored relatively (e.g. what is infinity*0.5?).
+            - Vice versa, for an infinite layer we can't deduct the relative origin from coordinates
+              stored absolute (e.g. what is 200/infinity?).
         """
         dx = self._dx.current
         dy = self._dy.current
@@ -1480,6 +1513,9 @@ class Layer(list, Prototype, EventListener):
         
     def scale(self, f):
         self.scaling *= f
+        
+    def flip(self):
+        self.flipped = not self.flipped
     
     def _update(self):
         """ Called each frame from canvas._update() to update the layer transitions.
@@ -1546,13 +1582,13 @@ class Layer(list, Prototype, EventListener):
         
     def draw(self):
         """Override this method to provide custom drawing code for this layer.
-        At this point, the layer is correctly transformed.
+            At this point, the layer is correctly transformed.
         """
         pass
             
     def layer_at(self, x, y, clipped=True, transformed=True, _covered=False):
         """ Returns the topmost layer containing the mouse position, None otherwise.
-        With clipped=True, no parts of child layers outside the parent's bounds are checked.
+            With clipped=True, no parts of child layers outside the parent's bounds are checked.
         """
         if self.hidden:
             # Don't do costly operations on layers the user can't see.
@@ -1590,8 +1626,8 @@ class Layer(list, Prototype, EventListener):
 
     def _transform_is_outdated(self):
         """ Returns True when the cumulative transformation matrix needs to be recalculated.
-        This happens when the local transform state changes, or when the transform state
-        of any parent layer changes.
+            This happens when the local transform state changes, or when the transform state
+            of any parent layer changes.
         """
         dated = False
         state = self._transform_state # integer version ID
@@ -1606,9 +1642,9 @@ class Layer(list, Prototype, EventListener):
         
     def _transform(self, local=True):
         """ Returns the transformation matrix of the layer:
-        a calculated state of its translation, rotation and scaling.
-        If local=False, prepends all transformations of the parent layers,
-        e.g. you get the actual transformation state of a nested layer.
+            a calculated state of its translation, rotation and scaling.
+            If local=False, prepends all transformations of the parent layers,
+            e.g. you get the actual transformation state of a nested layer.
         """
         if self._transform_cache == None:
             # Calculate the local transformation matrix.
@@ -1619,7 +1655,7 @@ class Layer(list, Prototype, EventListener):
             #tf.translate(dx, dy)
             tf.translate(self._x.current, self._y.current)
             if self.flipped:
-                tf.scale(-1, 1, 1)
+                tf.scale(-1, 1)
             tf.rotate(self._rotation.current)
             tf.scale(self._scale.current, self._scale.current)
             tf.translate(-dx, -dy)
@@ -1658,9 +1694,9 @@ class Layer(list, Prototype, EventListener):
     
     def contains(self, x, y, transformed=True):
         """ Returns True if (x,y) falls within the bounds of the layer.
-        Useful for GUI elements: with transformed=False the calculations are much faster;
-        and it will report correctly as long as the layer (or parent layer)
-        is not rotated or scaled, and has its origin at (0,0).
+            Useful for GUI elements: with transformed=False the calculations are much faster;
+            and it will report correctly as long as the layer (or parent layer)
+            is not rotated or scaled, and has its origin at (0,0).
         """
         w = self._width.current or float("inf")
         h = self._height.current or float("inf")
@@ -1752,7 +1788,7 @@ characters = {
 }
 def key(code):
     """ Returns a character from a Pyglet symbol string from a key code.
-    For example: 45 => KEY_MINUS => "-".
+        For example: 45 => KEY_MINUS => "-".
     """
     k = pyglet_window.key.symbol_string(code).lower()
     k = k.lstrip("_")
@@ -1854,9 +1890,9 @@ class Canvas(list, EventListener):
     #### Event dispatchers ####
     
     def layer_at(self, x, y, interactive=False):
-        """Find the layer at the specified coordinates.
-        This method returns None if no layer was found.
-        With interactive=True, only checks layers that have Layer.enabled=True.
+        """ Find the layer at the specified coordinates.
+            This method returns None if no layer was found.
+            With interactive=True, only checks layers that have Layer.enabled=True.
         """
         for layer in reversed(self):
             if not interactive or layer.enabled:
@@ -1970,8 +2006,8 @@ class Canvas(list, EventListener):
         self._runs = True
 
     def _draw(self):
-        """Draws the canvas and its layers.
-        This method gives the same result each time it gets drawn; only _update() advances state.
+        """ Draws the canvas and its layers.
+            This method gives the same result each time it gets drawn; only _update() advances state.
         """
         glPushMatrix()
         self.draw()
@@ -1986,8 +2022,8 @@ class Canvas(list, EventListener):
         self._window.flip()
 
     def _update(self):
-        """Updates the canvas and its layers.
-        This method does not actually draw anything, it only updates the state.
+        """ Updates the canvas and its layers.
+            This method does not actually draw anything, it only updates the state.
         """
         if not self._runs:
             self._setup()
@@ -2028,7 +2064,7 @@ class Canvas(list, EventListener):
 
     def screenshot(self, crop=(0,0,0,0)):
         """ Returns a screenshot of the current frame as a texture.
-        This texture can be passed to image().
+            This texture can be passed to image().
         """
         w = ceil2(self._window.width)
         h = ceil2(self._window.height)
@@ -2147,14 +2183,14 @@ def nocursor():
 
 def profile_run(n):
     for i in range(n):
-        canvas.update()
+        canvas._update()
+        canvas._draw()
 
 def profile(frames=200, top=30):
     import cProfile
     import pstats
     from os import remove
-    #cProfile.run("profile_run("+str(frames)+")", "_profile")
-    cProfile.run("for i in range("+str(frames)+"): canvas.update()", "_profile")
+    cProfile.run("profile_run("+str(frames)+")", "_profile")
     p = pstats.Stats("_profile")
     p.sort_stats("cumulative").print_stats(top)
     remove("_profile")

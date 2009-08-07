@@ -42,8 +42,8 @@ def reflect(x0, y0, x1, y1, d=1.0, a=180):
 
 def line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4, infinite=False):
     """ Determines the intersection point of two lines, or two finite line segments if infinite=False.
-    When the lines do not intersect, returns (None, None).
-    P. Bourke, http://local.wasp.uwa.edu.au/~pbourke/geometry/lineline2d/
+        When the lines do not intersect, returns (None, None).
+        P. Bourke, http://local.wasp.uwa.edu.au/~pbourke/geometry/lineline2d/
     """
     ua = (x4-x3)*(y1-y3) - (y4-y3)*(x1-x3)
     ub = (x2-x1)*(y1-y3) - (y2-y1)*(x1-x3)
@@ -64,8 +64,8 @@ def line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4, infinite=False):
     
 def circle_line_intersection(cx, cy, radius, x1, y1, x2, y2, infinite=False):
 	""" Returns a list of points where the circle and the line intersect.
-	Returns an empty list when the circle and the line do not intersect.
-	http://www.vb-helper.com/howto_net_line_circle_intersections.html
+	    Returns an empty list when the circle and the line do not intersect.
+	    http://www.vb-helper.com/howto_net_line_circle_intersections.html
 	"""	
 	dx = x2-x1
 	dy = y2-y1
@@ -93,11 +93,11 @@ def circle_line_intersection(cx, cy, radius, x1, y1, x2, y2, infinite=False):
 
 def point_in_polygon(points, x, y):
     """ Ray casting algorithm.
-    Determines how many times a horizontal ray starting from the point 
-    intersects with the sides of the polygon. 
-    If it is an even number of times, the point is outside, if odd, inside.
-    The algorithm does not always report correctly when the point is very close to the boundary.
-    The polygon is passed as a list of (x,y)-tuples.
+        Determines how many times a horizontal ray starting from the point 
+        intersects with the sides of the polygon. 
+        If it is an even number of times, the point is outside, if odd, inside.
+        The algorithm does not always report correctly when the point is very close to the boundary.
+        The polygon is passed as a list of (x,y)-tuples.
     """
     odd = False
     n = len(points)
@@ -119,8 +119,8 @@ class AffineTransform:
     
     def __init__(self, transform=None):
         """ A geometric transformation in Euclidean space (i.e. 2D)
-        that preserves collinearity and ratio of distance between points.
-        Linear transformations include rotation, translation, scaling, shear.
+            that preserves collinearity and ratio of distance between points.
+            Linear transformations include rotation, translation, scaling, shear.
         """
         if isinstance(transform, AffineTransform):
             self.matrix = list(transform.matrix)
@@ -139,8 +139,8 @@ class AffineTransform:
 
     def _mmult(self, a, b):
         """ Returns the 3x3 matrix multiplication of A and B.
-        Note that scale(), translate(), rotate() work with premultiplication,
-        e.g. the matrix A followed by B = BA and not AB.
+            Note that scale(), translate(), rotate() work with premultiplication,
+            e.g. the matrix A followed by B = BA and not AB.
         """
         return [
             a[0]*b[0] + a[1]*b[3], 
@@ -245,13 +245,18 @@ class Point:
 
 #--- BOUNDS ------------------------------------------------------------------------------------------
 
+INFINITE = float("inf")
+
 class Bounds:
     
     def __init__(self, x, y, width, height):
         """ Creates a bounding box.
-        The bounding box is an untransformed rectangle that encompasses a shape or group of shapes.
+            The bounding box is an untransformed rectangle that encompasses a shape or group of shapes.
         """
-        # Normalize if width or height is negative.
+        # context.Layer does not always have a width or height defined (i.e. infinite layer):
+        if width == None: width = INFINITE
+        if height == None: height = INFINITE
+        # Normalize if width or height is negative:
         if width < 0: x, width = x+width,  -width
         if height < 0: y, height = y+height, -height
         self.x = x
@@ -276,7 +281,7 @@ class Bounds:
     
     def intersection(self, b):
         """ Returns bounds that encompass the intersection of the two.
-        If there is no overlap between the two, None is returned.
+            If there is no overlap between the two, None is returned.
         """
         if not self.intersects(b): 
             return None

@@ -8,7 +8,7 @@ from pyglet.gl import *
 #=====================================================================================================
 
 def find(f, seq):
-    """Return first item in sequence where f(item) == True.
+    """ Return first item in sequence where f(item) == True.
     """
     for item in seq:
         if f(item): 
@@ -107,8 +107,8 @@ class FragmentShader(object):
     
     def set(self, name, value):
         """ Provides an easy way to set uniform variables in the GLSL source script.
-        This will work for vec2, vec3, vec4, list of int or float, single int or float.
-        We wait until glUseProgram() to pass them to the source.
+            This will work for vec2, vec3, vec4, list of int or float, single int or float.
+            We wait until glUseProgram() to pass them to the source.
         """
         self.variables[name] = value
         if self._active:
