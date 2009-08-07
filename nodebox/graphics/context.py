@@ -798,7 +798,7 @@ class Pixels(list):
         self._flipped = self._img.pitch < 0
         # Data yields a byte array if no conversions was necessary
         # or a byte string otherwise - which needs to be converted.
-        data = self._img.get_data("BGRA", self._img.width*4 * (-1,1)[self._flipped])
+        data = self._img.get_data("RGBA", self._img.width*4 * (-1,1)[self._flipped])
         if isinstance(data, str):
             data = map(ord, list(data))
         # BGRA-formatted images seem to store values from -1 to -256.
