@@ -22,7 +22,10 @@ from StringIO import StringIO
 import geometry
 
 #import bezier
-# XXX - Do this at the end, when we have defined BezierPath, which is needed in the bezier module.
+# Do this at the end, when we have defined BezierPath, which is needed in the bezier module.
+
+#import shader
+# Do this when we have defined load_image() and image(), which are needed in the shader module.
 
 #=====================================================================================================
 
@@ -36,7 +39,7 @@ _strokewidth = None
 class Color(list):
 
     def __init__(self, *a, **kwargs):
-        """ A color with R, G, B, A properties (0.0-1.0).
+        """ A color with R,G,B,A properties (0.0-1.0).
         """
         # Values are supplied as a tuple.
         if len(a) == 1 and isinstance(a[0], (list, tuple)):
@@ -96,6 +99,15 @@ class Color(list):
     
     def __ne__(self, clr):
         return not self.__eq__(clr)
+    
+    def map(self, base=255):
+        """ Returns a list of R,G,B,A values mapped to the given base,
+            e.g. from 0-255 instead of 0.0-1.0 which is useful for setting image pixels.
+        """
+        clr = [ch*base for ch in self]
+        if isinstance(base, int): 
+            clr = [int(ch) for ch in clr]
+        return clr
 
 color = Color
 
@@ -158,16 +170,16 @@ def rgba(h, s, v, a):
     """ Converts the given H,S,B color values to R,G,B.
     """
     if s == 0: 
-        return v, v, v
-    h = h / (60.0/360)
+        return v, v, v, a
+    h = h % 1 * 6.0
     i = floor(h)
     f = h - i
-    p = v * (1-s)
-    q = v * (1-s * f)
-    t = v * (1-s * (1-f))
+    x = v * (1-s)
+    y = v * (1-s * f)
+    z = v * (1-s * (1-f))
     if i > 4:
-        return v, p, q, a
-    return [(v,t,p,a), (q,v,p,a), (p,v,t,a), (p,q,v,a), (t,p,v,a)][int(i)]
+        return v, x, y, a
+    return [(v,z,x,a), (y,v,x,a), (x,v,z,a), (x,y,v,a), (z,x,v,a)][int(i)]
 
 def hsba(r, g, b, a):
     """ Converts the given R,G,B values to H,S,B.
@@ -180,9 +192,7 @@ def hsba(r, g, b, a):
         if   r == v: h = 0 + (g-b) / d
         elif g == v: h = 2 + (b-r) / d
         else       : h = 4 + (r-g) / d
-    h = h * (60.0/360)
-    if h < 0: 
-        h = h + 1.0
+    h = h / 6.0 % 1
     return h, s, v, a
 
 def darker(clr, step=0.2):
@@ -327,7 +337,7 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
             path = glGenLists(1)
             glNewList(path, GL_COMPILE)
             glBegin(mode);
-            for i in xrange(segments):
+            for i in range(segments):
                 t = 2*pi * float(i)/segments
                 glVertex2f(cos(t)*0.5, sin(t)*0.5);
             glEnd();
@@ -345,7 +355,7 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
             glCallList(path)
             glPopMatrix()
 
-oval = ellipse # backwards compatibility
+oval = ellipse # Backwards compatibility.
 
 def arrow(x, y, width, **kwargs):
     """ Draws an arrow with its tip located at x, y.
@@ -372,7 +382,7 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
     """
     p = BezierPath(**kwargs)
     p.moveto(x, y)
-    for i in xrange(0, int(2*points)+1):
+    for i in range(0, int(2*points)+1):
         angle = i * pi / points
         dx = sin(angle)
         dy = cos(angle)
@@ -395,7 +405,7 @@ LINETO  = "lineto"
 CURVETO = "curveto"
 CLOSE   = "close"
 
-CURVE_SEGMENTS = 30 # the number of line segments a curve is made up of.
+CURVE_SEGMENTS = 30 # The number of line segments a curve is made up of.
 
 class PathError(Exception): pass
 class NoCurrentPointForPath(Exception): pass
@@ -482,7 +492,7 @@ class BezierPath(list):
     def _draw_curve(self, x0, y0, x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
         # Curves are interpolated from a number of straight line segments.
         xi, yi = x0, y0
-        for i in xrange(segments):
+        for i in range(segments):
             xj, yj, vx1, vy1, vx2, vy2 = bezier.curvepoint(float(i)/segments, x0, y0, x1, y1, x2, y2, x3, y3)
             glVertex2f(xi, yi)
             glVertex2f(xj, yj)
@@ -557,8 +567,8 @@ class BezierPath(list):
     
     def points(self, amount=2, start=0.0, end=1.0):
         """ Returns a list of PathElements along the path.
+            To omit the last point on closed paths: end=1-1.0/amount
         """
-        # To omit the last point on closed paths: end=1-1.0/amount
         n = end - start
         d = n
         if amount>1: 
@@ -678,7 +688,7 @@ def endclip():
 #--- IMAGE -------------------------------------------------------------------------------------------
 # Caching, drawing, pixels, offscreen buffer and filters.
 
-pow2 = [2**n for n in xrange(20)]
+pow2 = [2**n for n in range(20)]
 
 def ceil2(x):
     """ Returns the nearest power of 2 that is higher than x, e.g. 700 => 1024.
@@ -725,19 +735,21 @@ def image(img, x=0, y=0, width=None, height=None,
     """ Draws the image at x, y, scaling it to the given with and height.
         The image's transparency can be set with alpha (0.0-1.0).
         Applies the given color adjustment, quad distortion and filter (one filter can be specified).
+        Note: with a filter enabled, alpha and color will not be applied.
+        This is because the filter overrides the default drawing behavior with its own.
     """
     img = load_image(img, data)
     if draw:
         t = img.tex_coords # power-2 dimensions
-        w = img.width      # see Pyglet programming guide -> OpenGL imaging
+        w = img.width      # See Pyglet programming guide -> OpenGL imaging.
         h = img.height
-        if width != None: 
+        if width != None:
             w += width-w
         if height != None: 
             h += height-h
         dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4 = quad
         if filter:
-            filter.image = img # register the current image with the filter
+            filter.image = img # Register the current image with the filter.
             filter.push()
         # Actual OpenGL drawing code:
         glPushMatrix()
@@ -796,15 +808,14 @@ class Pixels(list):
         self._img  = load_image(img).get_image_data()
         # A negative pitch means the pixels are stored from bottom row to top row.
         self._flipped = self._img.pitch < 0
-        # Data yields a byte array if no conversions was necessary
-        # or a byte string otherwise - which needs to be converted.
+        # Data yields a byte array if no conversion (e.g. BGRA => RGBA) was necessary,
+        # or a byte string otherwise - which needs to be converted to a list of ints.
         data = self._img.get_data("RGBA", self._img.width*4 * (-1,1)[self._flipped])
         if isinstance(data, str):
             data = map(ord, list(data))
-        # BGRA-formatted images seem to store values from -1 to -256.
-        if len(data) > 0 and data[0] < 0:
-            data = [(256+v)%256 for v in data]
-        self._pixels = data
+        # Some formats seem to store values from -1 to -256.
+        data = [(256+v)%256 for v in data]
+        self.array = data
         self._texture  = None
     
     @property
@@ -816,24 +827,30 @@ class Pixels(list):
         return self._img.height
 
     def __len__(self):
-        return len(self._pixels) / 4
+        return len(self.array) / 4
     
     def __iter__(self):
         for i in xrange(len(self)):
             yield self[i]
     
     def __getitem__(self, i):
-        # clr = color(Pixels[i], base=255)
-        # Users need to wrap the list in a Color themselves for performance.
-        return self._pixels[i*4:i*4+4]
+        """ Returns a list of R,G,B,A channel values between 0-255 from pixel i.
+            Users need to wrap the list in a Color themselves for performance.
+            - r,g,b,a = Pixels[i]
+            - clr = color(Pixels[i], base=255)
+        """
+        return self.array[i*4:i*4+4]
     
     def __setitem__(self, i, v):
-        # Pixels[i] = color()
-        # User is responsible for keeping channel values between 0 and 255.
-        if isinstance(v, Color):
-            v = [int(v[0]*255), int(v[1]*255), int(v[2]*255), int(v[3]*255)]
-        for j in xrange(4):
-            self._pixels[i*4+j] = v[j]
+        """ Sets pixels i to the given R,G,B,A values.
+            Users need to unpack a Color themselves for performance,
+            and are resposible for keeping channes values between 0 and 255
+            (otherwise an error will occur when Pixels.update() is called),
+            - Pixels[i] = r,g,b,a
+            - Pixels[i] = clr.map(base=255)
+        """
+        for j in range(4):
+            self.array[i*4+j] = v[j]
     
     def __getslice__(self, i, j):
         return [self[i+n] for n in xrange(j-i)]
@@ -842,20 +859,29 @@ class Pixels(list):
         for n in xrange(j-i):
             self[i+n] = seq[n]
             
+    def map(self, function):
+        """ Applies a function to each pixel.
+            Function takes a list of R,G,B,A channel values and must return a similar list.
+        """
+        for i in xrange(len(self)):
+            self[i] = function(self[i])
+            
     def get(self, i, j):
-        """ Returns the pixel at row i, column j.
+        """ Returns the pixel at row i, column j as a Color object.
         """
-        return self[i+j*self._img.width]
+        if 0 <= i < self.width and 0 <= j < self.height:
+            return color(self[i+j*self._img.width], base=255)
     
-    def set(self, i, j, v):
-        """ Sets the pixel at row i, column j.
+    def set(self, i, j, clr):
+        """ Sets the pixel at row i, column j from a Color object.
         """
-        self[i+j*self._img.width] = v
+        if 0 <= i < self.width and 0 <= j < self.height:
+            self[i+j*self._img.width] = clr.map(base=255)
     
     def update(self):
         """ Pixels.update() must be called to refresh the image.
         """
-        data = self._pixels
+        data = self.array
         data = "".join(map(chr, data))
         self._img.set_data("RGBA", -self._img.width*4, data)
         self._texture = self._img.get_texture()
@@ -865,7 +891,7 @@ class Pixels(list):
         if self._texture == None:
             self.update()
         return self._texture
-    img = texture
+    image = texture
 
 pixels = Pixels
 
@@ -919,118 +945,28 @@ class Animation(list):
 animation = Animation
 
 #--- OFFSCREEN RENDERING -----------------------------------------------------------------------------
-# To draw offscreen:
+# Offscreen buffers can be used to render images from paths etc. 
+# or to apply filters on images before drawing them to the screen.
+# There are several ways to draw offscreen:
+# - render(img, filter): applies the given filter to the image and return it.
+# - procedural(function, width, height): execute the drawing commands in function inside an image.
+# - Create your own subclass of OffscreenBuffer with a draw() method:
+#   class MyBuffer(OffscreenBuffer):
+#       def draw(self): pass
+#   b = MyBuffer()
+#   b.push()
+#   # drawing commands
+#   b.pop()
+#   img = b.image
 #
-# def draw(buffer):
-#    ...
-# offscreen.draw = draw
-# img = offscreen.render()
+# The shader.py module already defines several filters that use an offscreen buffer, for example:
+# blur(), adjust(), multiply(), twirl(), ...
 #
-# OR
-#
-# - offscreen.push()
-# - drawing commands
-# - offscreen.pop()
-# - the graphics end up in offscreen.image, which you can pass to image() command.
-#
-# To change the size of the offscreen image: offscreen.width, offscreen,height = x, y
-# When this happens, the offscreen buffer will create a new texture to draw in.
-# The less you change about the offscreen buffer the faster it runs.
-# To get a part of the offscreen image: 
-# offscreen.slice(x, y, width, height).
+# The less you change about an offscreen buffer, the faster it runs.
+# This includes switching it on and off, changing its size, ...
 
-from shader import FBO
-offscreen = FBO(640, 480)
-
-def render(img, *filters):
-    """ A rendering chain that applies all the given filters on the image.
-        The image is rendered offscreen and then returned.
-    """
-    img = load_image(img)
-    if len(filters) == 1 and isinstance(filters[0], (list, tuple)):
-        filters = filters[0]
-    offscreen.width = img.width
-    offscreen.height = img.height
-    offscreen.push()
-    image(img)
-    for filter in filters:
-        filter.image = img # filter may need some information about the current image
-        filter.push()
-        image(offscreen.image)
-        filter.pop()
-    offscreen.pop()
-    return offscreen.image
-
-#--- FILTERS -----------------------------------------------------------------------------------------
-# There are three ways in which to use a filter:
-# - pass as a parameter to image(): image(img, filter=blur(scale=1.0))
-# - use as an offscreen command: img = blur(img, scale=1.0, n=10)
-#
-# OR
-#
-# b = blur()
-# b.image = img
-# b.push()
-# ...
-# b.pop()
-
-from shader import FragmentShader, vec2, vec3, vec4
 from shader import *
-
-#def _get_blend_images(*a, **kwargs):
-#    blend = kwargs.get("blend", None)
-#    if len(a) == 1:
-#        if blend == None:
-#            return None, a[0]
-#        else:
-#            return a[0], blend
-#    elif len(a) == 2:
-#        return a[0], a[1]
-#    else:
-#        return None, blend
-
-def blur(image=None, scale=1.0, n=1, kernel=5):
-    """ Returns a blur filter (if image=None) or a rendered blurred image (if given).
-    """
-    filter = Blur(image, scale, kernel)
-    if image: 
-        return render(image, [filter for i in xrange(n)])
-    return filter
-
-def colorize(image=None, color=(1,1,1,1), bias=(0,0,0,0)):
-    """ Returns a colorize filter (if image=None) or a rendered, colorized image (if given).
-        The image's pixels are multiplied by given color, and the bias is then added.
-    """
-    filter = Colorize(image, color, bias)
-    if image:
-        return render(image, filter)
-    return filter
-
-def multiply(image=None, blend=None, opacity=1.0):
-    filter = Blend("multiply", image, blend, opacity)
-    if image:
-        return render(image, filter)
-    return filter
-
-LINEAR = "linear"
-RADIAL = "radial"
-def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
-    """ Returns a linear or radial texture of the given size.
-        The gradient is rendered in a power-2 dimension image and then scaled down,
-        e.g. width=700 renders a gradient in width=1024.
-        Remember to cache the gradient and reuse it when possible.
-    """
-    if type == "radial":
-        filter = RadialGradient(None, tuple(clr1), tuple(clr2))
-    else:
-        filter = LinearGradient(None, tuple(clr1), tuple(clr2))
-    img = pyglet_image.Texture.create(ceil2(width), ceil2(height))
-    offscreen.width = width
-    offscreen.height = height
-    offscreen.push()
-    image(img, 0, 0, width, height, filter=filter)
-    offscreen.pop()
-    return offscreen.image
+offscreen = FBO(640, 480)
 
 #=====================================================================================================
 
@@ -1171,8 +1107,8 @@ def random(v1=1.0, v2=None, bias=None):
     return x
 
 def grid(cols, rows, colwidth=1, rowheight=1, shuffled=False):
-    rows = xrange(int(rows))
-    cols = xrange(int(cols))
+    rows = range(int(rows))
+    cols = range(int(cols))
     if shuffled:
         shuffle(rows)
         shuffle(cols)
@@ -1190,13 +1126,31 @@ def files(path="*"):
 class Prototype:
     
     def __init__(self):
-        self._bound = {}
-            
-    def bind(self, function, method=None):
-        """ Creates an object method from the given function
-            The function is expected to take the object (i.e. self) as first parameter.
-            The method parameter specifies the method name to bind to (function's name by default).
-            For example, we can define a Layer's custom draw() method in two ways.
+        """ A base class that allows on-the-fly extension.
+            This means that external functions can be bound to it as methods,
+            and properties set at runtime are copied correctly.
+        """
+        self._dynamic = {}
+
+    def _deepcopy(self, value):
+        n = value.__class__.__name__
+        if n in ("function",):
+            return instancemethod(value, self)
+        elif n in (list, tuple):
+            return[self._deepcopy(x) for x in value]
+        elif n in (dict,):
+            return dict([(k, self._deepcopy(v)) for k,v in value.items()])
+        elif n in (str, unicode, int, long, float, bool):
+            return value
+        else:
+            # Biggest problem here is how to find/relink circular references.
+            raise TypeError, "Prototype can't bind %s." % str(value.__class__)
+
+    def _bind(self, key, value):
+        """ Adds a new property or method to the prototype.
+            For properties, values can be: list, tuple, dict, str, unicode, int, long, float, bool.
+            For methods, the given function is expected to take the object (i.e. self) as first parameter.
+            For example, we can define a Layer's custom draw() method in two ways:
             - By subclassing:
                 class MyLayer(Layer):
                     def draw(layer):
@@ -1207,43 +1161,46 @@ class Prototype:
                 def my_draw(layer):
                     pass
                 layer = Layer()
-                layer.bind(my_draw, "draw")
+                layer._bind("draw", my_draw)
                 layer.draw()
         """
-        if not method: 
-            method = function.__name__
-        setattr(self, method, instancemethod(function, self))
-        self._bound[method] = function
+        self._dynamic[key] = value
+        setattr(self, key, self._deepcopy(value))
+        
+    def set_method(self, function, name=None):
+        """ Creates a dynamic method (with the given name) from the given function.
+        """
+        if not name: 
+            name = function.__name__
+        self._bind(name, function)
     
-    def _copy_attr(self, x):
-        if isinstance(x, (list, tuple)):
-            return [self._copy_attr(v) for v in x]
-        if isinstance(x, dict):
-            return dict([(k, self._copy_attr(v)) for k,v in x.items()])
-        if hasattr(x, "copy"):
-            return x.copy()
-        return x
+    def set_property(self, key, value):
+        """ Adds a property to the prototype.
+            Using this method ensures that dynamic properties are copied correctly - see copy_to().
+        """
+        self._bind(key, value)
     
-    def copy(self, *args, **kwargs):
-        # Create an object of the same subclass.
-        p = self.__class__(*args, **kwargs)
-        # Copy all the properties.
-        # Copy all the dynamic methods.
-        for k,v in self.__dict__.items():
-            p.__dict__[k] = self._copy_attr(v)
-        for method, function in self._bound.items():
-            p.bind(function, method)
-        return p
+    def inherit(self, prototype):
+        """ Inherit all the dynamic properties and methods of another prototype.
+        """
+        for k,v in prototype._dynamic.items():
+            self._bind(k,v)
 
 #=====================================================================================================
 
-#--- EVENT LISTENER -----------------------------------------------------------------------------------
+#--- EVENT HANDLER ------------------------------------------------------------------------------------
 
 class EventListener:
     
-    # Receive events from the canvas? (for layers this means doing hit testing)
-    enabled = True
+    def __init__(self):
+        # Receive mouse events from the canvas? (for layers this means doing hit testing)
+        self.enabled = True
+
+class EventHandler(EventListener):
     
+    def __init__(self):
+        EventListener.__init__(self)
+        
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         pass
     def on_mouse_enter(self, x, y):
@@ -1274,7 +1231,6 @@ TIME = 0 # the current time in this frame changes when the canvas is updated
     
 LINEAR = "linear"
 SMOOTH = "smooth"
-_KAPPA = 0.5522847498
 
 class Transition(object):
 
@@ -1285,7 +1241,6 @@ class Transition(object):
         self._t0 = TIME  # start time
         self._t1 = TIME  # end time
         self._interpolation = interpolation
-        self._d = 0
     
     def copy(self):
         t = Transition(None)
@@ -1295,7 +1250,6 @@ class Transition(object):
         t._t0 = self._t0
         t._t1 = self._t1
         t._interpolation = self._interpolation
-        t._d = self._d
         return t
     
     def get(self):
@@ -1305,7 +1259,6 @@ class Transition(object):
         self._v0 = self._vi
         self._t0 = TIME # now
         self._t1 = TIME + duration
-        self._d = (self._t1 - self._t0) * _KAPPA
     value = property(get, set)
 
     @property 
@@ -1325,26 +1278,18 @@ class Transition(object):
         """ Calculates the new current value. Returns True when done.
             The transition approaches the desired value according to the interpolation:
             - LINEAR: even transition over the given duration time,
-            - SMOOTH: transition goes slower at the end.
+            - SMOOTH: transition goes slower at the beginning and end.
         """
         if TIME >= self._t1:
             self._vi = self._v1
             return True
         else:
             # Calculate t, the elapsed time as a number between 0.0 and 1.0.
-            t = (TIME - self._t0) / (self._t1 - self._t0)
+            t = (TIME-self._t0) / (self._t1-self._t0)
             if self._interpolation == LINEAR:
-                xx, self._vi = bezier.linepoint(t, self._t0, self._v0, self._t1, self._v1)
+                self._vi = self._v0 + (self._v1-self._v0) * t
             else:
-                x, self._vi, xx, xxx, xxxx, xxxxx = bezier.curvepoint(t, \
-                    self._t0, 
-                    self._v0, \
-                    self._t0 + self._d, 
-                    self._v0, \
-                    self._t1 - self._d, 
-                    self._v1, \
-                    self._t1, 
-                    self._v1)
+                self._vi = self._v0 + (self._v1-self._v0) * geometry.smoothstep(0.0, 1.0, t)
             return False
 
 #--- LAYER -------------------------------------------------------------------------------------------
@@ -1357,7 +1302,7 @@ class Transition(object):
 RELATIVE = "relative"
 ABSOLUTE = "absolute"
 
-class Layer(list, Prototype, EventListener):
+class Layer(list, Prototype, EventHandler):
 
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
                  scale=1.0, rotation=0, opacity=1.0, duration=1.0, name=None, 
@@ -1371,9 +1316,11 @@ class Layer(list, Prototype, EventListener):
             origin_mode = RELATIVE
         else:
             origin_mode = ABSOLUTE
-        Prototype.__init__(self) # facilitates extension on the fly.
+        Prototype.__init__(self) # Facilitates extension on the fly.
+        EventHandler.__init__(self)
         self.name      = name
         self.parent    = parent
+        self.group     = None
         self._x        = Transition(x)
         self._y        = Transition(y)
         self._width    = Transition(width)
@@ -1385,21 +1332,69 @@ class Layer(list, Prototype, EventListener):
         self._rotation = Transition(rotation)
         self._opacity  = Transition(opacity, interpolation=LINEAR)
         self.duration  = duration
-        self.top       = True  # draw on top of or beneath parent?
+        self.top       = True  # Draw on top of or beneath parent?
         self.flipped   = False
         self.hidden    = False
-        self._transform_state = 0    # the cache version ID
-        self._transform_cache = None # the local transformation matrix
-        self._transform_stack = None # the cumulative transformation matrix
-
+        self._transform_state = 0    # cache version ID
+        self._transform_cache = None # local transformation matrix
+        self._transform_stack = None # cumulative transformation matrix
+        
     def copy(self, parent=None):
-        layer = Prototype.copy(self)
+        """ Returns a copy of the layer.
+            All properties will be copied, except for the new parent which you need to define.
+        """
+        layer = Layer()
+        layer.inherit(self)
         layer.parent = parent
         return layer
+        
+    def inherit(self, layer):
+        """ Copies all of the given layer's settings, except parent and group.
+            This includes a copy of each of the given parent layer's attached children.
+            Layer.inherit() is useful when copying subclasses of Layer.
+        """
+        self.duration = 0 # Copy all transitions instantly.
+        self.x        = layer.x
+        self.y        = layer.y
+        self.width    = layer.width
+        self.height   = layer.height
+        self.origin   = layer.origin
+        self.scaling  = layer.scaling
+        self.rotation = layer.rotation
+        self.opacity  = layer.opacity
+        self.duration = layer.duration
+        self.name     = layer.name
+        self.top      = layer.top
+        self.flipped  = layer.flipped
+        self.hidden   = layer.hidden
+        # Inherit all the child layers.
+        for l in layer: 
+            self.append(l.copy())
+        # Inherit all the dynamic properties and methods.
+        Prototype.inherit(self, layer)
+        # Inherit the EventHandler.
+        self.enabled = layer.enabled
+
+    def __getattr__(self, key):
+        """ Returns the given property or the layer with the given name.
+        """
+        if key in self.__dict__: 
+            return self.__dict__[key]
+        for layer in self:
+            if key == layer.name: return layer
+        raise AttributeError, "Layer instance has no attribute '%s'" % key
 
     def append(self, layer):
         list.append(self, layer)
         layer.parent = self
+        
+    def extend(self, layers):
+        for layer in layers: 
+            self.append(layer)
+            
+    @property
+    def layers(self):
+        return self.__iter__()
         
     def _get_x(self):
         return self._x.get()
@@ -1720,7 +1715,7 @@ class Layer(list, Prototype, EventListener):
         
     def __repr__(self):
         return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, rotation=%.2f, opacity=%.2f, duration=%.2f)" % (
-            self.name != None and "name='"+self.name+"', " or "", 
+            self.name != None and "name='%s', " % self.name or "", 
             self.x, 
             self.y, 
             self.scaling, 
@@ -1807,17 +1802,23 @@ def key(code):
 
 VERY_LIGHT_GREY = 0.95
 
-class Canvas(list, EventListener):
+FRAME = 0
+
+class Canvas(list, EventHandler):
 
     def __init__(self, config=None):
         self._window = pyglet_window.Window(visible=False, config=config)
-        self.fps     = None # frames per second
-        self._frame  = 0    # current frame
-        self._t      = 0    # last frame time
-        self._mouse  = Point(0,0)
-        self._cursor = DEFAULT
-        self._runs   = False
-        self._buffer = None
+        self.fps     = None         # Frames per second.
+        self._frame  = 0            # The current frame.
+        self._t      = 0            # The current time.
+        self._runs   = False        # Application is running?
+        self._anti_aliased = True   # Use anti-aliasing?
+        self._buffer = None         # Rendered screenshot of the canvas.
+        self._mouse  = Point(0,0)   # The mouse cursor location.
+        self._cursor = DEFAULT      # The mouse cursor icon.
+        self._current_layers = []   # Layers that the mouse moves over.
+        self._current_layer  = None # Layer on top the mouse moves over.
+        self._dragged_layer  = None # Layer being dragged by the mouse.
         self._window.on_mouse_drag    = self._on_mouse_drag
         self._window.on_mouse_enter   = self._on_mouse_enter
         self._window.on_mouse_leave   = self._on_mouse_leave
@@ -1828,10 +1829,6 @@ class Canvas(list, EventListener):
         self._window.on_key_press     = self._on_key_press
         self._window.on_key_release   = self._on_key_release
         self._window.on_close         = self._stop
-        self._current_layers = []   # layers that the mouse moves over
-        self._current_layer  = None # topmost layer the mouse moves over
-        self._dragged_layer  = None # layer being dragged by the mouse
-
 
     def _get_name(self):
         return self._window.caption
@@ -1849,14 +1846,12 @@ class Canvas(list, EventListener):
     def _get_size(self):
         return (self.width, self.height)
     def _set_width(self, v):
-        global WIDTH
-        self._window.width = WIDTH = v
+        self._window.width = v
     def _set_height(self, v):
-        global HEIGHT
-        self._window.height = HEIGHT = v
-    def _set_size(self, width, height):
-        self.width  = width
-        self.height = height
+        self._window.height = v
+    def _set_size(self, wh):
+        self.width  = wh[0]
+        self.height = wh[1]
     
     width  = property(_get_width, _set_width)
     height = property(_get_height, _set_height)
@@ -1889,14 +1884,15 @@ class Canvas(list, EventListener):
         
     #### Event dispatchers ####
     
-    def layer_at(self, x, y, interactive=False):
+    def layer_at(self, x, y):
         """ Find the layer at the specified coordinates.
             This method returns None if no layer was found.
-            With interactive=True, only checks layers that have Layer.enabled=True.
         """
         for layer in reversed(self):
-            if not interactive or layer.enabled:
+            if layer.enabled:
+                
                 layer = layer.layer_at(x, y)
+                print layer
                 if layer is not None:
                     return layer
         return None
@@ -1930,10 +1926,10 @@ class Canvas(list, EventListener):
         for layer in leaving:
             layer.on_mouse_leave(x, y)
             self._current_layers.remove(layer)
-        # Get the topmost interactive layer over which the mouse is hovering.
+        # Get the topmost layer over which the mouse is hovering.
         # The layer and all of its parents in the hierarchy receive the on_mouse_enter event.
         # The layer itself also receives the on_mouse_motion event.
-        self._current_layer = layer = self.layer_at(x, y, interactive=True)
+        self._current_layer = layer = self.layer_at(x, y)
         if layer != None:
             while layer != None:
                 if layer not in self._current_layers:
@@ -1987,6 +1983,7 @@ class Canvas(list, EventListener):
         """" Override this method to draw once all the layers have been drawn.
         """
         pass
+        
     draw_over = draw_overlay
         
     def stop(self):
@@ -1996,10 +1993,10 @@ class Canvas(list, EventListener):
         # Set the window color, this will be transparent in saved images:
         glClearColor(VERY_LIGHT_GREY, VERY_LIGHT_GREY, VERY_LIGHT_GREY, 0)
         glLoadIdentity()
-        glEnable(GL_BLEND) # enable alpha transparency
+        glEnable(GL_BLEND) # Enable alpha transparency.
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.clear()
-        self.anti_aliasing()
+        self.anti_aliased = True
         self._window.dispatch_events()
         self._window.set_visible()
         self.setup()
@@ -2062,7 +2059,7 @@ class Canvas(list, EventListener):
 
     #### Image export ####
 
-    def screenshot(self, crop=(0,0,0,0)):
+    def render(self, crop=(0,0,0,0)):
         """ Returns a screenshot of the current frame as a texture.
             This texture can be passed to image().
         """
@@ -2081,20 +2078,23 @@ class Canvas(list, EventListener):
             self._window.height - crop[1]  -crop[3]
         )
         
-    buffer = screenshot
+    buffer = screenshot = render
 
     def save(self, path):
         """ Saves the current frame as a PNG-file.
         """
         pyglet_image.get_buffer_manager().get_color_buffer().save(path)
 
-    def anti_aliasing(self, mode=True):
+    def _get_anti_aliased(self):
+        return self_anti_aliased
+    def _set_anti_aliased(self, mode):
         if mode == True:
             glEnable(GL_LINE_SMOOTH)
             #glEnable(GL_POLYGON_SMOOTH)
         else:
             glDisable(GL_LINE_SMOOTH)
             #glDisable(GL_POLYGON_SMOOTH)
+    anti_aliased = property(_get_anti_aliased, _set_anti_aliased)
 
     def bind(self, function, method=None):
         if not method: 
@@ -2138,11 +2138,9 @@ def size(width=None, height=None):
 
 def width():
     return canvas._window.width
-WIDTH = width()
 
 def height():
     return canvas._window.height
-HEIGHT = height()
 
 def fullscreen(mode=None):
     if mode != None:

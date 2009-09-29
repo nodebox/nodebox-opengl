@@ -3,13 +3,12 @@ NodeBox is a framework that lets you create interactive 2D visuals using OpenGL.
 Documentation is still a bit lacking, but you can run python generate_epydoc.py to 
 generate API documentation (using Epydoc: http://epydoc.sourceforge.net/).
 
-
-All the bezier math is included. There is text support as well, as well as an offscreen renderer and the start of some shaders (blur, colorize, gradient). There are also some powerful classes that are not in NodeBox:
+All the bezier math is included. There is text support as well, as well as an offscreen renderer and the start of some shaders (blur, colorize, gradient, ...) There are also some powerful classes that are not in NodeBox:
 - Transition: for motion tweening
 - Layer: variable origin point, tweened group of shapes
 - Animation: slideshow of images.
 
-There is no documentation, so you will have to dig into the source. If you fix bugs along the way, please keep a list of where you found them, as there is no version control yet.
+Since there is no documentation, so you will have to dig into the source. If you fix bugs along the way, please keep a list of where you found them, as there is no version control yet.
 
 Importing libraries may or may not work out of the box, I haven't tested it yet.
 

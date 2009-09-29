@@ -38,6 +38,26 @@ def reflect(x0, y0, x1, y1, d=1.0, a=180):
     """
     return coordinates(x0, y0, d*distance(x0,y0,x1,y1), a+angle(x0,y0,x1,y1))
 
+#--- INTERPOLATION -----------------------------------------------------------------------------------
+    
+def lerp(a, b, t):
+    """ Returns the linear interpolation between a and b for time t between 0.0-1.0.
+        For example: lerp(100, 200, 0.5) => 150.
+    """
+    if t < 0.0: return a
+    if t > 1.0: return b
+    return a + (b-a)*t
+    
+def smoothstep(a, b, x):
+    """ Returns a smooth transition between 0.0 and 1.0 using Hermite interpolation (cubic spline),
+        where x is a number between a and b. The return value will ease (slow down) as x nears a or b.
+        For x smaller than a, returns 0.0. For x bigger than b, returns 1.0.
+    """
+    if x < a: return 0.0
+    if x >=b: return 1.0
+    x = float(x-a) / (b-a)
+    return x*x * (3-2*x)
+
 #--- INTERSECTION ------------------------------------------------------------------------------------
 
 def line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4, infinite=False):
@@ -101,7 +121,7 @@ def point_in_polygon(points, x, y):
     """
     odd = False
     n = len(points)
-    for i in xrange(n):
+    for i in range(n):
         j = i<n-1 and i+1 or 0
         x0, y0 = points[i][0], points[i][1]
         x1, y1 = points[j][0], points[j][1]
