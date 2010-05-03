@@ -6,18 +6,24 @@
 # All graphics are drawn directly to the screen.
 # No scenegraph is kept for obvious performance reasons (therefore, no canvas._grobs as in NodeBox).
 
-from pyglet.gl import *
-from pyglet import image  as pyglet_image
-from pyglet import font   as pyglet_font
-from pyglet import window as pyglet_window
+try: import psyco; psyco.profile()
+except:
+    pass
 
-from math import cos, sin, radians, pi, floor
-from time import time
-from random import choice, shuffle, random as rnd
-from new import instancemethod
-from glob import glob
-from os.path import basename
-from StringIO import StringIO
+# Debugging must be switched on or of before other modules are imported.
+import pyglet
+pyglet.options['debug_gl'] = False
+
+from pyglet.gl import *
+from math      import cos, sin, radians, pi, floor
+from time      import time
+from random    import choice, shuffle, random as rnd
+from new       import instancemethod
+from glob      import glob
+from os.path   import basename
+from sys       import getrefcount
+from StringIO  import StringIO
+from hashlib   import md5
 
 import geometry
 
@@ -25,45 +31,96 @@ import geometry
 # Do this at the end, when we have defined BezierPath, which is needed in the bezier module.
 
 #import shader
-# Do this when we have defined load_image() and image(), which are needed in the shader module.
+# Do this when we have defined texture() and image(), which are needed in the shader module.
+
+#=====================================================================================================
+
+#--- CACHING -----------------------------------------------------------------------------------------
+# OpenGL Display Lists offer a simple way to precompile batches of OpenGL commands.
+# The drawback is that the commands, once compiled, can't be modified.
+
+def precompile(function, *args, **kwargs):
+    """ Creates an OpenGL Display List from the OpenGL commands in the given function.
+        A Display List will precompile the commands and (if possible) store them in graphics memory.
+        Returns an id which can be used with precompiled() to execute the cached commands.
+    """
+    id = glGenLists(1)
+    glNewList(id, GL_COMPILE)
+    function(*args, **kwargs)
+    glEndList()
+    return id
+        
+def precompiled(id):
+    """ Executes the Display List program with the given id.
+    """
+    glCallList(id)
+        
+def flush(id):
+    """ Removes the Display List program with the given id from memory.
+    """
+    if id is not None:
+        glDeleteLists(id, 1)
 
 #=====================================================================================================
 
 #--- COLOR -------------------------------------------------------------------------------------------
 
-_background = None
-_fill = None
-_stroke = None
-_strokewidth = None
+RGB = "RGB"
+HSB = "HSB"
+XYZ = "XYZ"
+LAB = "LAB"
+
+_background  = None # Current state background color.
+_fill        = None # Current state fill color.
+_stroke      = None # Current state stroke color.
+_strokewidth = None # Current state strokewidth.
 
 class Color(list):
 
-    def __init__(self, *a, **kwargs):
-        """ A color with R,G,B,A properties (0.0-1.0).
+    def __init__(self, *args, **kwargs):
+        """ A color with R,G,B,A channels, with channel values ranging between 0.0-1.0.
+            Either takes four parameters (R,G,B,A), three parameters (R,G,B),
+            two parameters (grayscale and alpha) or one parameter (grayscale or Color object).
+            An optional base=1.0 parameter defines the range of the given parameters.
+            An optional colorspace=RGB defines the color space of the given parameters.
         """
         # Values are supplied as a tuple.
-        if len(a) == 1 and isinstance(a[0], (list, tuple)):
-            a = a[0]
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            args = args[0]
         # R, G, B and A.
-        if len(a) == 4:
-            r, g, b, a = a[0], a[1], a[2], a[3]
+        if len(args) == 4:
+            r, g, b, a = args[0], args[1], args[2], args[3]
         # R, G and B.
-        elif len(a) == 3:
-            r, g, b, a = a[0], a[1], a[2], 1
+        elif len(args) == 3:
+            r, g, b, a = args[0], args[1], args[2], 1
         # Two values, grayscale and alpha.
-        elif len(a) == 2:
-            r, g, b, a = a[0], a[0], a[0], a[1]
+        elif len(args) == 2:
+            r, g, b, a = args[0], args[0], args[0], args[1]
         # One value, another color object.
-        elif len(a) == 1 and isinstance(a[0], Color):
-            r, g, b, a = a[0].r, a[0].g, a[0].b, a[0].a
+        elif len(args) == 1 and isinstance(args[0], Color):
+            r, g, b, a = args[0].r, args[0].g, args[0].b, args[0].a
         # One value, grayscale.
-        elif len(a) == 1:
-            r, g, b, a = a[0], a[0], a[0], 1
+        elif len(args) == 1:
+            r, g, b, a = args[0], args[0], args[0], 1
         # No values or None, transparent black.
-        elif len(a) == 0 or (len(a) == 1 and a[0] == None):
+        elif len(args) == 0 or (len(args) == 1 and args[0] is None):
             r, g, b, a = 0, 0, 0, 0
-        self.base = float(kwargs.get("base", 1.0))
-        list.__init__(self, [r/self.base, g/self.base, b/self.base, a/self.base])
+        # Transform to base 1:
+        base = float(kwargs.get("base", 1.0))
+        if base != 1:
+            r, g, b, a = [ch/base for ch in r, g, b, a]
+        # Transform to color space RGB:
+        colorspace = kwargs.get("colorspace")
+        if colorspace and colorspace != RGB:
+            if colorspace == HSB: r, g, b = hsb_to_rgb(r, g, b)
+            if colorspace == XYZ: r, g, b = xyz_to_rgb(r, g, b)
+            if colorspace == LAB: r, g, b = lab_to_rgb(r, g, b)
+        list.__init__(self, [r, g, b, a])
+        self._dirty = False
+
+    def __setitem__(self, i, v):
+        list.__setitem__(self, i, v)
+        self._dirty = True
 
     def _get_r(self): return self[0]
     def _get_g(self): return self[1]
@@ -75,10 +132,10 @@ class Color(list):
     def _set_b(self, v): self[2] = v
     def _set_a(self, v): self[3] = v
     
-    r = property(_get_r, _set_r)
-    g = property(_get_g, _set_g)
-    b = property(_get_b, _set_b)
-    a = property(_get_a, _set_a)
+    r = red   = property(_get_r, _set_r)
+    g = green = property(_get_g, _set_g)
+    b = blue  = property(_get_b, _set_b)
+    a = alpha = property(_get_a, _set_a)
 
     def copy(self):
         return Color(self)
@@ -100,39 +157,64 @@ class Color(list):
     def __ne__(self, clr):
         return not self.__eq__(clr)
     
-    def map(self, base=255):
+    def map(self, base=1.0, colorspace=RGB):
         """ Returns a list of R,G,B,A values mapped to the given base,
             e.g. from 0-255 instead of 0.0-1.0 which is useful for setting image pixels.
+            Other values than RGBA can be obtained by setting the colorspace (RGB/HSB/XYZ/LAB).
         """
-        clr = [ch*base for ch in self]
-        if isinstance(base, int): 
-            clr = [int(ch) for ch in clr]
-        return clr
+        r, g, b, a = self
+        if colorspace != RGB:
+            if colorspace == HSB: r, g, b = rgb_to_hsb(r, g, b)
+            if colorspace == XYZ: r, g, b = rgb_to_xyz(r, g, b)
+            if colorspace == LAB: r, g, b = rgb_to_lab(r, g, b)
+        if base != 1:
+            r, g, b, a = [ch*base for ch in r, g, b, a]
+        if base != 1 and isinstance(base, int):
+            r, g, b, a = [int(ch) for ch in r, g, b, a]
+        return r, g, b, a
+    
+    def blend(self, clr, t=0.5, colorspace=RGB):
+        """ Returns a new color between the two colors.
+            Parameter t is the amount to interpolate between the two colors 
+            (0.0 equals the first color, 0.5 is half-way in between, etc.)
+            Blending in CIE-LAB colorspace avoids "muddy" colors in the middle of the blend.
+        """
+        ch = zip(self.map(1, colorspace)[:3], clr.map(1, colorspace)[:3])
+        r, g, b = [geometry.lerp(a, b, t) for a, b in ch]
+        a = geometry.lerp(self.a, clr.a, t)
+        return Color(r, g, b, a, colorspace=colorspace)
+        
+    def rotate(self, angle):
+        """ Returns a new color with it's hue rotated on the RYB color wheel.
+        """
+        h, s, b = rgb_to_hsb(*self[:3])
+        h, s, b = rotate_ryb(h, s, b, angle)
+        return Color(h, s, b, self.a, colorspace=HSB)
 
 color = Color
 
-def background(*a):
+def background(*args):
     """ Sets the current window background color.
     """
     global _background
-    _background = color(*a)
+    _background = Color(*args)
     glClearColor(_background[0], _background[1], _background[2], _background[3])
     return _background
 
-def fill(*a):
+def fill(*args):
     """ Sets the current fill color for drawing primitives and paths.
     """
     global _fill
-    _fill = color(*a)
+    _fill = Color(*args)
     return _fill
 
-fill(0) # default fill is black
+fill(0) # The default fill is black.
 
-def stroke(*a):
+def stroke(*args):
     """ Sets the current stroke color.
     """
     global _stroke
-    _stroke = color(*a)
+    _stroke = Color(*args)
     return _stroke
 
 def nofill():
@@ -147,12 +229,12 @@ def nostroke():
     global _stroke
     _stroke = None
 
-# Note: thick strokewidth results in ugly (i.e. no) line caps.
 def strokewidth(width=None):
-    """ Sets the outline width.
+    """ Sets the outline stroke width.
     """
+    # Note: thick strokewidth results in ugly (i.e. no) line caps.
     global _strokewidth
-    if width != None:
+    if width is not None:
         _strokewidth = width
         glLineWidth(width)
     return _strokewidth
@@ -163,26 +245,12 @@ def outputmode(mode=None):
 def colormode(mode=None, range=1.0):
     raise NotImplementedError
 
-#--- COLORSPACE --------------------------------------------------------------------------------------
-# Hue, Saturation, Brightness model.
+#--- COLOR SPACE -------------------------------------------------------------------------------------
+# Transformations between RGB, HSB, CIE XYZ and CIE LAB color spaces.
+# http://www.easyrgb.com/math.php
 
-def rgba(h, s, v, a):
-    """ Converts the given H,S,B color values to R,G,B.
-    """
-    if s == 0: 
-        return v, v, v, a
-    h = h % 1 * 6.0
-    i = floor(h)
-    f = h - i
-    x = v * (1-s)
-    y = v * (1-s * f)
-    z = v * (1-s * (1-f))
-    if i > 4:
-        return v, x, y, a
-    return [(v,z,x,a), (y,v,x,a), (x,v,z,a), (x,y,v,a), (z,x,v,a)][int(i)]
-
-def hsba(r, g, b, a):
-    """ Converts the given R,G,B values to H,S,B.
+def rgb_to_hsb(r, g, b):
+    """ Converts the given R,G,B values to H,S,B (between 0.0-1.0).
     """
     h, s, v = 0, 0, max(r, g, b)
     d = v - min(r, g, b)
@@ -193,21 +261,132 @@ def hsba(r, g, b, a):
         elif g == v: h = 2 + (b-r) / d
         else       : h = 4 + (r-g) / d
     h = h / 6.0 % 1
-    return h, s, v, a
+    return h, s, v
+
+def hsb_to_rgb(h, s, v):
+    """ Converts the given H,S,B color values to R,G,B (between 0.0-1.0).
+    """
+    if s == 0: 
+        return v, v, v
+    h = h % 1 * 6.0
+    i = floor(h)
+    f = h - i
+    x = v * (1-s)
+    y = v * (1-s * f)
+    z = v * (1-s * (1-f))
+    if i > 4:
+        return v, x, y
+    return [(v,z,x), (y,v,x), (x,v,z), (x,y,v), (z,x,v)][int(i)]
+    
+def rgb_to_xyz(r, g, b):
+    """ Converts the given R,G,B values to CIE X,Y,Z (between 0.0-1.0).
+    """
+    r, g, b = [ch > 0.04045 and ((ch+0.055) / 1.055) ** 2.4 or ch / 12.92 for ch in r, g, b]
+    r, g, b = [ch * 100.0 for ch in r, g, b]
+    r, g, b = ( # Observer = 2, Illuminant = D65
+        r * 0.4124 + g * 0.3576 + b * 0.1805,
+        r * 0.2126 + g * 0.7152 + b * 0.0722,
+        r * 0.0193 + g * 0.1192 + b * 0.9505)
+    return r/95.047, g/100.0, b/108.883
+
+def xyz_to_rgb(x, y, z):
+    """ Converts the given CIE X,Y,Z color values to R,G,B (between 0.0-1.0).
+    """
+    x, y, z = x*95.047, y*100.0, z*108.883
+    x, y, z = [ch / 100.0 for ch in x, y, z]
+    r = x *  3.2406 + y * -1.5372 + z * -0.4986
+    g = x * -0.9689 + y *  1.8758 + z *  0.0415
+    b = x * -0.0557 + y * -0.2040 + z *  1.0570
+    r, g, b = [ch > 0.0031308 and 1.055 * ch**(1/2.4) - 0.055 or ch * 12.92 for ch in r, g, b]
+    return r, g, b
+
+def rgb_to_lab(r, g, b):
+    """ Converts the given R,G,B values to CIE L,A,B (between 0.0-1.0).
+    """
+    x, y, z = rgb_to_xyz(r, g, b)
+    x, y, z = [ch > 0.008856 and ch**(1/3.0) or (ch*7.787) + (16/116.0) for ch in x, y, z]
+    l, a, b = y*116-16, 500*(x-y), 200*(y-z)
+    l, a, b = l/100.0, (a+86)/(86+98), (b+108)/(108+94)
+    return l, a, b
+    
+def lab_to_rgb(l, a, b):
+    """ Converts the given CIE L,A,B color values to R,G,B (between 0.0-1.0).
+    """
+    l, a, b = l*100, a*(86+98)-86, b*(108+94)-108
+    y = (l+16)/116.0
+    x = y + a/500.0
+    z = y - b/200.0
+    x, y, z = [ch**3 > 0.008856 and ch**3 or (ch-16/116.0)/7.787 for ch in x, y, z]
+    return xyz_to_rgb(x, y, z)
+
+def luminance(r, g, b):
+    """ Returns an indication (0.0-1.0) of how bright the color appears.
+    """
+    return (r*0.2125 + g*0.7154 + b+0.0721) * 0.5
 
 def darker(clr, step=0.2):
     """ Returns a copy of the color with a darker brightness.
     """
-    h, s, b, a = hsba(clr[0], clr[1], clr[2], clr[3])
-    b = max(0, b-step)
-    return color(rgb(h,s,b,a))
+    h, s, b = rgb_to_hsb(clr.r, clr.g, clr.b)
+    return Color(*hsb_to_rgb(h, s, max(0, b-step), clr.a))
 
 def lighter(clr, step=0.2):
     """ Returns a copy of the color with a lighter brightness.
     """
-    h, s, b, a = hsba(clr[0], clr[1], clr[2], clr[3])
-    b = min(1, b+step)
-    return color(rgb(h,s,b,a))
+    h, s, b = rgb_to_hsb(clr.r, clr.g, clr.b)
+    return Color(*hsb_to_rgb(h, s, min(1, b+step), clr.a))
+
+#--- COLOR ROTATION ----------------------------------------------------------------------------------
+
+# Approximation of the RYB color wheel.
+# In HSB, colors hues range from 0 to 360, 
+# but on the color wheel these values are not evenly distributed. 
+# The second tuple value contains the actual value on the wheel (angle).
+_colorwheel = [
+    (  0,   0), ( 15,   8), ( 30,  17), ( 45,  26),
+    ( 60,  34), ( 75,  41), ( 90,  48), (105,  54),
+    (120,  60), (135,  81), (150, 103), (165, 123),
+    (180, 138), (195, 155), (210, 171), (225, 187),
+    (240, 204), (255, 219), (270, 234), (285, 251),
+    (300, 267), (315, 282), (330, 298), (345, 329), (360, 360)
+]
+
+def rotate_ryb(h, s, b, angle=180):
+    """ Rotates the given H,S,B color (0.0-1.0) on the RYB color wheel.
+        The RYB colorwheel is not mathematically precise,
+        but focuses on aesthetically pleasing complementary colors.
+    """
+    h = h*360 % 360
+    # Find the location (angle) of the hue on the RYB color wheel.
+    for i in range(len(_colorwheel)-1):
+        (x0, y0), (x1, y1) = _colorwheelL[i], _colorwheel[i+1]
+        if y0 <= h <= y1:
+            a = geometry.lerp(x0, x1, t=(h-y0)/(y1-y0))
+            break
+    # Rotate the angle and retrieve the hue.
+    a = (a+angle) % 360
+    for i in range(len(_colorwheel)-1):
+        (x0, y0), (x1, y1) = _colorwheel[i], _colorwheel[i+1]
+        if x0 <= a <= x1:
+            h = geometry.lerp(y0, y1, t=(a-x0)/(x1-x0))
+            break
+    return h/360.0, s, b
+    
+def complement(clr):
+    """ Returns the color opposite on the color wheel.
+        The complementary color contrasts with the given color.
+    """
+    return clr.rotate(180)
+
+def analog(clr, angle=20, d=0.1):
+    """ Returns a random adjacent color on the color wheel.
+        Analogous color schemes can often be found in nature.
+    """
+    h, s, b = rgb_to_hsb(*clr[:3])
+    h, s, b = rotate_ryb(h, s, b, angle=random(-1.0,1.0))
+    s *= 1 - random(-d,d)
+    b *= 1 - random(-d,d)
+    return Color(h, s, b, clr.a, colorspace=HSB)
 
 #--- COLOR MIXIN -------------------------------------------------------------------------------------
 # Drawing commands like rect() have optional parameters fill and stroke to set the color directly.
@@ -217,10 +396,16 @@ def color_mixin(**kwargs):
     stroke = kwargs.get("stroke", _stroke)
     return (fill, stroke)   
 
-#--- COLORPLANE --------------------------------------------------------------------------------------
+#--- COLOR PLANE -------------------------------------------------------------------------------------
+# Not part of the standard API but too convenient to leave out.
 
 def colorplane(x, y, width, height, *a):
     """ Draws a rectangle that emits a different fill color from each corner.
+        An optional number of colors can be given: 
+        - four colors define top left, top right, bottom right and bottom left,
+        - three colors define top left, top right and bottom,
+        - two colors define top and bottom,
+        - no colors assumes black top and white bottom gradient.
     """
     if len(a) == 2:
         # Top and bottom colors.
@@ -235,14 +420,14 @@ def colorplane(x, y, width, height, *a):
         # Black top, white bottom.
         clr1 = clr2 = Color(0,0,0,1)
         clr3 = clr4 = Color(1,1,1,1)
-    glPushMatrix()
-    glTranslatef(x, y, 0)
-    glScalef(width, height, 1)
-    glBegin(GL_QUADS)
     clr1 = Color(clr1)
     clr2 = Color(clr2)
     clr3 = Color(clr3)
     clr4 = Color(clr4)
+    glPushMatrix()
+    glTranslatef(x, y, 0)
+    glScalef(width, height, 1)
+    glBegin(GL_QUADS)
     clr1._apply(); glVertex2f(-0.0,  1.0)
     clr2._apply(); glVertex2f( 1.0,  1.0)
     clr3._apply(); glVertex2f( 1.0, -0.0)
@@ -265,27 +450,41 @@ def colorplane(x, y, width, height, *a):
 Transform = geometry.AffineTransform
 
 def push():
+    """ Pushes the transformation state.
+        Subsequent transformations (translate, rotate, scale) remain in effect until pop() is called.
+    """
     glPushMatrix()
 
 def pop():
+    """ Pops the transformation state.
+        This reverts the transformation to before the last push().
+    """
     glPopMatrix()
 
 def translate(x, y):
+    """ By default, the origin of the layer or canvas is at the bottom left.
+        This origin point will be moved by (x,y) pixels.
+    """
     glTranslatef(x, y, 0)
 
 def rotate(degrees):
+    """ Rotates the transformation state, i.e. all subsequent drawing primitives are rotated.
+        Rotations work incrementally:
+        calling rotate(60) and rotate(30) sets the current rotation to 90.
+    """
     glRotatef(degrees, 0, 0, 1)
 
 def scale(x, y=None):
-    if y == None: 
+    """ Scales the transformation state.
+    """
+    if y is None: 
         y = x
     glScalef(x, y, 1)
 
 def reset():
     """ Resets the transform state of the layer or canvas.
     """
-    glPopMatrix()
-    glPushMatrix()
+    glLoadIdentity()
 
 def transform(mode=None):
     raise NotImplementedError
@@ -293,16 +492,19 @@ def transform(mode=None):
 def skew(x, y):
     raise NotImplementedError
 
-#--- PRIMITIVES --------------------------------------------------------------------------------------
-# Point, line, rect, ellipse, arrow.
+#=====================================================================================================
+
+#--- DRAWING PRIMITIVES ------------------------------------------------------------------------------
+# Drawing primitives: Point, line, rect, ellipse, arrow. star.
+# The fill and stroke are two different shapes put on top of each other.
 
 Point = geometry.Point
 
 def line(x0, y0, x1, y1, **kwargs):
-    """ Draws a straight line from x0, y0 to x1, y1 with the current stroke color.
+    """ Draws a straight line from x0, y0 to x1, y1 with the current stroke color and strokewidth.
     """
     fill, stroke = color_mixin(**kwargs)
-    if stroke != None:
+    if stroke is not None:
         stroke._apply()
         glBegin(GL_LINE_LOOP)
         glVertex2f(x0, y0)
@@ -310,13 +512,14 @@ def line(x0, y0, x1, y1, **kwargs):
         glEnd()
 
 def rect(x, y, width, height, **kwargs):
-    """ Draws a rectangle with bottom left corner at x, y.
-        The current stroke and fill color are applied.
+    """ Draws a rectangle with the bottom left corner at x, y.
+        The current stroke, strokewidth and fill color are applied.
     """
     fill, stroke = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
-        if clr != None:
+        if clr is not None:
             clr._apply()
+            # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
             glVertex2f(x, y)
             glVertex2f(x+width, y)
@@ -324,48 +527,45 @@ def rect(x, y, width, height, **kwargs):
             glVertex2f(x, y+height)
             glEnd()
 
-_ellipse_cache = {}
+_ellipses = {}
 ELLIPSE_SEGMENTS = 50
 def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
-    """ Draws an ellipse with center located at x, y.
-        The current stroke and fill color are applied.
+    """ Draws an ellipse with the center located at x, y.
+        The current stroke, strokewidth and fill color are applied.
     """
-    if not segments in _ellipse_cache:
-        # Cache both a filled and outlined ellipse for the given number of segments.
-        _ellipse_cache[segments] = []
-        for mode in ((GL_POLYGON, GL_LINE_LOOP)):
-            path = glGenLists(1)
-            glNewList(path, GL_COMPILE)
-            glBegin(mode);
-            for i in range(segments):
-                t = 2*pi * float(i)/segments
-                glVertex2f(cos(t)*0.5, sin(t)*0.5);
-            glEnd();
-            glEndList()
-            _ellipse_cache[segments].append(path)
-        paths = _ellipse_cache[segments]
+    if not segments in _ellipses:
+        # For the given amount of line segments, calculate the ellipse once.
+        # Then reuse the cached ellipse by scaling it to the desired size.
+        _ellipses[segments] = []
+        for mode in (GL_POLYGON, GL_LINE_LOOP):
+            _ellipses[segments].append(precompile(lambda:(
+                glBegin(mode),
+               [glVertex2f(cos(t)/2, sin(t)/2) for t in [2*pi*i/segments for i in range(segments)]],
+                glEnd()
+            )))
     fill, stroke = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
-        if clr != None:
+        if clr is not None:
             clr._apply()
-            path = _ellipse_cache[segments][i]
             glPushMatrix()
             glTranslatef(x, y, 0)
             glScalef(width, height, 1)
-            glCallList(path)
+            glCallList(_ellipses[segments][i])
             glPopMatrix()
 
 oval = ellipse # Backwards compatibility.
 
 def arrow(x, y, width, **kwargs):
     """ Draws an arrow with its tip located at x, y.
+        The current stroke, strokewidth and fill color are applied.
     """
     head = width * 0.4
     tail = width * 0.2
     fill, stroke = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
-        if clr != None:
+        if clr is not None:
             clr._apply()
+            # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
             glVertex2f(x, y)
             glVertex2f(x-head, y+head)
@@ -379,161 +579,229 @@ def arrow(x, y, width, **kwargs):
 
 def star(x, y, points=20, outer=100, inner=50, **kwargs):
     """ Draws a star with the given points, outer radius and inner radius.
+        The current stroke, strokewidth and fill color are applied.
     """
     p = BezierPath(**kwargs)
-    p.moveto(x, y)
+    p.moveto(x, y+outer)
     for i in range(0, int(2*points)+1):
-        angle = i * pi / points
-        dx = sin(angle)
-        dy = cos(angle)
-        if i % 2:
-            radius = inner
-        else:
-            radius = outer
-        dx = x + radius*dx
-        dy = y + radius*dy
-        p.lineto(dx,dy)
+        r = (outer, inner)[i%2]
+        a = pi*i/points
+        p.lineto(x+r*sin(a), y+r*cos(a))
     p.closepath()
-    p.draw()
-    
-#--- PATH --------------------------------------------------------------------------------------------
+    if kwargs.get("draw", True): 
+        p.draw()
+    return p
+
+#=====================================================================================================
+
+#--- BEZIER PATH -------------------------------------------------------------------------------------
 # A BezierPath class with lineto(), curveto() and moveto() commands.
 # It has all the path math functionality from NodeBox and a ray casting algorithm for contains().
+# A number of caching mechanisms are used for performance:
+# drawn vertices, segment lengths, path bounds, and a hit test area for BezierPath.contains().
+# For optimal performance, the path should be created once (not every frame) and left unmodified.
+# When points in the path are added, removed or modified, a _dirty flag is set.
+# When dirty, the cache will be cleared and the new path recalculated.
+# If the path is being drawn with a fill color, this means doing tessellation
+# (i.e. additional math for finding out if parts overlap and punch a hole in the shape).
 
 MOVETO  = "moveto"
 LINETO  = "lineto"
 CURVETO = "curveto"
 CLOSE   = "close"
 
-CURVE_SEGMENTS = 30 # The number of line segments a curve is made up of.
+RELATIVE = "relative" # Number of straight lines to represent a curve = 20% of curve length.
+RELATIVE_PRECISION = 0.2
 
-class PathError(Exception): pass
-class NoCurrentPointForPath(Exception): pass
-class NoCurrentPath(Exception): pass
+class PathError(Exception): 
+    pass
+class NoCurrentPointForPath(Exception): 
+    pass
+class NoCurrentPath(Exception): 
+    pass
 
-class PathElement:
+class PathPoint(Point):
     
-    def __init__(self, cmd, x, y, vx1, vy1, vx2, vy2, segments=CURVE_SEGMENTS):
-        # XXX - the parameters differ from PathElement in NodeBox.
-        self.cmd = cmd
-        self.x = x
-        self.y = y
-        self.ctrl1 = Point(vx1, vy1)
-        self.ctrl2 = Point(vx2, vy2)
-        self._segments = segments
+    def __init__(self, x=0, y=0):
+        """ A control handle for PathElement.
+        """
+        self._x = x
+        self._y = y
+        self._dirty = False
     
-    def copy(self):
-        return PathElement(
-            self.cmd, 
-            self.x, 
-            self.y, 
-            self.ctrl1.x, 
-            self.ctrl1.y, 
-            self.ctrl2.x, 
-            self.ctrl2.y, 
-            self._segments
-        )
+    def _get_x(self): return self._x
+    def _set_x(self, v): 
+        self._x = v
+        self._dirty = True
+
+    def _get_y(self): return self._y
+    def _set_y(self, v):
+        self._y = v
+        self._dirty = True
+        
+    x = property(_get_x, _set_x)
+    y = property(_get_y, _set_y)
     
+    def copy(self, parent=None):
+        return PathPoint(self._x, self._y)
+
+class PathElement(object):
+    
+    def __init__(self, cmd=None, pts=None):
+        """ A point in the path, optionally with control handles:
+            - MOVETO  : the list of points contains a single (x,y)-tuple.
+            - LINETO  : the list of points contains a single (x,y)-tuple.
+            - CURVETO : the list of points contains (x,y), (vx1,vy1), (vx2,vy2) tuples.
+            - CLOSETO : no points.
+        """
+        if cmd == MOVETO \
+        or cmd == LINETO:
+            pt, h1, h2 = pts[0], pts[0], pts[0]
+        elif cmd == CURVETO:
+            pt, h1, h2 = pts[2], pts[0], pts[1]
+        else:
+            pt, h1, h2 = (0,0), (0,0), (0,0)
+        self._cmd    = cmd
+        self._x      = pt[0]
+        self._y      = pt[1]
+        self._ctrl1  = PathPoint(h1[0], h1[1])
+        self._ctrl2  = PathPoint(h2[0], h2[1])
+        self.__dirty = False
+
+    def _get_dirty(self):
+        return self.__dirty \
+            or self.ctrl1._dirty \
+            or self.ctrl2._dirty
+            
+    def _set_dirty(self, b):
+        self.__dirty = b
+        self.ctrl1._dirty = b
+        self.ctrl2._dirty = b
+        
+    _dirty = property(_get_dirty, _set_dirty)
+
+    @property
+    def cmd(self):
+        return self._cmd
+
+    def _get_x(self): return self._x
+    def _set_x(self, v): 
+        self._x = v
+        self.__dirty = True
+        
+    def _get_y(self): return self._y
+    def _set_y(self, v): 
+        self._y = v
+        self.__dirty = True
+        
+    x = property(_get_x, _set_x)
+    y = property(_get_y, _set_y)
+
+    def _get_ctrl1(self): return self._ctrl1
+    def _set_ctrl1(self, v): 
+        self._ctrl1 = PathPoint(v.x, v.y)
+        self.__dirty = True
+
+    def _get_ctrl2(self): return self._ctrl2
+    def _set_ctrl2(self, v): 
+        self._ctrl2 = PathPoint(v.x, v.y)
+        self.__dirty = True
+    
+    ctrl1 = property(_get_ctrl1, _set_ctrl1)
+    ctrl2 = property(_get_ctrl2, _set_ctrl2)
+
     def __eq__(self, pt):
         if not isinstance(pt, PathElement): return False
         return self.cmd == pt.cmd \
            and self.x == pt.x \
            and self.y == pt.y \
            and self.ctrl1 == pt.ctrl1 \
-           and self.ctrl2 == pt.ctrl2 \
-           and self._segments == pt._segments
+           and self.ctrl2 == pt.ctrl2
         
     def __ne__(self, pt):
         return not self.__eq__(pt)
 
+    def copy(self):
+        if self.cmd == MOVETO \
+        or self.cmd == LINETO:
+            pts = ((self.x, self.y),)
+        elif self.cmd == CURVETO:
+            pts = ((self.ctrl1.x, self.ctrl1.y), (self.ctrl2.x, self.ctrl2.y), (self.x, self.y))
+        else:
+            pts = None
+        return PathElement(self.cmd, pts)
+
 class BezierPath(list):
     
     def __init__(self, path=None, **kwargs):
-        if isinstance(path, (list, tuple)):
-            self.extend(path)
-        elif isinstance(path, BezierPath):
+        """ A list of PathElements describing the curves and lines that make up the path.
+        """
+        if isinstance(path, (BezierPath, list, tuple)):
             self.extend([pt.copy() for pt in path])
-        self._kwargs = kwargs
-        self._segment_cache = None
-        self._bounds = None
-    
+        self._kwargs   = kwargs
+        self._cache    = None # Cached vertices for drawing.
+        self._segments = None # Cached segment lengths.
+        self._bounds   = None # Cached bounding rectangle.
+        self._polygon  = None # Cached polygon hit test area.
+        self._dirty    = False
+
     def copy(self):
         return BezierPath(self, **self._kwargs)
     
+    def insert(self, i, pathelement):
+        self._dirty = True; list.insert(self, i, pathelement)
+    def append(self, pathelement):
+        self._dirty = True; list.append(self, pathelement)
+    def extend(self, pathelements):
+        self._dirty = True; list.extend(self, pathelements)
+    def remove(self, pathelement):
+        self._dirty = True; list.remove(self, pathelement)
+    def pop(self, i):
+        self._dirty = True; list.pop(self, i)
+    def __setitem__(self, i, pathelement):
+        self._dirty = True; list.__setitem__(self, i, pathelement)
+    def __delitem__(self, i):
+        self._dirty = True; list.__delitem__(self, i)
+    def sort(self):
+        self._dirty = True; list.sort(self)
+    def reverse(self):
+        self._dirty = True; list.reverse(self)
+    
+    def _update(self):
+        # Called from BezierPath.draw().
+        # If points were added or removed, clear the cache.
+        b = self._dirty
+        for pt in self: b = b or pt._dirty; pt._dirty = False
+        if b:
+            if self._cache is not None:
+                if self._cache[0]: flush(self._cache[0])
+                if self._cache[1]: flush(self._cache[1])
+            self._cache = self._segments = self._bounds = self._polygon = None
+            self._dirty = False
+    
     def moveto(self, x, y):
-        """ Add a new point to the path at x, y.
+        """ Adds a new point to the path at x, y.
         """
-        self._segment_cache = self._bounds = None
-        self.append(PathElement(MOVETO, x, y, x, y, x, y))
+        self.append(PathElement(MOVETO, ((x, y),)))
     
     def lineto(self, x, y):
-        """ Add a line from the previous point to x, y.
+        """ Adds a line from the previous point to x, y.
         """
-        self._segment_cache = self._bounds = None
-        self.append(PathElement(LINETO, x, y, x, y, x, y))
+        self.append(PathElement(LINETO, ((x, y),)))
         
-    def curveto(self, x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
-        """ Add a Bezier-curve from the previous to x3, y3.
+    def curveto(self, x1, y1, x2, y2, x3, y3):
+        """ Adds a Bezier-curve from the previous point to x3, y3.
             The curvature is determined by control handles x1, y1 and x2, y2.
         """
-        self._segment_cache = self._bounds = None
-        self.append(PathElement(CURVETO, x3, y3, x1, y1, x2, y2, segments))
+        self.append(PathElement(CURVETO, ((x1, y1), (x2, y2), (x3, y3))))
     
     def closepath(self):
-        """ Add a line from the previous point to the last MOVETO.
+        """ Adds a line from the previous point to the last MOVETO.
         """
-        self._segment_cache = self._bounds = None
-        self.append(PathElement(CLOSE, 0, 0, 0, 0, 0, 0))
-    
-    def _draw_line(self, x0, y0, x1, y1):
-        glVertex2f(x0, y0)
-        glVertex2f(x1, y1)
-    
-    def _draw_curve(self, x0, y0, x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
-        # Curves are interpolated from a number of straight line segments.
-        xi, yi = x0, y0
-        for i in range(segments):
-            xj, yj, vx1, vy1, vx2, vy2 = bezier.curvepoint(float(i)/segments, x0, y0, x1, y1, x2, y2, x3, y3)
-            glVertex2f(xi, yi)
-            glVertex2f(xj, yj)
-            xi, yi = xj, yj
-    
-    def draw(self, **kwargs):
-        fill, stroke = color_mixin(**self._kwargs)
-        for i, clr in enumerate((fill, stroke)):
-            if clr != None:
-                clr._apply()
-                glBegin((GL_POLYGON, GL_LINE_STRIP)[i])
-                x0, y0 = None, None
-                closeto = None
-                for pt in self:
-                    if (pt.cmd == LINETO or pt.cmd == CURVETO) and x0 == y0 == None:
-                        raise NoCurrentPointForPathError
-                    elif pt.cmd == LINETO:
-                        self._draw_line(x0, y0, pt.x, pt.y)
-                    elif pt.cmd == CURVETO:
-                        self._draw_curve(
-                            x0, 
-                            y0, 
-                            pt.ctrl1.x, 
-                            pt.ctrl1.y, 
-                            pt.ctrl2.x, 
-                            pt.ctrl2.y, 
-                            pt.x, 
-                            pt.y, 
-                            pt._segments
-                        )
-                    elif pt.cmd == MOVETO:
-                        closeto = pt
-                        glEnd() # close this contour and start the next
-                        glBegin((GL_POLYGON, GL_LINE_STRIP)[i])
-                    elif pt.cmd == CLOSE and closeto != None:
-                        self._draw_line(x0, y0, closeto.x, closeto.y)
-                    x0, y0 = pt.x, pt.y
-                glEnd()
+        self.append(PathElement(CLOSE))
 
     def rect(self, x, y, width, height):
-        """ Add a rectangle to the path.
+        """ Adds a rectangle to the path.
         """
         self.moveto(x, y)
         self.lineto(x+width, y)
@@ -541,77 +809,140 @@ class BezierPath(list):
         self.lineto(x, y+height)
         self.lineto(x, y)
     
-    def ellipse(self, x, y, width, height, segments=ELLIPSE_SEGMENTS):
-        """ Add an ellipse to the path.
+    def ellipse(self, x, y, width, height):
+        """ Adds an ellipse to the path.
         """
-        # Contrary to NodeBox, it is actually faster to draw each ellipse separately
-        # than all of them together in a single path (path ellipses are not cached).
-        w, h, s = width*0.5, height*0.5, segments/4
+        w, h = width*0.5, height*0.5
         k = 0.5522847498    # kappa: (-1 + sqrt(2)) / 3 * 4
         self.moveto(x, y-h) # http://www.whizkidtech.redprince.net/bezier/circle/
-        self.curveto(x+w*k, y-h,   x+w,   y-h*k, x+w, y,   s)
-        self.curveto(x+w,   y+h*k, x+w*k, y+h,   x,   y+h, s)
-        self.curveto(x-w*k, y+h,   x-w,   y+h*k, x-w, y,   s)
-        self.curveto(x-w,   y-h*k, x-w*k, y-h,   x,   y-h, s)
+        self.curveto(x+w*k, y-h,   x+w,   y-h*k, x+w, y, )
+        self.curveto(x+w,   y+h*k, x+w*k, y+h,   x,   y+h)
+        self.curveto(x-w*k, y+h,   x-w,   y+h*k, x-w, y, )
+        self.curveto(x-w,   y-h*k, x-w*k, y-h,   x,   y-h)
         self.closepath()
         
     oval = ellipse
 
-    def point(self, t, precision=10):
-        """ Calculates point at time t (0.0-1.0) on the path.
+    def flatten(self, precision=RELATIVE):
+        """ Returns a list of contours, in which each contour is a list of (x,y)-tuples.
+            The precision determines the number of straight lines to use as a substition for a curve.
+            It can be a fixed number (int) or relative to the curve length (float or RELATIVE).
+        """
+        if precision == RELATIVE:
+            precision = RELATIVE_PRECISION
+        contours = [[]]
+        x0, y0 = None, None
+        closeto = None
+        for pt in self:
+            if (pt.cmd == LINETO or pt.cmd == CURVETO) and x0 == y0 is None:
+                raise NoCurrentPointForPathError
+            elif pt.cmd == LINETO:
+                contours[-1].append((x0, y0))
+                contours[-1].append((pt.x, pt.y))
+            elif pt.cmd == CURVETO:
+                # Curves are interpolated from a number of straight line segments.
+                # With relative precision, we use the (rough) curve length to determine the number of lines.
+                x1, y1, x2, y2, x3, y3 =  pt.ctrl1.x, pt.ctrl1.y, pt.ctrl2.x, pt.ctrl2.y, pt.x, pt.y
+                if isinstance(precision, float):
+                    n = int(precision * bezier.curvelength(x0, y0, x1, y1, x2, y2, x3, y3, 3))
+                else:
+                    n = int(precision)
+                xi, yi = x0, y0
+                for i in range(n+1):
+                    xj, yj, vx1, vy1, vx2, vy2 = bezier.curvepoint(float(i)/n, x0, y0, x1, y1, x2, y2, x3, y3)
+                    contours[-1].append((xi, yi))
+                    contours[-1].append((xj, yj))
+                    xi, yi = xj, yj
+            elif pt.cmd == MOVETO:
+                contours.append([]) # Start a new contour.
+                closeto = pt
+            elif pt.cmd == CLOSE and closeto is not None:
+                contours[-1].append((x0, y0))
+                contours[-1].append((closeto.x, closeto.y))
+            x0, y0 = pt.x, pt.y
+        return contours
+
+    def draw(self, precision=RELATIVE):
+        """ Draws the path.
+            The precision determines the number of straight lines to use as a substition for a curve.
+            It can be a fixed number (int) or relative to the curve length (float or RELATIVE).
+        """
+        fill, stroke = color_mixin(**self._kwargs)
+        def _draw_fill(contours):
+            # Drawing commands for the path fill (as triangles by tessellating the contours).
+            v = geometry.tesselate(contours)
+            glBegin(GL_TRIANGLES),
+            for x, y in v:
+                glVertex3f(x, y, 0)
+            glEnd()
+        def _draw_stroke(contours):
+            # Drawing commands for the path stroke.
+            for path in contours:
+                glBegin(GL_LINE_STRIP)
+                for x, y in path:
+                    glVertex2f(x, y)
+                glEnd()
+        self._update() # Remove the cache if points were modified.
+        if self._cache is None \
+        or self._cache[-1] != precision:
+            # Calculate and cache the vertices as Display Lists.
+            # If the path requires a fill color, it will have to be tessellated.
+            if self._cache is not None:
+                if self._cache[0]: flush(self._cache[0])
+                if self._cache[1]: flush(self._cache[1])
+            contours = self.flatten(precision)
+            self._cache = [None, None, precision]
+            if fill   : self._cache[0] = precompile(_draw_fill, contours)
+            if stroke : self._cache[1] = precompile(_draw_stroke, contours)
+        if fill:
+            fill._apply()
+            glCallList(self._cache[0])
+        if stroke:
+            stroke._apply()
+            glCallList(self._cache[1])
+
+    def point(self, t):
+        """ Returns the PathElement at time t (0.0-1.0) on the path.
             See the linear interpolation math in bezier.py.
         """
-        if self._segment_cache == None:
-            self._segment_cache = bezier.length(self, segmented=True, n=precision)
-        return bezier.point(self, t, segments=self._segment_cache)
+        if self._segments is None:
+            self._segments = bezier.length(self, segmented=True, n=10)
+        return bezier.point(self, t, segments=self._segments)
     
     def points(self, amount=2, start=0.0, end=1.0):
         """ Returns a list of PathElements along the path.
             To omit the last point on closed paths: end=1-1.0/amount
         """
-        n = end - start
-        d = n
-        if amount>1: 
-            d = n / (amount-1)
-        for i in xrange(amount):
-            yield self.point(start+d*i)
+        if self._segments is None:
+            self._segments = bezier.length(self, segmented=True, n=10)
+        return bezier.points(self, amount, start, end, segments=self._segments)
     
     def addpoint(self, t):
         """ Inserts a new PathElement at time t (0.0-1.0) on the path.
         """
-        self._segment_cache = None
+        self._segments = None
         bezier.insert_point(self, t)
         
     split = addpoint
     
     @property 
-    def length(self):
+    def length(self, precision=10):
         """ Returns an approximation of the total length of the path.
         """
-        return bezier.length(self, segmented=False, n=10)
+        return bezier.length(self, segmented=False, n=precision)
     
     @property
     def contours(self):
-        """ Returns a list of contours (segments separated by a MOVETO) in the path.
+        """ Returns a list of contours (i.e. segments separated by a MOVETO) in the path.
+            Each contour is a BezierPath object.
         """
         return bezier.contours(self)
-
-    def contains(self, x, y, precision=100):
-        """ Returns True when point (x,y) falls within the contours of the path.
-        """
-        bx, by, bw, bh = self.bounds
-        if bx <= x <= bx+bw and \
-           by <= y <= by+bh:
-            # Ray casting algorithm:
-            points = [(pt.x,pt.y) for pt in self.points(precision)]
-            return geometry.point_in_polygon(points, x, y)
-        return False
 
     @property
     def bounds(self, precision=100):
         """ Returns a (x, y, width, height)-tuple of the approximate path dimensions.
         """
-        if self._bounds == None:
+        if self._bounds is None:
             l = t = float( "inf")
             r = b = float("-inf")
             for pt in self.points(precision):
@@ -622,149 +953,391 @@ class BezierPath(list):
             self._bounds = (l, t, r-l, b-t)
         return self._bounds
 
+    def contains(self, x, y, precision=100):
+        """ Returns True when point (x,y) falls within the contours of the path.
+        """
+        bx, by, bw, bh = self.bounds
+        if bx <= x <= bx+bw and \
+           by <= y <= by+bh:
+                if self._polygon is None \
+                or self._polygon[1] != precision:
+                    self._polygon = [(pt.x,pt.y) for pt in self.points(precision)], precision
+                # Ray casting algorithm:
+                return geometry.point_in_polygon(self._polygon[0], x, y)
+        return False
+
+    def hash(self, state=None, decimal=1):
+        """ Returns the path id, based on the position and handles of its PathElements.
+            Two distinct BezierPath objects that draw the same path therefore have the same id.
+        """
+        f = lambda x: int(x*10**decimal) # Format floats as strings with given decimal precision.
+        id = [state]
+        for pt in self: id.extend((
+            pt.cmd, f(pt.x), f(pt.y), f(pt.ctrl1.x), f(pt.ctrl1.y), f(pt.ctrl2.x), f(pt.ctrl2.y)))
+        id = str(id)
+        id = md5(id).hexdigest()
+        return id
+        
+    def __del__(self):
+        # Note: it is important that __del__() is called since it unloads the cache from GPU.
+        # BezierPath and PathElement should contain no circular references, e.g. no PathElement.parent.
+        if self._cache is not None:
+            if self._cache[0]: flush(self._cache[0])
+            if self._cache[1]: flush(self._cache[1])
+
 def drawpath(path, **kwargs):
     """ Draws the given BezierPath (or list of PathElements).
+        The current stroke, strokewidth and fill color are applied.
     """
-    if isinstance(path, (list, tuple)):
+    if not isinstance(path, BezierPath):
         path = BezierPath(path)
     path.draw(**kwargs)
 
 _autoclosepath = True
 def autoclosepath(close=False):
+    """ Paths constructed with beginpath() and endpath() are automatically closed.
+    """
     global _autoclosepath
     _autoclosepath = close
 
 _path = None
 def beginpath(x, y):
+    """ Starts a new path at (x,y).
+        The commands moveto(), lineto(), curveto() and closepath() 
+        can then be used between beginpath() and endpath() calls.
+    """
     global _path
     _path = BezierPath()
     _path.moveto(x, y)
 
 def moveto(x, y):
-    if _path == None: 
+    """ Moves the current point in the current path to (x,y).
+    """
+    if _path is None: 
         raise NoCurrentPath
     _path.moveto(x, y)
 
 def lineto(x, y):
-    if _path == None: 
+    """ Draws a line from the current point in the current path to (x,y).
+    """
+    if _path is None: 
         raise NoCurrentPath
     _path.lineto(x, y)
 
-def curveto(x1, y1, x2, y2, x3, y3, segments=CURVE_SEGMENTS):
-    if _path == None: 
+def curveto(x1, y1, x2, y2, x3, y3):
+    """ Draws a curve from the current point in the current path to (x3,y3).
+        The curvature is determined by control handles x1, y1 and x2, y2.
+    """
+    if _path is None: 
         raise NoCurrentPath
-    _path.curveto(x1, y1, x2, y2, x3, y3, segments)
+    _path.curveto(x1, y1, x2, y2, x3, y3)
 
 def closepath():
-    if _path == None: 
+    """ Closes the current path with a straight line to the last MOVETO.
+    """
+    if _path is None: 
         raise NoCurrentPath
     _path.closepath()
 
-def endpath(draw=True):
+def endpath(draw=True, **kwargs):
+    """ Draws and returns the current path.
+        With draw=False, only returns the path so it can be manipulated and drawn with drawpath().
+    """
     global _path, _autoclosepath
-    if _path == None: 
+    if _path is None: 
         raise NoCurrentPath
-    if _autoclosepath == True:
+    if _autoclosepath is True:
         _path.closepath()
     if draw:
-        _path.draw()
+        _path.draw(**kwargs)
     p, _path = _path, None
     return p
 
 def findpath(points, curvature=1.0):
-    bezier.findpath(points, curvature)
+    """ Returns a smooth BezierPath from the given list of (x,y)-tuples.
+    """
+    return bezier.findpath(points, curvature)
 
-def autoclosepath(close=False):
-    raise NotImplementedError
+#--- CLIPPING PATH -----------------------------------------------------------------------------------
 
 def beginclip(path):
-    raise NotImplementedError
+    """ Enables the given BezierPath as a clipping mask.
+        Drawing commands between beginclip() and endclip() are constrained to the shape of the path.
+    """
+    # Enable the stencil buffer to limit the area of rendering (stenciling).
+    glClear(GL_STENCIL_BUFFER_BIT)
+    glEnable(GL_STENCIL_TEST)
+    glStencilFunc(GL_NOTEQUAL, 0, 0)
+    glStencilOp(GL_INCR, GL_INCR, GL_INCR)
+    glDisable(GL_DEPTH_TEST)
+    path.draw()
+    glEnable(GL_DEPTH_TEST)
+    glStencilFunc(GL_EQUAL, 1, 1)
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)
 
 def endclip():
-    raise NotImplementedError
+    glDisable(GL_STENCIL_TEST)
 
 #=====================================================================================================
 
 #--- IMAGE -------------------------------------------------------------------------------------------
-# Caching, drawing, pixels, offscreen buffer and filters.
+# Textures and quad vertices are cached for performance.
+# Textures remain in cache for the duration of the program.
+# Quad vertices are cached as Display Lists and destroyed when the Image object is deleted.
+# For optimal performance, images should be created once (not every frame) and its quads left unmodified.
+# Performance should be comparable to (moving) pyglet.Sprites drawn in a batch.
 
-pow2 = [2**n for n in range(20)]
+pow2 = [2**n for n in range(20)] # [1, 2, 4, 8, 16, 32, 64, ...]
 
 def ceil2(x):
     """ Returns the nearest power of 2 that is higher than x, e.g. 700 => 1024.
     """
     for y in pow2:
-        if y >= x:
-            return y
+        if y >= x: return y
 
-class ImageError(Exception): pass
+class ImageError(Exception): 
+    pass
 
-_image_cache = {}
-def load_image(img, data=None):
-    """ Returns a (cached) texture based on the given image filename, Pixel object, byte data.
-        If the given image is already a texture, simply return it.
+_texture_cache  = {} # pyglet.Texture referenced by filename.
+_texture_cached = {} # pyglet.Texture.id is in keys once the image has been cached.
+def texture(img, data=None):
+    """ Returns a (cached) texture from the given image filename or byte data.
+        When a Image or Pixels object is given, return the associated texture.
     """
-    # Image texture stored in cache, referenced by file path.
-    if isinstance(img, str) and img in _image_cache:
-        return _image_cache[img]
-    # Image texture, return original.
-    elif isinstance(img, pyglet_image.Texture):
-        return img
-    # Pixels object, return pixel texture.
-    elif isinstance(img, Pixels):
-        return img.texture
+    # Image texture stored in cache, referenced by file path (or a custom id defined with cache()).
+    if isinstance(img, (str, int)) and img in _texture_cache:
+        return _texture_cache[img]
     # Image file path, load it, cache it, return texture.
-    elif isinstance(img, str):
-        _image_cache[img] = pyglet_image.load(img).get_texture()
-        return _image_cache[img]
+    if isinstance(img, str):
+        cache(img, pyglet.image.load(img).get_texture())
+        return _texture_cache[img]
+    # Image texture, return original.
+    if isinstance(img, pyglet.image.Texture):
+        return img
+    # Image object, return image texture
+    # (if you use this to create a new image, the new image will do expensive caching as well).
+    if isinstance(img, Image):
+        return img.texture
+    # Pixels object, return pixel texture.
+    if isinstance(img, Pixels):
+        return img.texture
     # Image data as byte string, load it, return texture.
-    elif isinstance(data, str):
-        return pyglet_image.load(None, file=StringIO(data)).get_texture()
+    if isinstance(data, str):
+        return pyglet.image.load(None, file=StringIO(data)).get_texture()
     # Don't know how to handle this image.
-    raise ImageError, "unknown image type: "+str(img.__class__)
+    raise ImageError, "unknown image type: %s" % str(img.__class__)
 
-def cache(img, id):
+def cache(id, texture):
     """ Store the given image in cache, referenced by id (which can then be passed to image()).
         This is useful for procedurally rendered images (which are not stored in cache by default).
     """
-    _image_cache[id] = img
-    return img
+    if not isinstance(texture, pyglet.image.Texture):
+        raise ValueError, "can only cache texture, not %s" % texture.__class__.__name__
+    _texture_cache[id] = texture
+    _texture_cached[_texture_cache[id].id] = True
+    
+def cached(texture):
+    """ Returns True if the texture has been cached.
+    """
+    return texture.id in _texture_cached
+    
+def _render(texture, quad=(0,0,0,0,0,0,0,0)):
+    """ Renders the texture on the canvas inside a quadtriliteral (i.e. rectangle).
+        The quadtriliteral can be distorted by giving corner offset coordinates.
+    """
+    t = texture.tex_coords # power-2 dimensions
+    w = texture.width      # See Pyglet programming guide -> OpenGL imaging.
+    h = texture.height
+    dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4 = quad or (0,0,0,0,0,0,0,0)
+    glEnable(texture.target)
+    glBindTexture(texture.target, texture.id)
+    glBegin(GL_QUADS)
+    glTexCoord3f(t[0], t[1],  t[2] ); glVertex3f(dx4,   dy4,   0)
+    glTexCoord3f(t[3], t[4],  t[5] ); glVertex3f(dx3+w, dy3,   0)
+    glTexCoord3f(t[6], t[7],  t[8] ); glVertex3f(dx2+w, dy2+h, 0)
+    glTexCoord3f(t[9], t[10], t[11]); glVertex3f(dx1,   dy1+h, 0)
+    glEnd()
+    glDisable(texture.target)
 
+class Quad(list):
+    
+    def __init__(self, dx1=0, dy1=0, dx2=0, dy2=0, dx3=0, dy3=0, dx4=0, dy4=0):
+        """ Describes the four-sided polygon on which an image texture is "mounted".
+            This is a quadrilateral (four sides) of which the vertices do not necessarily
+            have a straight angle (i.e. the corners can be distorted).
+        """
+        list.__init__(self, (dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4))
+        self._dirty = True # Image objects poll Quad._dirty to check if the image cache is outdated.
+    
+    def copy(self):
+        return Quad(*self)
+    
+    def reset(self):
+        list.__init__(self, (0,0,0,0,0,0,0,0))
+        self._dirty = True
+    
+    def __setitem__(self, i, v):
+        list.__setitem__(self, i, v)
+        self._dirty = True
+
+    def _get_dx1(self): return self[0]
+    def _get_dy1(self): return self[1]
+    def _get_dx2(self): return self[2]
+    def _get_dy2(self): return self[3]
+    def _get_dx3(self): return self[4]
+    def _get_dy3(self): return self[5]
+    def _get_dx4(self): return self[6]
+    def _get_dy4(self): return self[7]
+
+    def _set_dx1(self, v): self[0] = v
+    def _set_dy1(self, v): self[1] = v
+    def _set_dx2(self, v): self[2] = v
+    def _set_dy2(self, v): self[3] = v
+    def _set_dx3(self, v): self[4] = v
+    def _set_dy3(self, v): self[5] = v
+    def _set_dx4(self, v): self[6] = v
+    def _set_dy4(self, v): self[7] = v
+    
+    dx1 = property(_get_dx1, _set_dx1)
+    dy1 = property(_get_dy1, _set_dy1)
+    dx2 = property(_get_dx2, _set_dx2)
+    dy2 = property(_get_dy2, _set_dy2)
+    dx3 = property(_get_dx3, _set_dx3)
+    dy3 = property(_get_dy3, _set_dy3)
+    dx4 = property(_get_dx4, _set_dx4)
+    dy4 = property(_get_dy4, _set_dy4)
+
+class Image:
+    
+    def __init__(self, path, x=0, y=0, width=None, height=None, data=None):
+        """ A texture that can be drawn at a given position.
+            The quadrilateral in which the texture is drawn can be distorted (slow, image cache is flushed).
+            The image can be resized, colorized and its opacity can be set.
+        """
+        self._src     = (path, data)
+        self._texture = texture(path, data=data)
+        self._cache   = None
+        self.x        = x
+        self.y        = y
+        self.width    = width  or self._texture.width  # Scaled width, Image.texture.width yields original width.
+        self.height   = height or self._texture.height # Scaled height, Image.texture.height yields original height.
+        self.quad     = Quad()
+        self.color    = Color(1.0, 1.0, 1.0, 1.0)
+    
+    def copy(self, texture=None):
+        if texture is None:
+            img = Image(self._src[0], data=self._src[1])
+        else:
+            img = Image(texture)
+        img.x      = self.x
+        img.x      = self.y
+        img.width  = self.width
+        img.height = self.height
+        img.quad   = self.quad.copy()
+        img.color  = self.color.copy()
+        return img
+    
+    @property
+    def id(self):
+        return self._texture.id
+    
+    @property
+    def texture(self):
+        return self._texture
+    
+    def _get_alpha(self):
+        return self.color[3]
+    def _set_alpha(self, v):
+        self.color[3] = v
+    alpha = property(_get_alpha, _set_alpha)
+
+    def distort(self, dx1=0, dy1=0, dx2=0, dy2=0, dx3=0, dy3=0, dx4=0, dy4=0):
+        """ Adjusts the four-sided polygon on which an image texture is "mounted",
+            by incrementing the corner coordinates with the given values.
+        """
+        for i, v in enumerate((dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4)):
+            if v != 0: 
+                self.quad[i] += v
+
+    def adjust(r=1.0, g=1.0, b=1.0, a=1.0):
+        """ Adjusts the image color by multiplying R,G,B,A channels with the given values.
+        """
+        self.color[0] *= r
+        self.color[1] *= g
+        self.color[2] *= b
+        self.color[3] *= a
+    
+    def draw(self):
+        """ Draws the image.
+        """
+        if self._cache is None or self.quad._dirty:
+            # Calculate and cache the quad vertices as a Display List.
+            # If the quad has changed, update the cache.
+            flush(self._cache)
+            self._cache = precompile(_render, self._texture, self.quad)
+            self.quad._dirty = False
+        w = float(self.width) / self._texture.width
+        h = float(self.height) / self._texture.height
+        glPushMatrix()
+        glTranslatef(self.x, self.y, 0)
+        glScalef(w, h, 0)
+        glColor4f(*self.color)
+        glCallList(self._cache)
+        glPopMatrix()
+        
+    def __del__(self):
+        if self._cache is not None:
+            flush(self._cache)
+
+_IMAGE_CACHE = 200
+_image_cache = {} # Image object referenced by Image.texture.id.
+_image_queue = [] # Most recent id's are at the front of the list.
 def image(img, x=0, y=0, width=None, height=None, 
-          alpha=1.0, color=(1,1,1), quad=(0,0,0,0,0,0,0,0), filter=None, data=None, draw=True):
-    """ Draws the image at x, y, scaling it to the given with and height.
+          alpha=None, color=None, quad=None, filter=None, data=None, draw=True):
+    """ Draws the image at (x,y), scaling it to the given width and height.
         The image's transparency can be set with alpha (0.0-1.0).
         Applies the given color adjustment, quad distortion and filter (one filter can be specified).
         Note: with a filter enabled, alpha and color will not be applied.
         This is because the filter overrides the default drawing behavior with its own.
     """
-    img = load_image(img, data)
+    if not isinstance(img, Image):
+        # If the given image is not an Image object, create one on the fly.
+        # This object is cached for reuse - as long as no quad distortion is defined.
+        # The cache has a limited size (100), so the oldest Image objects are deleted.
+        t = texture(img, data=data)
+        if t.id in _image_cache: 
+            img = _image_cache[t.id]
+        else:
+            img = Image(img, data=data)
+            if quad is None:
+                _image_cache[img.texture.id] = img
+                _image_queue.insert(0, img.texture.id)
+                for id in reversed(_image_queue[_IMAGE_CACHE:]): 
+                    del _image_cache[id]
+                    del _image_queue[-1]
+    # Given parameters override Image attributes.
+    if x is not None:
+        img.x = x
+    if y is not None:
+        img.y = y
+    if width is not None:
+        img.width = width
+    if height is not None:
+        img.height = height
+    if color is not None:
+        img.color[0] = color[0]
+        img.color[1] = color[1]
+        img.color[2] = color[2]
+    if alpha is not None:
+        img.color[3] = alpha
+    if quad is not None:
+        img.quad = Quad(*quad)
+    # Draw the image.
     if draw:
-        t = img.tex_coords # power-2 dimensions
-        w = img.width      # See Pyglet programming guide -> OpenGL imaging.
-        h = img.height
-        if width != None:
-            w += width-w
-        if height != None: 
-            h += height-h
-        dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4 = quad
         if filter:
-            filter.image = img # Register the current image with the filter.
+            filter.texture = img.texture # Register the current texture with the filter.
             filter.push()
-        # Actual OpenGL drawing code:
-        glPushMatrix()
-        glTranslatef(x, y, 0)
-        glColor4f(color[0], color[1], color[2], alpha)
-        glEnable(img.target)
-        glBindTexture(img.target, img.id)
-        glBegin(GL_QUADS)
-        glTexCoord3f(t[0], t[1],  t[2] ); glVertex3f(dx4,   dy4,   0)
-        glTexCoord3f(t[3], t[4],  t[5] ); glVertex3f(dx3+w, dy3,   0)
-        glTexCoord3f(t[6], t[7],  t[8] ); glVertex3f(dx2+w, dy2+h, 0)
-        glTexCoord3f(t[9], t[10], t[11]); glVertex3f(dx1,   dy1+h, 0)
-        glEnd()
-        glDisable(img.target)
-        glPopMatrix()
+        img.draw()
         if filter:
             filter.pop()
     return img
@@ -772,30 +1345,37 @@ def image(img, x=0, y=0, width=None, height=None,
 def imagesize(img):
     """ Returns a (width, height)-tuple with the image dimensions.
     """
-    img = load_image(img)
-    return (img.width, img.height)
+    t = texture(img)
+    return (t.width, t.height)
 
 def adjust(r=0, g=0, b=0):
     """ Returns a tuple with increased (>0) or decreased (<0) R,G,B intensities.
-        Use this to set the image() color-parameter.
+        Use this to set the image() color parameter.
     """
     m = max(r, g, b)
     return r+1-m, g+1-m, b+1-m
     
 def distort(dx1=0, dy1=0, dx2=0, dy2=0, dx3=0, dy3=0, dx4=0, dy4=0):
     """ Returns a tuple with corner offsets.
-        Use this to set the image() quad-parameter.
+        Use this to set the image() quad parameter.
     """
     return (dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4)
 
 def crop(img, x=0, y=0, width=None, height=None):
-    """ Returns the given (x,y,width,heigth)-region from the image.
+    """ Returns the given (x, y, width, height)-region from the image.
         Use this to pass cropped image files to image().
     """
-    img = load_image(img)
-    if width  == None: width  = img.width
-    if height == None: height = img.height
-    return img.get_region(x, y, min(img.width-x, width), min(img.height-y, height))
+    t = texture(img)
+    if width  is None: width  = t.width
+    if height is None: height = t.height
+    t = t.get_region(x, y, min(t.width-x, width), min(t.height-y, height))
+    if isinstance(img, Image):
+        return img.copy(texture=t)
+    if isinstance(img, Pixels):
+        return Pixels(t)
+    if isinstance(img, pyglet.image.Texture):
+        return t
+    return Image(t)
 
 #--- PIXELS ------------------------------------------------------------------------------------------
 
@@ -805,7 +1385,7 @@ class Pixels(list):
         """ A list of RGBA color values (0-255) for each pixel in the given image.
             The Pixels object can be passed to the image() command.
         """
-        self._img  = load_image(img).get_image_data()
+        self._img  = texture(img).get_image_data()
         # A negative pitch means the pixels are stored from bottom row to top row.
         self._flipped = self._img.pitch < 0
         # Data yields a byte array if no conversion (e.g. BGRA => RGBA) was necessary,
@@ -842,7 +1422,7 @@ class Pixels(list):
         return self.array[i*4:i*4+4]
     
     def __setitem__(self, i, v):
-        """ Sets pixels i to the given R,G,B,A values.
+        """ Sets pixel i to the given R,G,B,A values.
             Users need to unpack a Color themselves for performance,
             and are resposible for keeping channes values between 0 and 255
             (otherwise an error will occur when Pixels.update() is called),
@@ -870,40 +1450,51 @@ class Pixels(list):
         """ Returns the pixel at row i, column j as a Color object.
         """
         if 0 <= i < self.width and 0 <= j < self.height:
-            return color(self[i+j*self._img.width], base=255)
+            return color(self[i+j*self.width], base=255)
     
     def set(self, i, j, clr):
         """ Sets the pixel at row i, column j from a Color object.
         """
         if 0 <= i < self.width and 0 <= j < self.height:
-            self[i+j*self._img.width] = clr.map(base=255)
+            self[i+j*self.width] = clr.map(base=255)
     
     def update(self):
         """ Pixels.update() must be called to refresh the image.
         """
         data = self.array
         data = "".join(map(chr, data))
-        self._img.set_data("RGBA", -self._img.width*4, data)
+        self._img.set_data("RGBA", -self.width*4, data)
         self._texture = self._img.get_texture()
         
     @property
     def texture(self):
-        if self._texture == None:
+        if self._texture is None:
             self.update()
         return self._texture
-    image = texture
+        
+    @property
+    def image(self):
+        return Image(self.texture)
 
 pixels = Pixels
 
 #--- ANIMATION ---------------------------------------------------------------------------------------
 # A sequence of images displayed in a loop.
-# Useful for storing pre-rendered effects like explosions etc.
+# Useful for storing pre-rendered effect frames like explosions etc.
 
 FADE = "fade"
 
 class Animation(list):
     
     def __init__(self, *a, **kwargs):
+        """ Constructs an animation loop from the given image frames:
+            a = Animation(img1, img2, img2, ..., transition=None, duration=1.0)
+            a = Animation([img1, img2, img3, ...], transition=None, duration=1.0)
+            The transition can be set to FADE, in which case image frames will blend into each other.
+            The duration specifies the time for the entire animation to run.
+            Animations are useful to cache effects like explosions,
+            that have for example been prepared in an offscreen buffer.
+        """
         if len(a) == 1 and isinstance(a[0], (list, tuple)):
             a = a[0]
         list.__init__(self, a)
@@ -917,7 +1508,7 @@ class Animation(list):
         return a
     
     def update(self, pause=False):
-        """ Blend to the next image (and wait there if pause=True).
+        """ Blend to the next image frame (and wait there if pause=True).
         """
         if self._t.done and not pause:
             self._t.set(self._t._v1+1, self.duration)
@@ -933,13 +1524,18 @@ class Animation(list):
         
     @property
     def time(self):
-        # Elapsed transition time between two images (between 0.0 and 1.0).
+        # Elapsed transition time between two image frames (between 0.0 and 1.0).
         return self._t._vi-self._t._v0
     
     def draw(self, *args, **kwargs):
+        # Note: if transition is set to FADE, frames will blend in and out with transparency.
+        # This might not give the desired result if the frames themselves are transparent.
+        alpha = kwargs.get("alpha", 1)
+        if self.transition == FADE:
+            kwargs["alpha"] = alpha * (1-self.time)
         image(self.current, *args, **kwargs)
         if self.transition == FADE:
-            kwargs["alpha"] = self.time # XXX - transparency differs with 2 images over each other.
+            kwargs["alpha"] = alpha * self.time
             image(self.next, *args, **kwargs)
 
 animation = Animation
@@ -948,58 +1544,60 @@ animation = Animation
 # Offscreen buffers can be used to render images from paths etc. 
 # or to apply filters on images before drawing them to the screen.
 # There are several ways to draw offscreen:
-# - render(img, filter): applies the given filter to the image and return it.
+# - render(img, filter): applies the given filter to the image and returns it.
 # - procedural(function, width, height): execute the drawing commands in function inside an image.
 # - Create your own subclass of OffscreenBuffer with a draw() method:
 #   class MyBuffer(OffscreenBuffer):
 #       def draw(self): pass
+# - Define drawing commands between OffscreenBuffer.push() and pop():
 #   b = MyBuffer()
 #   b.push()
 #   # drawing commands
 #   b.pop()
-#   img = b.image
+#   img = Image(b.render())
 #
 # The shader.py module already defines several filters that use an offscreen buffer, for example:
 # blur(), adjust(), multiply(), twirl(), ...
 #
 # The less you change about an offscreen buffer, the faster it runs.
-# This includes switching it on and off, changing its size, ...
+# This includes switching it on and off and changing its size.
 
 from shader import *
 offscreen = FBO(640, 480)
 
 #=====================================================================================================
 
-#--- TEXT --------------------------------------------------------------------------------------------
+#--- FONT --------------------------------------------------------------------------------------------
 
-LEFT = "left"
-RIGHT = "right"
+# Font weight
+NORMAL = "normal"
+BOLD   = "bold"
+ITALIC = "italic"
+
+# Text alignment
+LEFT   = "left"
+RIGHT  = "right"
 CENTER = "center"
 
-_font = None
-_fontname = "Verdana"
-_fontsize = 12
-_lineheight = 1.0
-_align = LEFT
+_fonts      = {}             # Custom fonts loaded from file.
+_fontname   = "Verdana"      # Current state font name.
+_fontsize   = 12             # Current state font size.
+_fontweight = [False, False] # Current state font weight (bold, italic).
+_lineheight = 1.0            # Current state text lineheight.
+_align      = LEFT           # Current state text alignment (LEFT/RIGHT/CENTER).
 
-def load_font(file):
-    pyglet_font.add_file(file)
-
-_font_cache = {}
-def font(fontname=None, size=None):
+def font(fontname=None, size=None, file=None):
     """ Sets the current font and/or fontsize.
+        If a filename is also given, loads the fontname from the given font file.
     """
-    global _font, _fontname, _fontsize
-    if fontname != None:
+    global _fontname, _fontsize
+    if file is not None and file not in _fonts:
+        _fonts[file] = pyglet.font.add_file(file)
+    if fontname is not None:
         _fontname = fontname
-    if size != None:
+    if size is not None:
         _fontsize = size
-    id = (_fontname, _fontsize)
-    if not id in _font_cache:
-        _font_cache[id] = pyglet_font.load(_fontname, _fontsize)
-    _font = _font_cache[id]
-    return _font
-font()
+    return _fontname
 
 def fontname(name=None):
     """ Sets the current font used when drawing text.
@@ -1008,16 +1606,32 @@ def fontname(name=None):
     return _fontname
 
 def fontsize(size=None):
-    """ Sets the current fontsize.
+    """ Sets the current fontsize in pixels.
     """
     font(None, size)
     return _fontsize
+    
+def fontweight(*args, **kwargs):
+    """ Sets the current font weight.
+        You can supply BOLD and/or ITALIC or set named parameters bold=True and/or italic=True.
+    """
+    global _fontweight
+    if len(args) == 1 and isinstance(args, (list, tuple)):
+        args = args[0]
+    if NORMAL in args:
+        _fontweight = [False, False]
+    if BOLD in args or kwargs.get(BOLD):
+        _fontweight[0] = True
+    if ITALIC in args or kwargs.get(ITALIC):
+        _fontweight[1] = True
+    return _fontweight
 
 def lineheight(size=None):
     """ Sets the vertical spacing between lines of text.
+        The given size is a relative value: lineheight 1.2 for fontsize 10 means 12.
     """
     global _lineheight
-    if size != None:
+    if size is not None:
         _lineheight = size
     return _lineheight
 
@@ -1025,55 +1639,278 @@ def align(mode=None):
     """ Sets the alignment of text paragrapgs (LEFT, RIGHT or CENTER).
     """
     global _align
-    if mode != None:
+    if mode is not None:
         _align = mode
     return _align
 
-_text_cache = {}
-def text(str, x, y, width=None, draw=True, cached=True, **kwargs):
-    """ Draws the string at the given position, with the current font().
-        Lines of text will stretch the given width before breaking to the next line.
-        Small pieces of text can be kept in cache.
-    """
-    fill, stroke = color_mixin(**kwargs)
-    if fill is None:
-        fill = Color(0)
-    fontname   = kwargs.get("font", _fontname)
+#--- FONT MIXIN --------------------------------------------------------------------------------------
+# The text() command has optional parameters font, fontsize, fontweight, bold, italic, lineheight and align.
+
+def font_mixin(**kwargs):
+    fontname   = kwargs.get("fontname", kwargs.get("font", _fontname))
     fontsize   = kwargs.get("fontsize", _fontsize)
+    bold       = kwargs.get("bold", BOLD in kwargs.get("fontweight", _fontweight[0] or ""))
+    italic     = kwargs.get("italic", ITALIC in kwargs.get("fontweight", _fontweight[1] or ""))
     lineheight = kwargs.get("lineheight", _lineheight)
     align      = kwargs.get("align", _align)
-    id = (str, fontname, fontsize, width, lineheight, align)
-    if id in _text_cache:
-        txt = _text_cache[id]
-    else:
-        txt = pyglet_font.Text(font(fontname, fontsize), str, color=list(fill))
-        txt.width = width
-        txt.halign = align
-        txt.line_height = lineheight*fontsize
-        if cached:
-            # Caching is meant for text labels, we shouldn't cache entire pages.
-            _text_cache[id] = txt
-    if draw:
-        push()
-        translate(x, y)
-        txt.draw()
-        pop()
-    return txt
+    return (fontname, fontsize, bold, italic, lineheight, align) 
+
+#--- TEXT --------------------------------------------------------------------------------------------
+# Text is cached for performance.
+# For optimal performance, texts should be created once (not every frame) and left unmodified.
+# Dynamic texts use a cache of recycled Text objects.
+
+# pyglet.text.Label leaks memory when deleted, because its old batch continues to reference
+# loaded font/fontsize/bold/italic glyphs.
+# Adding all labels to our own batch remedies this.
+_label_batch = pyglet.graphics.Batch()
+
+def label(str="", x=0, y=0, width=None, height=None, **kwargs):
+    """ Returns a drawable pyglet.text.Label object from the given string.
+        Optional arguments include: font, fontsize, bold, italic, align, lineheight, fill.
+        If these are omitted the current state is used.
+    """
+    fontname, fontsize, bold, italic, lineheight, align = font_mixin(**kwargs)
+    fill, stroke = color_mixin(**kwargs)
+    fill = fill is None and (0,0,0,0) or fill
+    # We use begin_update() so that the TextLayout doesn't refresh on each update.
+    # FormattedDocument allows individual styling of characters - see Text.style().
+    label = pyglet.text.Label(batch=_label_batch)
+    label.begin_update()
+    label.document = pyglet.text.document.FormattedDocument(str)
+    label.x         = x
+    label.y         = y
+    label.width     = width    
+    label.height    = height
+    label.font_name = fontname
+    label.font_size = fontsize
+    label.bold      = bold
+    label.italic    = italic
+    label.multiline = True
+    label.set_style("align", align)
+    label.set_style("line_spacing", lineheight * fontsize)
+    label.color     = [int(ch*255) for ch in fill]
+    label.end_update()
+    return label
+
+class Text(object):
     
+    def __init__(self, str, x=0, y=0, width=None, height=None, **kwargs):
+        """ A formatted string of text that can be drawn at a given position.
+            Text has the following properties: 
+            text, x, y, width, height, font, fontsize, bold, italic, lineheight, align, fill.
+            Individual character ranges can be styled with Text.style().
+        """
+        self.__dict__["_label"] = label(str, x, y, width, height, **kwargs)
+        self.__dict__["_dirty"] = False
+        self.__dict__["_fill"]  = None
+    
+    def __getattr__(self, k):
+        if k in self.__dict__:
+            return self.__dict__[k]
+        elif k in ("text", "x", "y", "width", "height", "bold", "italic"):
+            return getattr(self._label, k)
+        elif k in ("font", "fontname"):
+            return self._label.font_name
+        elif k == "fontsize":
+            return self._label.font_size
+        elif k == "fontweight":
+            return ((None, BOLD)[self._label.bold], (None, ITALIC)[self._label.italic])
+        elif k == "lineheight":
+            return self._label.get_style("line_spacing") / (self.fontsize or 1)
+        elif k == "align":
+            return self._label.get_style(k)
+        elif k == "fill":
+            if not self._fill: self._fill = Color([ch/255.0 for ch in self._label.color])
+            return self._fill
+        else:
+            raise AttributeError, "'Text' object has no attribute '%s'" % k
+            
+    def __setattr__(self, k, v):
+        if k in self.__dict__:
+            self.__dict__[k] = v; return
+        if k in ("x", "y"):
+            setattr(self._label, k, v); return
+        # Setting properties other than x and y requires the label's layout to be updated.
+        self.__dict__["_dirty"] = True
+        self._label.begin_update()
+        if k in ("text", "width", "height", "bold", "italic"):
+            setattr(self._label, k, v)
+        elif k in ("font", "fontname"):
+            self._label.font_name = v
+        elif k == "fontsize":
+            self._label.font_size = v
+        elif k == "fontweight":
+            self._label.bold, self._label.italic = BOLD in v, ITALIC in v
+        elif k == "lineheight":
+            self._label.set_style("line_spacing", v * self.fontsize)
+        elif k == "align":
+            self._label.set_style(k, v)
+        elif k == "fill":
+            self._fill = Color(v)
+            self._label.color = [int(255*ch) for ch in self._fill]
+        else:
+            raise AttributeError, "'Text' object has no attribute '%s'" % k
+    
+    def _update(self):
+        # Called from Text.draw(), Text.copy() and Text.metrics.
+        # Ensures that all the color changes have been reflected in Text._label.
+        # If necessary, recalculates the label's layout (happens in end_update()).
+        if self._fill and self._fill._dirty:
+            self.fill = self._fill
+            self._fill._dirty = False
+        if self._dirty:
+            self._label.end_update()
+            self._dirty = False
+    
+    @property
+    def path(self):
+        raise NotImplementedError
+    
+    @property
+    def metrics(self):
+        """ Yields a (width, height)-tuple of the actual text content.
+        """
+        self._update()
+        return self._label.content_width, self._label.content_height
+        
+    def draw(self):
+        """ Draws the text.
+        """
+        # Fontsize is rounded, and fontsize 0 will output a default font.
+        # Therefore, we don't draw text with a fontsize smaller than 0.5.
+        if self._label.font_size >= 0.5:
+            self._update()
+            self._label.draw()
+    
+    def copy(self):
+        self._update()
+        txt = Text(self.text, self.x, self.y, self.width, self.height, 
+              fontname = self.fontname,
+              fontsize = self.fontsize,
+                  bold = self.bold,
+                italic = self.italic,
+            lineheight = self.lineheight,
+                 align = self.align,
+                  fill = self.fill
+        )
+        # The individual character styling is retrieved from Label.document._style_runs.
+        # Traverse it and set the styles in the new text.
+        txt._label.begin_update()
+        for k in self._label.document._style_runs:
+            for i, j, v in self._label.document._style_runs[k]:
+                txt.style(i,j, **{k:v})
+        txt._label.end_update()
+        return txt
+        
+    def style(self, i, j, **kwargs):
+        """ Defines the styling for a range of characters in the text.
+            Valid arguments can include: font, fontsize, bold, italic, lineheight, align, fill.
+            For example: text.style(0, 10, bold=True, fill=color(1,0,0))
+        """
+        attributes = {}
+        for k,v in kwargs.items():
+            if k in ("font", "fontname"):
+                attributes["font_name"] = v
+            elif k == "fontsize":
+                attributes["font_size"] = v
+            elif k in ("bold", "italic", "align"):
+                attributes[k] = v
+            elif k == "fontweight":
+                attributes.setdefault("bold", BOLD in v)
+                attributes.setdefault("italic", ITALIC in v)
+            elif k == "lineheight":
+                attributes["line_spacing"] = v * self._label.font_size
+            elif k == "fill":
+                attributes["color"] = [int(ch*255) for ch in v]
+            else:
+                attributes[k] = v
+        self._dirty = True
+        self._label.begin_update()
+        self._label.document.set_style(i, j, attributes)
+
+    def __del__(self):
+        self._label.delete()
+
+_TEXT_CACHE = 200
+_text_cache = {}
+_text_queue = []
+def text(str, x=None, y=None, width=None, height=None, draw=True, **kwargs):
+    """ Draws the string at the given position, with the current font().
+        Lines of text will span the given width before breaking to the next line.
+        The text will be displayed with the current state font(), fontsize(), fontweight(), etc.
+        When the given text is a Text object, the state will not be applied however.
+    """
+    if not isinstance(str, Text):
+        # If the given text is not a Text object, create one on the fly.
+        # Dynamic Text objects are cached by (font, fontsize, bold, italic),
+        # and those that are no longer referenced by the user are recycled.
+        # Changing Text properties is still faster than creating a new Text.
+        # The cache has a limited size (100), so the oldest Text objects are deleted.
+        fontname, fontsize, bold, italic, lineheight, align = font_mixin(**kwargs)
+        fill, stroke = color_mixin(**kwargs)
+        id = (fontname, int(fontsize), bold, italic)
+        recycled = False
+        if id in _text_cache:
+            for txt in _text_cache[id]:
+                # Reference count 3 => Python, _text_cache[id], txt.
+                # No other variables are referencing the text, so we can recycle it.
+                if getrefcount(txt) == 3:
+                    txt.text = str
+                    txt.x = x
+                    txt.y = y
+                    txt.width = width
+                    txt.height = height
+                    txt.lineheight = lineheight
+                    txt.align = align
+                    txt.fill = fill
+                    recycled = True
+                    break
+        if not recycled:
+            txt = Text(str, x or 0, y or 0, width, height, **kwargs)
+            _text_cache.setdefault(id, [])
+            _text_cache[id].append(txt)
+            _text_queue.insert(0, id)
+            for id in reversed(_text_queue[_TEXT_CACHE:]): 
+                del _text_cache[id][0]
+                del _text_queue[-1]
+    else:
+        txt = str
+        # Given parameters override Text attributes.
+        if x is not None:
+            txt.x = x
+        if y is not None:
+            txt.y = y
+        if width is not None:
+            txt.width = width
+        if height is not None:
+            txt.height = height
+        for k,v in kwargs:
+            setattr(txt, k, v)
+    if draw:
+        txt.draw()
+    return txt
+
 def textwidth(txt):
-    if not isinstance(txt, pyglet_font.Text):
-        txt = text(txt, x, y, draw=False)
-    return txt.width
+    """ Returns the width of the given text.
+    """
+    if not isinstance(txt, Text):
+        txt = text(txt, 0, 0, draw=False)
+    return txt.metrics[0]
 
 def textheight(txt, width=None):
-    if not isinstance(txt, pyglet_font.Text):
-        txt = text(txt, x, y, width=width, draw=False)
-    return txt.height
+    """ Returns the height of the given text.
+    """
+    if not isinstance(txt, Text):
+        txt = text(txt, 0, 0, width=width, draw=False)
+    return txt.metrics[1]
 
-def textmetrics(txt):
-    if not isinstance(txt, pyglet_font.Text):
-        txt = text(txt, x, y, width=width, draw=False)
-    return (txt.width, txt.height)
+def textmetrics(txt, width=None):
+    """ Returns a (width, height)-tuple for the given text.
+    """
+    if not isinstance(txt, Text):
+        txt = text(txt, 0, 0, width=width, draw=False)
+    return txt.metrics
 
 def textpath(str, x, y):
     raise NotImplementedError
@@ -1095,9 +1932,9 @@ def random(v1=1.0, v2=None, bias=None):
     """ Returns a number between v1 and v2, including v1 but not v2.
         The bias (0.0-1.0) represents preference towards lower or higher numbers.
     """
-    if v2 == None:
+    if v2 is None:
         v1, v2 = 0, v1
-    if bias == None:
+    if bias is None:
         r = rnd()
     else:
         r = rnd()**_rnd_exp(bias)
@@ -1107,6 +1944,9 @@ def random(v1=1.0, v2=None, bias=None):
     return x
 
 def grid(cols, rows, colwidth=1, rowheight=1, shuffled=False):
+    """ Yields (x,y)-tuples for the given number of rows and columns.
+        The space between each point is determined by colwidth and colheight.
+    """
     rows = range(int(rows))
     cols = range(int(cols))
     if shuffled:
@@ -1117,6 +1957,8 @@ def grid(cols, rows, colwidth=1, rowheight=1, shuffled=False):
             yield (x*colwidth, y*rowheight)
 
 def files(path="*"):
+    """ Returns a list of files found at the given path.
+    """
     return glob(path)
 
 #=====================================================================================================
@@ -1129,27 +1971,34 @@ class Prototype:
         """ A base class that allows on-the-fly extension.
             This means that external functions can be bound to it as methods,
             and properties set at runtime are copied correctly.
+            Prototype can handle: 
+            - functions (these become class methods),
+            - immutable types (str, unicode, int, long, float, bool),
+            - lists, tuples and dictionaries of immutable types, 
+            - objects with a copy() method.
         """
         self._dynamic = {}
 
     def _deepcopy(self, value):
-        n = value.__class__.__name__
-        if n in ("function",):
+        if value.__class__.__name__ in ("function",):
             return instancemethod(value, self)
-        elif n in (list, tuple):
-            return[self._deepcopy(x) for x in value]
-        elif n in (dict,):
+        elif value.__class__ in (list, tuple):
+            return [self._deepcopy(x) for x in value]
+        elif value.__class__ in (dict,):
             return dict([(k, self._deepcopy(v)) for k,v in value.items()])
-        elif n in (str, unicode, int, long, float, bool):
+        elif value.__class__ in (str, unicode, int, long, float, bool):
             return value
+        elif hasattr(value, "copy"):
+            return value.copy()
         else:
             # Biggest problem here is how to find/relink circular references.
             raise TypeError, "Prototype can't bind %s." % str(value.__class__)
 
     def _bind(self, key, value):
-        """ Adds a new property or method to the prototype.
-            For properties, values can be: list, tuple, dict, str, unicode, int, long, float, bool.
+        """ Adds a new method or property to the prototype.
             For methods, the given function is expected to take the object (i.e. self) as first parameter.
+            For properties, values can be: list, tuple, dict, str, unicode, int, long, float, bool,
+            or an object with a copy() method.
             For example, we can define a Layer's custom draw() method in two ways:
             - By subclassing:
                 class MyLayer(Layer):
@@ -1176,7 +2025,7 @@ class Prototype:
     
     def set_property(self, key, value):
         """ Adds a property to the prototype.
-            Using this method ensures that dynamic properties are copied correctly - see copy_to().
+            Using this method ensures that dynamic properties are copied correctly - see inherit().
         """
         self._bind(key, value)
     
@@ -1280,7 +2129,7 @@ class Transition(object):
             - LINEAR: even transition over the given duration time,
             - SMOOTH: transition goes slower at the beginning and end.
         """
-        if TIME >= self._t1:
+        if TIME >= self._t1 or self._vi is None:
             self._vi = self._v1
             return True
         else:
@@ -1306,7 +2155,7 @@ class Layer(list, Prototype, EventHandler):
 
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
                  scale=1.0, rotation=0, opacity=1.0, duration=1.0, name=None, 
-                 parent=None):
+                 parent=None, **kwargs):
         """ Creates a new drawing layer that can be appended to the canvas.
             The duration defines the time (seconds) it takes to animate transformations or opacity.
             When the animation has terminated, layer.done=True.
@@ -1318,71 +2167,90 @@ class Layer(list, Prototype, EventHandler):
             origin_mode = ABSOLUTE
         Prototype.__init__(self) # Facilitates extension on the fly.
         EventHandler.__init__(self)
-        self.name      = name
-        self.parent    = parent
-        self.group     = None
-        self._x        = Transition(x)
-        self._y        = Transition(y)
-        self._width    = Transition(width)
-        self._height   = Transition(height)
-        self._dx       = Transition(origin[0])
-        self._dy       = Transition(origin[1])
-        self._origin   = origin_mode
-        self._scale    = Transition(scale)
-        self._rotation = Transition(rotation)
-        self._opacity  = Transition(opacity, interpolation=LINEAR)
-        self.duration  = duration
-        self.top       = True  # Draw on top of or beneath parent?
-        self.flipped   = False
-        self.hidden    = False
-        self._transform_state = 0    # cache version ID
-        self._transform_cache = None # local transformation matrix
-        self._transform_stack = None # cumulative transformation matrix
+        self.name      = name                  # Layer name. Layers are accessible as ParentLayer.[name]
+        self.parent    = parent                # The layer this layer is a child of.
+        self.group     = None                  # The group this layer belongs to.
+        self._x        = Transition(x)         # Layer horizontal position in pixels, from the left.
+        self._y        = Transition(y)         # Layer vertical position in pixels, from the bottom.
+        self._width    = Transition(width)     # Layer width in pixels.
+        self._height   = Transition(height)    # Layer height in pixels.
+        self._dx       = Transition(origin[0]) # Transformation origin point.
+        self._dy       = Transition(origin[1]) # Transformation origin point.
+        self._origin   = origin_mode           # Origin point as RELATIVE or ABSOLUTE coordinates?
+        self._scale    = Transition(scale)     # Layer width and height scale.
+        self._rotation = Transition(rotation)  # Layer rotation.
+        self._opacity  = Transition(opacity, interpolation=LINEAR) # Layer opacity.
+        self.duration  = duration              # The time it takes to animate transformations.
+        self.top       = True                  # Draw on top of or beneath parent?
+        self.flipped   = False                 # Flip the layer horizontally?
+        self.hidden    = False                 # Hide the layer?
+        self._transform_state = 0              # Transformation matrix version ID.
+        self._transform_cache = None           # Cache of the local transformation matrix.
+        self._transform_stack = None           # Cache of the cumulative transformation matrix.
+    
+    @classmethod
+    def from_image(self, img, **kwargs):
+        """ Returns a new layer that renders the given image, and with the same size as the image.
+            The layer has a draw() method and an additional image property.
+        """
+        def draw(layer):
+            image(layer.image, alpha=layer.image.alpha * layer.opacity)
+        layer = Layer(**kwargs)
+        layer.set_method(draw)
+        layer.set_property("image", Image(img, data=kwargs.get("data")))
+        layer.width  = layer.image.width
+        layer.height = layer.image.height
+        return layer
+        
+    @property
+    def from_function(self, function, **kwargs):
+        """ Returns a new layer that renders the drawing commands in the given function.
+            The layer has a draw() method.
+        """
+        def draw(layer):
+            function()
+        layer = Layer(**kwargs)
+        layer.set_method(draw)
+        return layer
         
     def copy(self, parent=None):
         """ Returns a copy of the layer.
             All properties will be copied, except for the new parent which you need to define.
         """
         layer = Layer()
-        layer.inherit(self)
-        layer.parent = parent
-        return layer
-        
-    def inherit(self, layer):
-        """ Copies all of the given layer's settings, except parent and group.
-            This includes a copy of each of the given parent layer's attached children.
-            Layer.inherit() is useful when copying subclasses of Layer.
-        """
-        self.duration = 0 # Copy all transitions instantly.
-        self.x        = layer.x
-        self.y        = layer.y
-        self.width    = layer.width
-        self.height   = layer.height
-        self.origin   = layer.origin
-        self.scaling  = layer.scaling
-        self.rotation = layer.rotation
-        self.opacity  = layer.opacity
-        self.duration = layer.duration
-        self.name     = layer.name
-        self.top      = layer.top
-        self.flipped  = layer.flipped
-        self.hidden   = layer.hidden
-        # Inherit all the child layers.
-        for l in layer: 
-            self.append(l.copy())
+        layer.duration = 0 # Copy all transitions instantly.
+        layer.parent   = parent
+        layer.name     = self.name
+        layer.x        = self.x
+        layer.y        = self.y
+        layer.width    = self.width
+        layer.height   = self.height
+        layer.origin   = self.origin
+        layer.scaling  = self.scaling
+        layer.rotation = self.rotation
+        layer.opacity  = self.opacity
+        layer.duration = self.duration
+        layer.top      = self.top
+        layer.flipped  = self.flipped
+        layer.hidden   = self.hidden
+        layer.enabled  = self.enabled
+        layer.extend([child.copy() for child in self])
         # Inherit all the dynamic properties and methods.
-        Prototype.inherit(self, layer)
-        # Inherit the EventHandler.
-        self.enabled = layer.enabled
+        Prototype.inherit(layer, self)
+        return layer
 
     def __getattr__(self, key):
-        """ Returns the given property or the layer with the given name.
+        """ Returns the given property, or the layer with the given name.
         """
         if key in self.__dict__: 
             return self.__dict__[key]
         for layer in self:
             if key == layer.name: return layer
         raise AttributeError, "Layer instance has no attribute '%s'" % key
+
+    def insert(self, index, layer):
+        list.insert(self, index, layer)
+        layer.parent = self
 
     def append(self, layer):
         list.append(self, layer)
@@ -1455,8 +2323,8 @@ class Layer(list, Prototype, EventHandler):
         h = self._height.current
         # Origin is stored as absolute coordinates and we want it relative.
         if self._origin == ABSOLUTE and relative:
-            if w == None: w = 0
-            if h == None: h = 0
+            if w is None: w = 0
+            if h is None: h = 0
             dx = w!=0 and dx/w or 0
             dy = h!=0 and dy/h or 0
         # Origin is stored as relative coordinates and we want it absolute.
@@ -1467,6 +2335,8 @@ class Layer(list, Prototype, EventHandler):
     
     def _set_origin(self, x, y, relative=False):
         """ Sets the transformation origin point in either absolute or relative coordinates.
+            For example, if a layer is 400x200 pixels, setting the origin point to (200,100)
+            all transformations (translate, rotate, scale) originate from the center.
         """
         self._transform_cache = None
         self._dx.set(x, self.duration)
@@ -1476,10 +2346,10 @@ class Layer(list, Prototype, EventHandler):
     def origin(self, x=None, y=None, relative=False):
         """ Sets or returns the point (x,y) from which all layer transformations originate.
         """
-        if x != None:
+        if x is not None:
             if x == CENTER: 
                 x, y, relative = 0.5, 0.5, True
-            if y != None: 
+            if y is not None: 
                 self._set_origin(x, y, relative)
         return self._get_origin(relative)
     
@@ -1612,7 +2482,7 @@ class Layer(list, Prototype, EventHandler):
             # The covered-state starts as False, but stays True once it switches.
             _covered = _covered or (hit and not child.top)
             child = child.layer_at(x, y, clipped, transformed, _covered)
-            if child != None:
+            if child is not None:
                 return child
         if hit:
             return self
@@ -1627,7 +2497,7 @@ class Layer(list, Prototype, EventHandler):
         dated = False
         state = self._transform_state # integer version ID
         layer = self.parent
-        while layer != None:
+        while layer is not None:
             dated = layer._transform_state > state 
             state = layer._transform_state
             layer = layer.parent
@@ -1641,7 +2511,7 @@ class Layer(list, Prototype, EventHandler):
             If local=False, prepends all transformations of the parent layers,
             e.g. you get the actual transformation state of a nested layer.
         """
-        if self._transform_cache == None:
+        if self._transform_cache is None:
             # Calculate the local transformation matrix.
             # Be careful that the transformations happen in the same order in Layer._draw().
             # translate => flip => rotate => scale => origin.
@@ -1665,10 +2535,10 @@ class Layer(list, Prototype, EventHandler):
             # Return the cumulative transformation matrix.
             # All of the parents' transformation states need to be up to date.
             # If not, we have to recalculate the whole chain.
-            if self._transform_stack == None \
+            if self._transform_stack is None \
             or self._transform_is_outdated():
                 self._transform_stack = self._transform_cache.copy()
-                if self.parent != None:
+                if self.parent is not None:
                     # Accumulate all the parent layer transformations.
                     # In the process, we update the transformation state of any outdated parent.
                     self._transform_stack.prepend(self.parent._transform(local=False))
@@ -1681,7 +2551,7 @@ class Layer(list, Prototype, EventHandler):
         x = 0
         y = 0
         layer = self
-        while layer != None and layer != root:
+        while layer is not None and layer != root:
             x += layer.x
             y += layer.y
             layer = layer.parent
@@ -1698,8 +2568,8 @@ class Layer(list, Prototype, EventHandler):
         if not transformed:
             x0, y0 = self.absolute_position()
             return x0 <= x and y0 <= y \
-               and (w == None or x <= x0+w) \
-               and (h == None or y <= y0+h)
+               and (w is None or x <= x0+w) \
+               and (h is None or y <= y0+h)
         # Find the transformed bounds of the layer:
         tf = self._transform(local=False)
         p = tf.map([(0,0), (w,0), (w,h), (0,h)])
@@ -1715,7 +2585,7 @@ class Layer(list, Prototype, EventHandler):
         
     def __repr__(self):
         return "Layer(%sx=%.2f, y=%.2f, scale=%.2f, rotation=%.2f, opacity=%.2f, duration=%.2f)" % (
-            self.name != None and "name='%s', " % self.name or "", 
+            self.name is not None and "name='%s', " % self.name or "", 
             self.x, 
             self.y, 
             self.scaling, 
@@ -1735,11 +2605,11 @@ layer = Layer
 
 # Mouse cursors
 DEFAULT = "default"
-CROSS   = pyglet_window.Window.CURSOR_CROSSHAIR
-HAND    = pyglet_window.Window.CURSOR_HAND
-HIDDEN  = pyglet_window.Window.CURSOR_NO
-TEXT    = pyglet_window.Window.CURSOR_TEXT
-WAIT    = pyglet_window.Window.CURSOR_WAIT
+CROSS   = pyglet.window.Window.CURSOR_CROSSHAIR
+HAND    = pyglet.window.Window.CURSOR_HAND
+HIDDEN  = pyglet.window.Window.CURSOR_NO
+TEXT    = pyglet.window.Window.CURSOR_TEXT
+WAIT    = pyglet.window.Window.CURSOR_WAIT
 
 # Mouse buttons
 MOUSE_LEFT   = pyglet.window.mouse.LEFT
@@ -1785,7 +2655,7 @@ def key(code):
     """ Returns a character from a Pyglet symbol string from a key code.
         For example: 45 => KEY_MINUS => "-".
     """
-    k = pyglet_window.key.symbol_string(code).lower()
+    k = pyglet.window.key.symbol_string(code).lower()
     k = k.lstrip("_")
     k = characters.get(k, k) 
     return k
@@ -1804,10 +2674,22 @@ VERY_LIGHT_GREY = 0.95
 
 FRAME = 0
 
+settings = pyglet.gl.Config()
+for k,v in dict(
+    double_buffer = 1,
+      buffer_size = 32,
+       depth_size = 24,
+    stencil_size  = 1,
+         red_size = 8,
+       green_size = 8,
+        blue_size = 8,
+       alpha_size = 8
+).items(): setattr(settings, k, v)
+
 class Canvas(list, EventHandler):
 
-    def __init__(self, config=None):
-        self._window = pyglet_window.Window(visible=False, config=config)
+    def __init__(self, settings=settings):
+        self._window = pyglet.window.Window(visible=False, config=settings)
         self.fps     = None         # Frames per second.
         self._frame  = 0            # The current frame.
         self._t      = 0            # The current time.
@@ -1836,13 +2718,16 @@ class Canvas(list, EventHandler):
         self._window.set_caption(str)
     name = property(_get_name, _set_name)
 
+    def insert(self, index, layer):
+        list.insert(self, index, layer)
+
     def append(self, layer):
         list.append(self, layer)
              
     def _get_width(self):
-        return self._window.width
+        return float(self._window.width)
     def _get_height(self):
-        return self._window.height
+        return float(self._window.height)
     def _get_size(self):
         return (self.width, self.height)
     def _set_width(self, v):
@@ -1890,16 +2775,14 @@ class Canvas(list, EventHandler):
         """
         for layer in reversed(self):
             if layer.enabled:
-                
                 layer = layer.layer_at(x, y)
-                print layer
                 if layer is not None:
                     return layer
         return None
     
     def _on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         self.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
-        if self._dragged_layer != None: 
+        if self._dragged_layer is not None: 
             self._dragged_layer.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
         
     def _on_mouse_enter(self, x, y):
@@ -1930,8 +2813,8 @@ class Canvas(list, EventHandler):
         # The layer and all of its parents in the hierarchy receive the on_mouse_enter event.
         # The layer itself also receives the on_mouse_motion event.
         self._current_layer = layer = self.layer_at(x, y)
-        if layer != None:
-            while layer != None:
+        if layer is not None:
+            while layer is not None:
                 if layer not in self._current_layers:
                     self._current_layers.append(layer)
                     layer.on_mouse_enter(x, y)
@@ -1940,19 +2823,19 @@ class Canvas(list, EventHandler):
     
     def _on_mouse_press(self, x, y, button, modifiers):
         self.on_mouse_press(x, y, button, modifiers)
-        if self._current_layer != None:
+        if self._current_layer is not None:
             self._current_layer.on_mouse_press(x, y, button, modifiers)
             self._dragged_layer = self._current_layer
         
     def _on_mouse_release(self, x, y, button, modifiers):
         self.on_mouse_release(x, y, button, modifiers)
-        if self._dragged_layer != None:
+        if self._dragged_layer is not None:
             self._dragged_layer.on_mouse_release(x, y, button, modifiers)
         self._dragged_layer = None
         
     def _on_mouse_scroll(self, x, y, scroll_x, scroll_y):
         self.on_mouse_scroll(x, y, scroll_x, scroll_y)
-        if self._dragged_layer != None:
+        if self._dragged_layer is not None:
             self._current_layer.on_mouse_scroll(x, y, scroll_x, scroll_y)
 
     def _on_key_press(self, keycode, modifiers):
@@ -2022,17 +2905,11 @@ class Canvas(list, EventHandler):
         """ Updates the canvas and its layers.
             This method does not actually draw anything, it only updates the state.
         """
-        if not self._runs:
-            self._setup()
-        global TIME
-        TIME = time()
-        if self.fps == None or TIME-self._t > 1.0/self.fps:
-            self._window.dispatch_events()
-            self._frame += 1
-            self._t = TIME
-            self.update()
-            for layer in self:
-                layer._update()
+        self._window.dispatch_events()
+        self._frame += 1
+        self.update()
+        for layer in self:
+            layer._update()
 
     def _stop(self):
         self.stop()
@@ -2043,11 +2920,19 @@ class Canvas(list, EventHandler):
         """ Clears the previous frame from the canvas.
         """
         glClear(GL_COLOR_BUFFER_BIT)
+        glClear(GL_DEPTH_BUFFER_BIT)
+        glClear(GL_STENCIL_BUFFER_BIT)
     
     def run(self):
+        if not self._runs:
+            self._setup()
+        global TIME
         while not self.done:
-            self._update()
-            self._draw()
+            TIME = time()
+            if self.fps is None or TIME-self._t > 1.0/self.fps:
+                self._update()
+                self._draw()
+                self._t = TIME
 
     def _get_done(self):
         return self._window.has_exit
@@ -2068,7 +2953,7 @@ class Canvas(list, EventHandler):
         if not self._buffer \
         or self._buffer.width  < w \
         or self._buffer.height < h:
-            self._buffer = pyglet_image.Texture.create(w, h)
+            self._buffer = pyglet.image.Texture.create(w, h)
         glBindTexture(GL_TEXTURE_2D, self._buffer.id)
         glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, w, h, 0)
         return self._buffer.get_region(
@@ -2083,12 +2968,12 @@ class Canvas(list, EventHandler):
     def save(self, path):
         """ Saves the current frame as a PNG-file.
         """
-        pyglet_image.get_buffer_manager().get_color_buffer().save(path)
+        pyglet.image.get_buffer_manager().get_color_buffer().save(path)
 
     def _get_anti_aliased(self):
         return self_anti_aliased
     def _set_anti_aliased(self, mode):
-        if mode == True:
+        if mode is True:
             glEnable(GL_LINE_SMOOTH)
             #glEnable(GL_POLYGON_SMOOTH)
         else:
@@ -2130,25 +3015,25 @@ def run():
     canvas.run()
 
 def size(width=None, height=None):
-    if width != None:
-        canvas._window.width = width
-    if height != None:
-        canvas._window.height = height
+    if width is not None:
+        canvas.width = width
+    if height is not None:
+        canvas.height = height
     return canvas.size
 
 def width():
-    return canvas._window.width
+    return canvas.width
 
 def height():
-    return canvas._window.height
+    return canvas.height
 
 def fullscreen(mode=None):
-    if mode != None:
+    if mode is not None:
         canvas.fullscreen = mode
     return canvas.fullscreen
 
 def speed(fps=None):
-    if fps != None:
+    if fps is not None:
         canvas.fps = fps
     return canvas.fps
 
@@ -2166,7 +3051,7 @@ def mouse():
 def cursor(mode=None):
     """ Sets the current mouse cursor (DEFAULT, CROSS, HAND, HIDDEN, TEXT or WAIT).
     """
-    if mode != None:
+    if mode is not None:
         canvas.cursor = mode
     return canvas.cursor
 
@@ -2192,3 +3077,15 @@ def profile(frames=200, top=30):
     p = pstats.Stats("_profile")
     p.sort_stats("cumulative").print_stats(top)
     remove("_profile")
+
+_profile_framerate = 0
+_profile_frames = 0
+_profile_time = 0
+def profile_framerate():
+    global _profile_framerate, _profile_frames, _profile_time
+    _profile_frames += 1
+    if time()-_profile_time > 1:
+        _profile_framerate = _profile_frames
+        _profile_frames = 0
+        _profile_time = time()
+    return _profile_framerate

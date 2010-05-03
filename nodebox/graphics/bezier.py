@@ -1,7 +1,8 @@
 # Author: Tom De Smedt <tomdesmedt@organisms.be>
 # License: GPL (see LICENSE.txt for details).
 # Copyright (c) 2008 by Tom De Smedt.
-# Thanks to Prof. F. De Smedt at the Free University of Brussels for the math routines.
+
+# Thanks to Prof. F. De Smedt at the Free University of Brussels.
 
 from context import BezierPath, PathElement, PathError, Point, MOVETO, LINETO, CURVETO, CLOSE
 from math import sqrt, pow
@@ -77,8 +78,8 @@ def curvelength(x0, y0, x1, y1, x2, y2, x3, y3, n=20):
         yi = pt_y
     return length
 
-# Faster C versions:
-try: from extensions.bezier_math import linepoint, linelength, curvepoint, curvelength
+# Fast C implementations:
+try: from nodebox.ext.bezier_math import linepoint, linelength, curvepoint, curvelength
 except:
     pass
 
@@ -144,7 +145,7 @@ def _locate(path, t, segments=None):
         the length during each iteration. 
     """
     if segments == None:
-        segments = path.segmentlengths(relative=True) 
+        segments = segment_lengths(path, relative=True) 
     if len(segments) == 0:
         raise PathError, "The given path is empty"
     for i, el in enumerate(path):
@@ -175,38 +176,39 @@ def point(path, t, segments=None):
     p1 = path[i+1]
     if p1.cmd == CLOSE:
         x, y = linepoint(t, x0, y0, closeto.x, closeto.y)
-        return PathElement(LINETO, x, y, x, y, x, y)
+        return PathElement(LINETO, ((x, y),))
     elif p1.cmd == LINETO:
         x1, y1 = p1.x, p1.y
         x, y = linepoint(t, x0, y0, x1, y1)
-        return PathElement(LINETO, x, y, x, y, x, y)
+        return PathElement(LINETO, ((x, y),))
     elif p1.cmd == CURVETO:
         x3, y3, x1, y1, x2, y2 = p1.x, p1.y, p1.ctrl1.x, p1.ctrl1.y, p1.ctrl2.x, p1.ctrl2.y
         x, y, c1x, c1y, c2x, c2y = curvepoint(t, x0, y0, x1, y1, x2, y2, x3, y3)
-        return PathElement(CURVETO, x, y, c1x, c1y, c2x, c2y)
+        return PathElement(CURVETO, ((c1x, c1y), (c2x, c2y), (x, y)))
     else:
-        raise PathError, "Unknown cmd for p1 %s" % p1
+        raise PathError, "Unknown cmd '%s' for p1 %s" % (p1.cmd, p1)
         
-def points(path, amount=100):
+def points(path, amount=100, start=0.0, end=1.0, segments=None):
     """ Returns an iterator with a list of calculated points for the path.
+        To omit the last point on closed paths: end=1-1.0/amount
     """
     if len(path) == 0:
         raise PathError, "The given path is empty"
-    # The delta value is divided by amount - 1, because we also want the last point (t=1.0)
-    # If I wouldn't use amount - 1, I fall one point short of the end.
-    # E.g. if amount = 4, I want point at t 0.0, 0.33, 0.66 and 1.0,
-    # if amount = 2, I want point at t 0.0 and t 1.0
-    try:
-        delta = 1.0/(amount-1)
-    except ZeroDivisionError:
-        delta = 1.0
+    n = end - start
+    d = n
+    if amount > 1: 
+        # The delta value is divided by amount-1, because we also want the last point (t=1.0)
+        # If we don't use amount-1, we fall one point short of the end.
+        # If amount=4, I want point at t 0.0, 0.33, 0.66 and 1.0.
+        # If amount=2, I want point at t 0.0 and 1.0.
+        d = n / (amount-1)
     for i in xrange(amount):
-        yield point(path, delta*i)
+        yield point(path, start+d*i, segments)
 
 #-----------------------------------------------------------------------------------------------------
 
 def contours(path):
-    """ Returns a list of contours in the path.
+    """ Returns a list of contours in the path, as BezierPath objects.
         A contour is a sequence of lines and curves separated from the next contour by a MOVETO.
         For example, the glyph "o" has two contours: the inner circle and the outer circle.
     """
@@ -225,8 +227,7 @@ def contours(path):
             current_contour.lineto(el.x, el.y)
         elif el.cmd == CURVETO:
             empty = False
-            current_contour.curveto(el.ctrl1.x, el.ctrl1.y,
-                el.ctrl2.x, el.ctrl2.y, el.x, el.y)
+            current_contour.curveto(el.ctrl1.x, el.ctrl1.y, el.ctrl2.x, el.ctrl2.y, el.x, el.y)
         elif el.cmd == CLOSE:
             current_contour.closepath()
     if not empty:
@@ -236,11 +237,10 @@ def contours(path):
 #-----------------------------------------------------------------------------------------------------
 
 def findpath(points, curvature=1.0):
-    """ Constructs a path between the given list of points.
-        Interpolates the list of points and determines a smooth bezier path betweem them.
+    """ Constructs a smooth BezierPath from the given list of points.
         The curvature parameter offers some control on how separate segments are stitched together:
         from straight angles to smooth curves.
-        Curvature is only useful if the path has more than  three points.
+        Curvature is only useful if the path has more than three points.
     """
     
     # The list of points consists of Point objects,
