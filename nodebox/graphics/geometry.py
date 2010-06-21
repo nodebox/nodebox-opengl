@@ -35,13 +35,13 @@ def rotate(x, y, x0, y0, degrees):
     a, b = cos(radians(degrees)), sin(radians(degrees))
     return (x*a-y*b+x0, y*a+x*b+y0)
 
-def reflect(x0, y0, x1, y1, d=1.0, a=180):
+def reflect(x, y, x0, y0, d=1.0, a=180):
     """ Returns the reflection of a point through origin (x0,y0).
     """
-    return coordinates(x0, y0, d*distance(x0,y0,x1,y1), a+angle(x0,y0,x1,y1))
+    return coordinates(x0, y0, d*distance(x0,y0,x,y), a+angle(x0,y0,x,y))
     
 # Fast C implementations:
-try: from nodebox.ext.geometry_math import angle, distance, coordinates, rotate, reflect
+try: from nodebox.ext.geometry_math import angle, distance, coordinates, rotate
 except:
     pass
 
@@ -64,6 +64,9 @@ def smoothstep(a, b, x):
     if x >=b: return 1.0
     x = float(x-a) / (b-a)
     return x*x * (3-2*x)
+    
+def clamp(v, a, b):
+    return max(a, min(v, b))
 
 #--- INTERSECTION ------------------------------------------------------------------------------------
 
@@ -117,6 +120,12 @@ def circle_line_intersection(cx, cy, radius, x1, y1, x2, y2, infinite=False):
 		if infinite or 0 <= t1 <= 1: points.append((x1+t1*dx, y1+t1*dy))  
 		if infinite or 0 <= t2 <= 1: points.append((x1+t2*dx, y1+t2*dy))
 		return points
+
+def intersection(*args, **kwargs):
+    if len(args) == 8:
+        return line_line_intersection(*args, **kwargs)
+    if len(args) == 7:
+        return circle_line_intersection(*args, **kwargs)
 
 def point_in_polygon(points, x, y):
     """ Ray casting algorithm.
@@ -258,7 +267,7 @@ class Point:
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
-        
+    
     def __repr__(self):
         return "Point(x=%.2f, y=%.2f)" % (self.x, self.y)
         
@@ -295,8 +304,7 @@ class Bounds:
     def __iter__(self):
         """ You can conveniently unpack bounds: x,y,w,h = Bounds(0,0,100,100)
         """
-        for p in (self.x, self.y, self.width, self.height):
-            return p
+        return (self.x, self.y, self.width, self.height).__iter__()
 
     def intersects(self, b):
         """ Return True if a part of the two bounds overlaps.

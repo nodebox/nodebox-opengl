@@ -7,7 +7,9 @@
 from context import BezierPath, PathElement, PathError, Point, MOVETO, LINETO, CURVETO, CLOSE
 from math import sqrt, pow
 
-#-----------------------------------------------------------------------------------------------------
+#=====================================================================================================
+
+#--- BEZIER MATH ------------------------------------------------------------------------------------
 
 def linepoint(t, x0, y0, x1, y1):
     """ Returns coordinates for point at t on the line.
@@ -83,7 +85,7 @@ try: from nodebox.ext.bezier_math import linepoint, linelength, curvepoint, curv
 except:
     pass
 
-#-----------------------------------------------------------------------------------------------------
+#--- BEZIER PATH LENGTH ------------------------------------------------------------------------------
 
 def segment_lengths(path, relative=False, n=20):
     """ Returns a list with the lengths of each segment in the path.
@@ -130,7 +132,7 @@ def length(path, segmented=False, n=20):
     else:
         return segment_lengths(path, relative=True, n=n)
 
-#-----------------------------------------------------------------------------------------------------
+#--- BEZIER PATH POINT -------------------------------------------------------------------------------
 
 def _locate(path, t, segments=None):
     """ Locates t on a specific segment in the path.
@@ -199,13 +201,13 @@ def points(path, amount=100, start=0.0, end=1.0, segments=None):
     if amount > 1: 
         # The delta value is divided by amount-1, because we also want the last point (t=1.0)
         # If we don't use amount-1, we fall one point short of the end.
-        # If amount=4, I want point at t 0.0, 0.33, 0.66 and 1.0.
-        # If amount=2, I want point at t 0.0 and 1.0.
+        # If amount=4, we want the point at t 0.0, 0.33, 0.66 and 1.0.
+        # If amount=2, we want the point at t 0.0 and 1.0.
         d = n / (amount-1)
     for i in xrange(amount):
         yield point(path, start+d*i, segments)
 
-#-----------------------------------------------------------------------------------------------------
+#--- BEZIER PATH CONTOURS ----------------------------------------------------------------------------
 
 def contours(path):
     """ Returns a list of contours in the path, as BezierPath objects.
@@ -234,7 +236,7 @@ def contours(path):
         contours.append(current_contour)
     return contours
 
-#-----------------------------------------------------------------------------------------------------
+#--- BEZIER PATH FROM POINTS -------------------------------------------------------------------------
 
 def findpath(points, curvature=1.0):
     """ Constructs a smooth BezierPath from the given list of points.
@@ -304,7 +306,7 @@ def findpath(points, curvature=1.0):
     
     return path
 
-#-----------------------------------------------------------------------------------------------------
+#--- BEZIER PATH INSERT POINT ------------------------------------------------------------------------
 
 def insert_point(path, t):
     """ Returns a path copy with an extra point at t.
@@ -359,3 +361,143 @@ def insert_point(path, t):
                 new_path.closepath()
                 
     return new_path
+
+#=====================================================================================================
+
+#--- BEZIER ARC --------------------------------------------------------------------------------------
+
+# Copyright (c) 2005-2008, Enthought, Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification, 
+# are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, 
+# this list of conditions and the following disclaimer.
+# Redistributions in binary form must reproduce the above copyright notice, 
+# this list of conditions and the following disclaimer in the documentation 
+# and/or other materials provided with the distribution.
+# Neither the name of Enthought, Inc. nor the names of its contributors 
+# may be used to endorse or promote products derived from this software 
+# without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+# IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, 
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY 
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+from math import acos, sin, cos, hypot, ceil, sqrt, radians, degrees
+
+def arc(x1, y1, x2, y2, angle=0, extent=90):
+    """ Compute a cubic Bezier approximation of an elliptical arc.
+        (x1, y1) and (x2, y2) are the corners of the enclosing rectangle.
+        The coordinate system has coordinates that increase to the right and down.
+        Angles, measured in degrees, start with 0 to the right (the positive X axis) 
+        and increase counter-clockwise.
+        The arc extends from angle to angle+extent.
+        I.e. angle=0 and extent=180 yields an openside-down semi-circle.
+        The resulting coordinates are of the form (x1,y1, x2,y2, x3,y3, x4,y4)
+        such that the curve goes from (x1, y1) to (x4, y4) 
+        with (x2, y2) and (x3, y3) as their respective Bezier control points.
+    """
+    x1, y1, x2, y2 = min(x1,x2), max(y1,y2), max(x1,x2), min(y1,y2)
+    extent = min(max(extent, -360), 360)
+    n = abs(extent) <= 90 and 1 or int(ceil(abs(extent) / 90.0))
+    a = float(extent) / n
+    cx = float(x1 + x2) / 2
+    cy = float(y1 + y2) / 2
+    rx = float(x2 - x1) / 2
+    ry = float(y2 - y1) / 2
+    a2 = radians(a) / 2
+    kappa = abs(4.0 / 3 * (1 - cos(a2)) / sin(a2))
+    points = []
+    for i in range(n):
+        theta0 = radians(angle + (i+0) * a)
+        theta1 = radians(angle + (i+1) * a)
+        c0, c1 = cos(theta0), cos(theta1)
+        s0, s1 = sin(theta0), sin(theta1)
+        k = a > 0 and -kappa or kappa
+        points.append((
+            cx + rx * c0,
+            cy - ry * s0,
+            cx + rx * (c0 + k * s0),
+            cy - ry * (s0 - k * c0),
+            cx + rx * (c1 - k * s1),
+            cy - ry * (s1 + k * c1),
+            cx + rx * c1,
+            cy - ry * s1
+        ))
+    return points
+
+def arcto(x1, y1, rx, ry, phi, large_arc, sweep, x2, y2):
+    """ An elliptical arc approximated with Bezier curves or a line segment.
+        Algorithm taken from the SVG 1.1 Implementation Notes:
+        http://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
+    """
+    
+    def angle(x1, y1, x2, y2):
+        a = degrees(acos(min(max((x1*x2 + y1*y2) / hypot(x1,y1) * hypot(x2,y2), -1), 1)))
+        return x1*y2 > y1*x2 and a or -a
+        
+    def abspt(x, y, cphi, sphi, mx, my):
+        return (x * cp - y * sp + mx, 
+                x * sp + y * cp + my)
+    
+    if x1 == x2 and y1 == y2:
+        return []
+    if rx == 0 or ry == 0: # Line segment.
+        return [(x2,y2)]
+    rx, ry, phi = abs(rx), abs(ry), phi % 360
+    cp = cos(radians(phi))
+    sp = sin(radians(phi))
+
+    # Rotate to the local coordinates.
+    dx = 0.5 * (x1 - x2)
+    dy = 0.5 * (y1 - y2)
+    x  =  cp * dx + sp * dy
+    y  = -sp * dx + cp * dy
+    
+    # If rx, ry and phi are such that there is no solution 
+    # (basically, the ellipse is not big enough to reach from (x1, y1) to (x2, y2)) 
+    # then the ellipse is scaled up uniformly until there is exactly one solution 
+    # (until the ellipse is just big enough).
+    s = (x/rx)**2 + (y/ry)**2
+    if s > 1.0:
+        s = sqrt(s); rx, ry = rx*s, ry*s
+
+    # Solve for the center in the local coordinates.
+    a = sqrt(max((rx*ry)**2 - (rx*y)**2 - (ry*x)**2, 0) / ((rx*y)**2 + (ry*x)**2))
+    a = large_arc == sweep and -a or a 
+    cx =  a * rx * y / ry
+    cy = -a * ry * x / rx
+
+    # Transform back.
+    mx = 0.5 * (x1 + x2)
+    my = 0.5 * (y1 + y2)
+
+    # Compute the start angle and the angular extent of the arc.
+    # Note that theta is local to the phi-rotated coordinate space.
+    dx1 = ( x - cx) / rx
+    dy1 = ( y - cy) / ry
+    dx2 = (-x - cx) / rx
+    dy2 = (-y - cy) / ry
+    theta = angle(1.0, 0.0, dx1, dy1)
+    delta = angle(dx1, dy1, dx2, dy2)
+    if not sweep and delta > 0: delta -= 360
+    if sweep and delta < 0: delta += 360
+
+    # Break it apart into Bezier curves.
+    points  = []
+    handles = arc(cx-rx, cy-ry, cx+rx, cy+ry, theta, delta)
+    for x1, y1, x2, y2, x3, y3, x4, y4 in handles:
+        points.append((
+            abspt(x2, y2, cp, sp, mx, my) + \
+            abspt(x3, y3, cp, sp, mx, my) + \
+            abspt(x4, y4, cp, sp, mx, my)
+        ))
+    return points

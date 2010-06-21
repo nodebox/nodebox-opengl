@@ -38,15 +38,6 @@ void _rotate(double x, double y, double x0, double y0, double a, double *x1, dou
     *y1 = y*u+x*v+y0;
 }
 
-// --- REFLECT ------------------------------------------------------------------
-void _reflect(double x0, double y0, double x1, double y1, double d, double a, double *x, double *y) {
-    double d1;
-    double a1;
-    _distance(x0, y0, x1, y1, &d1);
-    _angle(x0, y0, x1, y1, &a1);
-    _coordinates(x0, y0, d*d1, a+a1, &*x, &*y);
-}
-
 // ------------------------------------------------------------------------------
 
 static PyObject *
@@ -94,15 +85,6 @@ rotate(PyObject *self, PyObject *args) {
     return Py_BuildValue("dd", x1, y1);
 }
 
-static PyObject *
-reflect(PyObject *self, PyObject *args) {
-    double x0, y0, x1, y1, d, a, x, y;   
-    if (!PyArg_ParseTuple(args, "dddddd", &x0, &y0, &x1, &y1, &d, &a))
-        return NULL;
-    _reflect(x0, y0, x1, y1, d, a, &x, &y);
-    return Py_BuildValue("dd", x, y);
-}
-
 // ------------------------------------------------------------------------------
 
 static PyMethodDef geometry_methods[]={
@@ -110,8 +92,7 @@ static PyMethodDef geometry_methods[]={
     { "angle", angle, METH_VARARGS },
     { "distance", distance, METH_VARARGS },
     { "coordinates", coordinates, METH_VARARGS }, 
-    { "rotate", rotate, METH_VARARGS },
-    { "reflect", reflect, METH_VARARGS }, 
+    { "rotate", rotate, METH_VARARGS }, 
     { NULL, NULL }
 };
 
