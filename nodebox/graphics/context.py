@@ -413,9 +413,10 @@ def analog(clr, angle=20, d=0.1):
 # Drawing commands like rect() have optional parameters fill and stroke to set the color directly.
 
 def color_mixin(**kwargs):
-    fill   = kwargs.get("fill", _fill)
-    stroke = kwargs.get("stroke", _stroke)
-    return (fill, stroke)   
+    fill        = kwargs.get("fill", _fill)
+    stroke      = kwargs.get("stroke", _stroke)
+    strokewidth = kwargs.get("strokewidth", _strokewidth)
+    return (fill, stroke, strokewidth)   
 
 #--- COLOR PLANE -------------------------------------------------------------------------------------
 # Not part of the standard API but too convenient to leave out.
@@ -520,9 +521,10 @@ Point = geometry.Point
 def line(x0, y0, x1, y1, **kwargs):
     """ Draws a straight line from x0, y0 to x1, y1 with the current stroke color and strokewidth.
     """
-    fill, stroke = color_mixin(**kwargs)
-    if stroke is not None and _strokewidth > 0:
+    fill, stroke, strokewidth = color_mixin(**kwargs)
+    if stroke is not None and strokewidth > 0:
         glColor4f(*stroke)
+        glLineWidth(strokewidth)
         glBegin(GL_LINE_LOOP)
         glVertex2f(x0, y0)
         glVertex2f(x1, y1)
@@ -532,9 +534,11 @@ def rect(x, y, width, height, **kwargs):
     """ Draws a rectangle with the bottom left corner at x, y.
         The current stroke, strokewidth and fill color are applied.
     """
-    fill, stroke = color_mixin(**kwargs)
+    fill, stroke, strokewidth = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
-        if clr is not None and (i==0 or _strokewidth > 0):
+        if clr is not None and (i==0 or strokewidth > 0):
+            if i == 1: 
+                glLineWidth(strokewidth)
             glColor4f(*clr)
             # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
@@ -560,9 +564,11 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
                [glVertex2f(cos(t)/2, sin(t)/2) for t in [2*pi*i/segments for i in range(segments)]],
                 glEnd()
             )))
-    fill, stroke = color_mixin(**kwargs)
+    fill, stroke, strokewidth = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
-        if clr is not None and (i==0 or _strokewidth > 0):
+        if clr is not None and (i==0 or strokewidth > 0):
+            if i == 1: 
+                glLineWidth(strokewidth)
             glColor4f(*clr)
             glPushMatrix()
             glTranslatef(x, y, 0)
@@ -578,9 +584,11 @@ def arrow(x, y, width, **kwargs):
     """
     head = width * 0.4
     tail = width * 0.2
-    fill, stroke = color_mixin(**kwargs)
+    fill, stroke, strokewidth = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
-        if clr is not None and (i==0 or _strokewidth > 0):
+        if clr is not None and (i==0 or strokewidth > 0):
+            if i == 1: 
+                glLineWidth(strokewidth)
             glColor4f(*clr)
             # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
@@ -908,7 +916,7 @@ class BezierPath(list):
             The precision determines the number of straight lines to use as a substition for a curve.
             It can be a fixed number (int) or relative to the curve length (float or RELATIVE).
         """
-        fill, stroke = color_mixin(**self._kwargs)
+        fill, stroke, strokewidth = color_mixin(**self._kwargs)
         def _draw_fill(contours):
             # Drawing commands for the path fill (as triangles by tessellating the contours).
             v = geometry.tesselate(contours)
@@ -938,8 +946,9 @@ class BezierPath(list):
         if fill is not None:
             glColor4f(*fill)
             glCallList(self._cache[0])
-        if stroke is not None and _strokewidth > 0:
+        if stroke is not None and strokewidth > 0:
             glColor4f(*stroke)
+            glLineWidth(strokewidth)
             glCallList(self._cache[1])
 
     def angle(self, t):
@@ -1363,10 +1372,17 @@ class Image:
             flush(self._cache)
             self._cache = precompile(_render, self._texture, self.quad)
             self.quad._dirty = False
-        w = float(self.width) / self._texture.width
-        h = float(self.height) / self._texture.height
+        # Round position and size to nearest integer to avoid sub-pixel rendering.
+        # This ensures there are no visual artefacts on transparent borders (e.g. the "white halo").
+        # Halo can also be avoided by overpainting in the source image, but this requires some work:
+        # http://technology.blurst.com/remove-white-borders-in-transparent-textures/
+        x = round(self.x)
+        y = round(self.y)
+        w = round(float(self.width) / self._texture.width)
+        h = round(float(self.height) / self._texture.height)
+        # Transform and draw the quads.
         glPushMatrix()
-        glTranslatef(self.x, self.y, 0)
+        glTranslatef(x, y, 0)
         glScalef(w, h, 0)
         glColor4f(*self.color)
         glCallList(self._cache)
@@ -1607,6 +1623,10 @@ class Animation(list):
         self._t.update()
     
     @property
+    def frames(self):
+        return self.__iter__()
+    
+    @property
     def current(self):
         return self[self._t._v1 % len(self)]
     
@@ -1763,7 +1783,7 @@ def label(str="", width=None, height=None, **kwargs):
         If these are omitted the current state is used.
     """
     fontname, fontsize, bold, italic, lineheight, align = font_mixin(**kwargs)
-    fill, stroke = color_mixin(**kwargs)
+    fill, stroke, strokewidth = color_mixin(**kwargs)
     fill = fill is None and (0,0,0,0) or fill
     # We use begin_update() so that the TextLayout doesn't refresh on each update.
     # FormattedDocument allows individual styling of characters - see Text.style().
@@ -1923,7 +1943,8 @@ class Text(object):
         self._label.document.set_style(i, j, attributes)
 
     def __del__(self):
-        self._label.delete()
+        if hasattr(self, "_label") and self._label:
+            self._label.delete()
 
 _TEXT_CACHE = 200
 _text_cache = {}
@@ -1941,7 +1962,7 @@ def text(str, x=None, y=None, width=None, height=None, draw=True, **kwargs):
         # Changing Text properties is still faster than creating a new Text.
         # The cache has a limited size (100), so the oldest Text objects are deleted.
         fontname, fontsize, bold, italic, lineheight, align = font_mixin(**kwargs)
-        fill, stroke = color_mixin(**kwargs)
+        fill, stroke, strokewidth = color_mixin(**kwargs)
         id = (fontname, int(fontsize), bold, italic)
         recycled = False
         if id in _text_cache:
