@@ -178,6 +178,7 @@ class AffineTransform:
             Note that scale(), translate(), rotate() work with premultiplication,
             e.g. the matrix A followed by B = BA and not AB.
         """
+        # No need to optimize (C version is just as fast).
         return [
             a[0]*b[0] + a[1]*b[3], 
             a[0]*b[1] + a[1]*b[4], 
@@ -321,7 +322,7 @@ class Bounds:
         mx, my = max(self.x, b.x), max(self.y, b.y)
         return Bounds(mx, my, 
             min(self.x+self.width, b.x+b.width) - mx, 
-            min(self.y+self.height, b.x+b.height) - my)
+            min(self.y+self.height, b.y+b.height) - my)
     
     def union(self, b):
         """ Returns bounds that encompass the union of the two.
@@ -329,7 +330,7 @@ class Bounds:
         mx, my = min(self.x, b.x), min(self.y, b.y)
         return Bounds(mx, my, 
             max(self.x+self.width, b.x+b.width) - mx, 
-            max(self.y+self.height, b.x+b.height) - my)
+            max(self.y+self.height, b.y+b.height) - my)
 
     def contains(self, *a):
         """ Returns True if the given point or rectangle falls within the bounds.

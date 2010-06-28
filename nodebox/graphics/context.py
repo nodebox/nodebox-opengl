@@ -483,7 +483,7 @@ def translate(x, y):
     """ By default, the origin of the layer or canvas is at the bottom left.
         This origin point will be moved by (x,y) pixels.
     """
-    glTranslatef(x, y, 0)
+    glTranslatef(round(x), round(y), 0)
 
 def rotate(degrees):
     """ Rotates the transformation state, i.e. all subsequent drawing primitives are rotated.
@@ -1320,15 +1320,15 @@ class Image:
         self.quad     = Quad()
         self.color    = Color(1.0, 1.0, 1.0, 1.0)
     
-    def copy(self, texture=None):
+    def copy(self, texture=None, width=None, height=None):
         if texture is None:
             img = Image(self._src[0], data=self._src[1])
         else:
             img = Image(texture)
         img.x      = self.x
         img.x      = self.y
-        img.width  = self.width
-        img.height = self.height
+        img.width  = width and width or self.width
+        img.height = height and height or self.height
         img.quad   = self.quad.copy()
         img.color  = self.color.copy()
         return img
@@ -1478,7 +1478,8 @@ def crop(img, x=0, y=0, width=None, height=None):
     if height is None: height = t.height
     t = t.get_region(x, y, min(t.width-x, width), min(t.height-y, height))
     if isinstance(img, Image):
-        return img.copy(texture=t)
+        img = img.copy(texture=t)
+        return img.copy(texture=t, width=t.width, height=t.height)
     if isinstance(img, Pixels):
         return Pixels(t)
     if isinstance(img, pyglet.image.Texture):
@@ -1691,7 +1692,7 @@ LEFT   = "left"
 RIGHT  = "right"
 CENTER = "center"
 
-_fonts      = {}             # Custom fonts loaded from file.
+_fonts      = []             # Custom fonts loaded from file.
 _fontname   = "Verdana"      # Current state font name.
 _fontsize   = 12             # Current state font size.
 _fontweight = [False, False] # Current state font weight (bold, italic).
@@ -1704,7 +1705,7 @@ def font(fontname=None, fontsize=None, file=None):
     """
     global _fontname, _fontsize
     if file is not None and file not in _fonts:
-        _fonts[file] = pyglet.font.add_file(file)
+        _fonts.append(file); pyglet.font.add_file(file)
     if fontname is not None:
         _fontname = fontname
     if fontsize is not None:
@@ -2165,24 +2166,24 @@ class EventHandler(EventListener):
     def __init__(self):
         EventListener.__init__(self)
         
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+    def on_mouse_enter(self, mouse):
         pass
-    def on_mouse_enter(self, x, y):
+    def on_mouse_leave(self, mouse):
         pass
-    def on_mouse_leave(self, x, y):
+    def on_mouse_motion(self, mouse):
         pass
-    def on_mouse_motion(self, x, y, dx, dy):
+    def on_mouse_press(self, mouse):
         pass
-    def on_mouse_press(self, x, y, button, modifiers):
+    def on_mouse_release(self, mouse):
         pass
-    def on_mouse_release(self, x, y, button, modifiers):
+    def on_mouse_drag(self, mouse):
         pass
-    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+    def on_mouse_scroll(self, mouse):
         pass
     
-    def on_key_press(self, keycode, modifiers):
+    def on_key_press(self, key):
         pass
-    def on_key_release(self, keycode, modifiers):
+    def on_key_release(self, key):
         pass
 
 #=====================================================================================================
@@ -2544,13 +2545,12 @@ class Layer(list, Prototype, EventHandler):
         # translate => flip => rotate => scale => origin.
         # Center the contents around the origin point.
         dx, dy = self.origin(relative=False)
-        #glTranslatef(dx, dy, 0)
-        glTranslatef(self._x.current, self._y.current, 0)
+        glTranslatef(round(self._x.current), round(self._y.current), 0)
         if self.flipped:
             glScalef(-1, 1, 1)
         glRotatef(self._rotation.current, 0, 0, 1)
         glScalef(self._scale.current, self._scale.current, 1)
-        glTranslatef(-dx, -dy, 0)
+        glTranslatef(-round(dx), -round(dy), 0)
         # Draw contents: 
         # layers on top first, then my own contents, then layers below.
         for layer in self:
@@ -2568,12 +2568,16 @@ class Layer(list, Prototype, EventHandler):
         """
         pass
             
-    def layer_at(self, x, y, clipped=True, transformed=True, _covered=False):
+    def layer_at(self, x, y, clipped=False, transformed=True, enabled=False, _covered=False):
         """ Returns the topmost layer containing the mouse position, None otherwise.
             With clipped=True, no parts of child layers outside the parent's bounds are checked.
+            With enabled=True, only enabled layers are checked (useful for events).
         """
         if self.hidden:
             # Don't do costly operations on layers the user can't see.
+            return None
+        if enabled and not self.enabled:
+            # Skip disabled layers during event propagation.
             return None
         if _covered:
             # An ancestor is blocking this layer, so we can't select it.
@@ -2598,7 +2602,7 @@ class Layer(list, Prototype, EventHandler):
             # We keep a recursive covered-state to verify visibility.
             # The covered-state starts as False, but stays True once it switches.
             _covered = _covered or (hit and not child.top)
-            child = child.layer_at(x, y, clipped, transformed, _covered)
+            child = child.layer_at(x, y, clipped, transformed, enabled, _covered)
             if child is not None:
                 return child
         if hit:
@@ -2718,9 +2722,9 @@ layer = Layer
 
 #=====================================================================================================
 
-#--- INPUT -------------------------------------------------------------------------------------------
+#--- MOUSE -------------------------------------------------------------------------------------------
 
-# Mouse cursors
+# Mouse cursors:
 DEFAULT = "default"
 CROSS   = pyglet.window.Window.CURSOR_CROSSHAIR
 HAND    = pyglet.window.Window.CURSOR_HAND
@@ -2728,54 +2732,82 @@ HIDDEN  = pyglet.window.Window.CURSOR_NO
 TEXT    = pyglet.window.Window.CURSOR_TEXT
 WAIT    = pyglet.window.Window.CURSOR_WAIT
 
-# Mouse buttons
-MOUSE_LEFT   = pyglet.window.mouse.LEFT
-MOUSE_MIDDLE = pyglet.window.mouse.MIDDLE
-MOUSE_RIGHT  = pyglet.window.mouse.RIGHT
+# Mouse buttons:
+LEFT    = "left"
+RIGHT   = "right"
+MIDDLE  = "middle"
 
-# Keys
-from pyglet.window import key as KEYCODE
-KEY_BACKSPACE = "backspace"
-KEY_TAB       = "tab"
-KEY_RETURN    = "return"
-KEY_SPACE     = "space"
-KEY_ESC       = "escape"
-KEY_CTRL      = "ctrl"
-KEY_LCTRL     = "lctrl"
-KEY_RCTRL     = "rctrl"
-KEY_SHIFT     = "shift"
-KEY_LSHIFT    = "lshift"
-KEY_RSHIFT    = "rshift"
-KEY_UP        = "up"
-KEY_DOWN      = "down"
-KEY_LEFT      = "left"
-KEY_RIGHT     = "right"
+class Mouse(object, Point):
+    
+    def __init__(self, canvas, x=0, y=0):
+        """ Keeps track of the mouse position on the canvas, buttons pressed and the cursor icon.
+        """
+        Point.__init__(self, x, y)
+        self._canvas   = canvas
+        self._cursor   = DEFAULT    # Mouse cursor: CROSS, HAND, HIDDEN, TEXT, WAIT.
+        self._button   = None       # Mouse button pressed: LEFT, RIGHT, MIDDLE.
+        self.modifiers = []         # Mouse button modifiers: CTRL, SHIFT, OPTION.
+        self.pressed   = False      # True if the mouse button is pressed.
+        self.dragged   = False      # True if the mouse is dragged.
+        self.scroll    = Point(0,0) # Scroll offset.
+        self.vx        = 0          # Relative offset from previous horizontal position.
+        self.vy        = 0          # Relative offset from previous vertical position.
 
-# Modifiers - in on_key_press(), check for: modifiers & SHIFT
-SHIFT   = KEYCODE.MOD_SHIFT
-CTRL    = KEYCODE.MOD_CTRL
-OPTION  = ALT = KEYCODE.MOD_OPTION
-COMMAND = KEYCODE.MOD_COMMAND
+    def _get_cursor(self):
+        return self._cursor
+    def _set_cursor(self, mode):
+        if mode == DEFAULT:
+            mode = None
+        self._cursor = mode
+        self._canvas._window.set_mouse_cursor(self._canvas._window.get_system_mouse_cursor(mode))
+    cursor = property(_get_cursor, _set_cursor)
+    
+    def _get_button(self):
+        return self._button
+    def _set_button(self, button):
+        self._button = \
+            button == pyglet.window.mouse.LEFT   and LEFT or \
+            button == pyglet.window.mouse.RIGHT  and RIGHT or \
+            button == pyglet.window.mouse.MIDDLE and MIDDLE or None
+            
+    def __repr__(self):
+        return "Mouse(x=%s, y=%s, pressed=%s, dragged=%s)" % (
+            repr(self.x),
+            repr(self.y),
+            repr(self.pressed),
+            repr(self.dragged))
 
-# Somebody needs to expand this list.
-characters = {
-    "backslash" : "\\",
-    "comma"     : ",",
-    "equal"     : "+",
-    "minus"     : "-",
-    "period"    : ".",
-    "semicolon" : ";",
-    "slash"     : "/",
-    "quoteleft" : "`",
-}
-def key(code):
-    """ Returns a character from a Pyglet symbol string from a key code.
-        For example: 45 => KEY_MINUS => "-".
-    """
-    k = pyglet.window.key.symbol_string(code).lower()
-    k = k.lstrip("_")
-    k = characters.get(k, k) 
-    return k
+#--- KEYBOARD ----------------------------------------------------------------------------------------
+
+# Key codes:
+from pyglet.window.key import \
+    BACKSPACE, DELETE, TAB, RETURN, ENTER, SPACE, ESCAPE, UP, DOWN, LEFT, RIGHT
+
+# Key modifiers:
+OPTION = \
+ALT    = pyglet.window.key.MOD_OPTION
+CTRL   = pyglet.window.key.MOD_CTRL
+SHIFT  = pyglet.window.key.MOD_SHIFT
+
+class Key:
+    
+    def __init__(self, canvas):
+        """ Keeps track of the key pressed and any modifiers (e.g. shift or control key).
+        """
+        self._canvas   = canvas
+        self.char      = ""
+        self.code      = None
+        self.modifiers = [] 
+        self.pressed   = False
+        
+    def __repr__(self):
+        return "Key(char=%s, code=%s, modifiers=%s, pressed=%s)" % (
+            repr(self.char), 
+            repr(self.code), 
+            repr(self.modifiers), 
+            repr(self.pressed))
+
+#=====================================================================================================
 
 #--- CANVAS ------------------------------------------------------------------------------------------
 
@@ -2828,18 +2860,16 @@ class Canvas(list, Prototype, EventHandler):
         """
         Prototype.__init__(self)
         self._window                  = pyglet.window.Window(visible=False, config=_configure(settings), vsync=vsync)
-        self._window.set_caption(name)             # Window caption.
-        self._fps                     = None       # Frames per second.
-        self._frame                   = 0          # The current frame.
-        self._active                  = False      # Application is running?
-        self._buffer                  = None       # Rendered screenshot of the canvas.
-        self._mouse                   = Point(0,0) # The mouse cursor location.
-        self._mouse.pressed           = False      # True if the mouse button is pressed.
-        self._mouse.dragged           = False      # True if the mouse is dragged.
-        self._cursor                  = DEFAULT    # The mouse cursor icon.
-        self._current_layers          = []         # Layers that the mouse moves over.
-        self._current_layer           = None       # Layer on top the mouse moves over.
-        self._dragged_layer           = None       # Layer being dragged by the mouse.
+        self._window.set_caption(name)              # Window caption.
+        self._fps                     = None        # Frames per second.
+        self._frame                   = 0           # The current frame.
+        self._active                  = False       # Application is running?
+        self._buffer                  = None        # Rendered screenshot of the canvas.
+        self._mouse                   = Mouse(self) # The mouse cursor location. 
+        self._key                     = Key(self)   # The key pressed on the keyboard.
+        self._current_layers          = []          # Layers that the mouse moves over.
+        self._current_layer           = None        # Layer on top the mouse moves over.
+        self._dragged_layer           = None        # Layer being dragged by the mouse.
         # Mouse and keyboard events:
         self._window.on_mouse_enter   = self._on_mouse_enter
         self._window.on_mouse_leave   = self._on_mouse_leave
@@ -2850,7 +2880,10 @@ class Canvas(list, Prototype, EventHandler):
         self._window.on_mouse_scroll  = self._on_mouse_scroll
         self._window.on_key_press     = self._on_key_press
         self._window.on_key_release   = self._on_key_release
+        self._window.on_text          = self._on_text
+        self._window.on_text_motion   = self._on_text_motion
         self._window.on_close         = self.stop
+        self._window.on_key           = False
 
     def _get_name(self):
         return self._window.caption
@@ -2905,44 +2938,40 @@ class Canvas(list, Prototype, EventHandler):
         """ Yields a Point(x, y) with the mouse position on the canvas.
         """
         return self._mouse
-
-    def _get_cursor(self):
-        return self._cursor
-    def _set_cursor(self, mode):
-        if mode == DEFAULT:
-            mode = None
-        self._cursor = mode
-        self._window.set_mouse_cursor(self._window.get_system_mouse_cursor(mode))
-    cursor = property(_get_cursor, _set_cursor)
+        
+    @property
+    def key(self):
+        return self._key
         
     #--- Event dispatchers ------------------------------
     
-    def layer_at(self, x, y):
+    def layer_at(self, x, y, **kwargs):
         """ Find the layer at the specified coordinates.
             This method returns None if no layer was found.
         """
         for layer in reversed(self):
-            if layer.enabled:
-                layer = layer.layer_at(x, y)
-                if layer is not None:
-                    return layer
+            layer = layer.layer_at(x, y, **kwargs)
+            if layer is not None:
+                return layer
         return None
 
     def _on_mouse_enter(self, x, y):
-        self.on_mouse_enter(x, y)
+        self.on_mouse_enter(self._mouse)
         
     def _on_mouse_leave(self, x, y):
-        self.on_mouse_leave(x, y)
+        self.on_mouse_leave(self._mouse)
         for layer in self._current_layers:
-            layer.on_mouse_leave(x, y)
+            layer.on_mouse_leave(self._mouse)
         self._dragged_layer  = None
         self._current_layer  = None
         self._current_layers = []
         
     def _on_mouse_motion(self, x, y, dx, dy):
-        self._mouse.x = x
-        self._mouse.y = y
-        self.on_mouse_motion(x, y, dx, dy)
+        self._mouse.x  = x
+        self._mouse.y  = y
+        self._mouse.vx = dx
+        self._mouse.vy = dy
+        self.on_mouse_motion(self._mouse)
         # Find the layers that were previously entered and now being left.
         leaving = []
         for layer in self._current_layers:
@@ -2950,59 +2979,88 @@ class Canvas(list, Prototype, EventHandler):
                 leaving.append(layer)
         # Leave the marked layers.
         for layer in leaving:
-            layer.on_mouse_leave(x, y)
+            layer.on_mouse_leave(self._mouse)
             self._current_layers.remove(layer)
         # Get the topmost layer over which the mouse is hovering.
         # The layer and all of its parents in the hierarchy receive the on_mouse_enter event.
         # The layer itself also receives the on_mouse_motion event.
-        self._current_layer = layer = self.layer_at(x, y)
+        self._current_layer = layer = self.layer_at(x, y, enabled=True)
         if layer is not None:
             while layer is not None:
                 if layer not in self._current_layers:
                     self._current_layers.append(layer)
-                    layer.on_mouse_enter(x, y)
+                    layer.on_mouse_enter(self._mouse)
                 layer = layer.parent
-            self._current_layer.on_mouse_motion(x, y, dx, dy)
+            self._current_layer.on_mouse_motion(self._mouse)
     
     def _on_mouse_press(self, x, y, button, modifiers):
-        self._mouse.pressed = True
-        self.on_mouse_press(x, y, button, modifiers)
+        self._mouse.button    = button
+        self._mouse.modifiers = [key for key in (CTRL, SHIFT, OPTION) if modifiers & key]
+        self._mouse.pressed   = True
+        self.on_mouse_press(self._mouse)
         if self._current_layer is not None:
-            self._current_layer.on_mouse_press(x, y, button, modifiers)
+            self._current_layer.on_mouse_press(self._mouse)
             self._dragged_layer = self._current_layer
         
     def _on_mouse_release(self, x, y, button, modifiers):
-        self._mouse.pressed = False
-        self._mouse.dragged = False
-        self.on_mouse_release(x, y, button, modifiers)
+        self._mouse.button    = None
+        self._mouse.modifiers = []
+        self._mouse.pressed   = False
+        self._mouse.dragged   = False
+        self.on_mouse_release(self._mouse)
         if self._dragged_layer is not None:
-            self._dragged_layer.on_mouse_release(x, y, button, modifiers)
+            self._dragged_layer.on_mouse_release(self._mouse)
         self._dragged_layer = None
 
     def _on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        self._mouse.x = x
-        self._mouse.y = y
+        self._mouse.x       = x
+        self._mouse.y       = y
+        self._mouse.vx      = dx
+        self._mouse.vy      = dy
         self._mouse.dragged = True
-        self.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
+        self.on_mouse_drag(self._mouse)
         if self._dragged_layer is not None: 
-            self._dragged_layer.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
-        
+            self._dragged_layer.on_mouse_drag(self._mouse)
+            
     def _on_mouse_scroll(self, x, y, scroll_x, scroll_y):
-        self.on_mouse_scroll(x, y, scroll_x, scroll_y)
-        if self._dragged_layer is not None:
-            self._current_layer.on_mouse_scroll(x, y, scroll_x, scroll_y)
+        self._mouse.scroll.x = scroll_x
+        self._mouse.scroll.y = scroll_y
+        self.on_mouse_scroll(self._mouse)
+        if self._current_layer is not None:
+            self._current_layer.on_mouse_scroll(self._mouse)
 
     def _on_key_press(self, keycode, modifiers):
-        self.on_key_press(keycode, modifiers)
+        self._key.code      = keycode
+        self._key.modifiers = [key for key in (CTRL, SHIFT, OPTION) if modifiers & key]
+        self._key.pressed   = True
+        # The event is delegated in _update():
+        self._window.on_key = True
 
     def _on_key_release(self, keycode, modifiers):
-        self.on_key_release(keycode, modifiers)
+        self._key.char      = ""
+        self._key.code      = None
+        self._key.modifiers = [] 
+        self._key.pressed   = False
+        self.on_key_release(self.key)
+        for layer in self:
+            layer.on_key_release(self.key)
+
+    def _on_text(self, text):
+        self._key.char = text
+        # The event is delegated in _update():
+        self._window.on_key = True
+            
+    def _on_text_motion(self, keycode):
+        self._key.char = ""
+        self._key.code = keycode
+        # The event is delegated in _update():
+        self._window.on_key = True
 
     # Event methods are meant to be overridden or patched with Prototype.set_method().
-    def on_key_press(self, keycode, modifiers):
+    def on_key_press(self, key):
         """ The default behavior is to exit the application when ESC is pressed.
         """
-        if keycode == KEYCODE.ESCAPE:
+        if key.code == ESCAPE:
             self.stop()
 
     #--- Main loop --------------------------------------
@@ -3064,6 +3122,13 @@ class Canvas(list, Prototype, EventHandler):
         self.update()
         for layer in self:
             layer._update()
+        # Fire on_key_press() event,
+        # which combines _on_key_press(), _on_text() and _on_text_motion().
+        if self._window.on_key is True:
+            self._window.on_key = False
+            self.on_key_press(self._key)
+            for layer in self:
+                layer.on_key_press(self._key)
 
     def clear(self):
         """ Clears the previous frame from the canvas.
@@ -3088,7 +3153,7 @@ class Canvas(list, Prototype, EventHandler):
         if isinstance(update, FunctionType):
             self.set_method(update, name="update")
         self._setup()
-        self.fps = self._fps         
+        self.fps = self._fps # Schedule the _update and _draw events.
         pyglet.app.run()
 
     def stop(self):
@@ -3103,7 +3168,8 @@ class Canvas(list, Prototype, EventHandler):
     def _get_fps(self):
         return self._fps
     def _set_fps(self, v):
-        # Use pyglet.clock to schedule update() and draw() events.
+        # Use pyglet.clock to schedule _update() and _draw() events.
+        # The clock will then take care of calling them enough times.
         for f in (self._update, self._draw):
             pyglet.clock.unschedule(f)
             if v is None:
@@ -3152,12 +3218,12 @@ class Canvas(list, Prototype, EventHandler):
         # This way we don't have to explain set_method() to beginning users..
         if isinstance(v, FunctionType) and (k in ("setup", "draw", "update") \
         or k.startswith("on_") and k in (
-            "on_mouse_drag",
             "on_mouse_enter",
             "on_mouse_leave",
             "on_mouse_motion",
             "on_mouse_press",
             "on_mouse_release",
+            "on_mouse_drag",
             "on_mouse_scroll",
             "on_key_press",
             "on_key_release")):
@@ -3234,13 +3300,13 @@ def cursor(mode=None):
     """ Sets the current mouse cursor (DEFAULT, CROSS, HAND, HIDDEN, TEXT or WAIT).
     """
     if mode is not None:
-        canvas.cursor = mode
-    return canvas.cursor
+        canvas.mouse.cursor = mode
+    return canvas.mouse.cursor
 
 def nocursor():
     """ Hides the mouse cursor.
     """
-    canvas.cursor = HIDDEN
+    canvas.mouse.cursor = HIDDEN
 
 #-----------------------------------------------------------------------------------------------------
 # Performance statistics.

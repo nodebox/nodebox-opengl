@@ -38,6 +38,22 @@ void _rotate(double x, double y, double x0, double y0, double a, double *x1, dou
     *y1 = y*u+x*v+y0;
 }
 
+// --- MATRIX MULTIPLY ----------------------------------------------------------
+
+void _mmult(double  a0, double  a1, double  a2, double  a3, double  a4, double  a5, double  a6, double  a7, double  a8,
+            double  b0, double  b1, double  b2, double  b3, double  b4, double  b5, double  b6, double  b7, double  b8,
+            double *c0, double *c1, double *c2, double *c3, double *c4, double *c5, double *c6, double *c7, double *c8) {
+    *c0 = a0*b0 + a1*b3;
+    *c1 = a0*b1 + a1*b4;
+    *c2 = 0;
+    *c3 = a3*b0 + a4*b3;
+    *c4 = a3*b1 + a4*b4;
+    *c5 = 0;
+    *c6 = a6*b0 + a7*b3 + b6;
+    *c7 = a6*b1 + a7*b4 + b7;
+    *c8 = 1;
+}
+
 // ------------------------------------------------------------------------------
 
 static PyObject *
@@ -85,6 +101,21 @@ rotate(PyObject *self, PyObject *args) {
     return Py_BuildValue("dd", x1, y1);
 }
 
+static PyObject *
+mmult(PyObject *self, PyObject *args) {
+    double a0, a1, a2, a3, a4, a5, a6, a7, a8;
+    double b0, b1, b2, b3, b4, b5, b6, b7, b8;
+    double c0, c1, c2, c3, c4, c5, c6, c7, c8;
+    if (!PyArg_ParseTuple(args, "dddddddddddddddddd", 
+        &a0, &a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8,
+        &b0, &b1, &b2, &b3, &b4, &b5, &b6, &b7, &b8))
+        return NULL;
+    _mmult( a0,  a1,  a2,  a3,  a4,  a5,  a6,  a7,  a8,
+            b0,  b1,  b2,  b3,  b4,  b5,  b6,  b7,  b8,
+           &c0, &c1, &c2, &c3, &c4, &c5, &c6, &c7, &c8);
+    return Py_BuildValue("ddddddddd", c0, c1, c2, c3, c4, c5, c6, c7, c8);
+}
+
 // ------------------------------------------------------------------------------
 
 static PyMethodDef geometry_methods[]={
@@ -92,7 +123,8 @@ static PyMethodDef geometry_methods[]={
     { "angle", angle, METH_VARARGS },
     { "distance", distance, METH_VARARGS },
     { "coordinates", coordinates, METH_VARARGS }, 
-    { "rotate", rotate, METH_VARARGS }, 
+    { "rotate", rotate, METH_VARARGS },
+    { "mmult", mmult, METH_VARARGS }, 
     { NULL, NULL }
 };
 
