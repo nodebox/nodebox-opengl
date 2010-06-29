@@ -55,7 +55,7 @@ class Theme(dict):
         self["text"]       = Color(1.0)
 
 theme = Theme(os.path.join(os.path.dirname(__file__), "theme")) 
-
+print theme["font"]
 #=====================================================================================================
 
 #--- Control -----------------------------------------------------------------------------------------
@@ -116,8 +116,6 @@ class Control(Layer):
         for control in self: control.on_key_press(key)
     def on_key_release(self, key):
         for control in self: control.on_key_release(key)
-    def on_key_repeat(self, key):
-        for control in self: control.on_key_repeat(key)
     
     def on_action(self):
         """ Override this method with a custom action.
@@ -590,7 +588,7 @@ class Editable(Control):
         self._editor.content_valign = wrap and "top" or "center"
         self._editor.caret = Caret(self._editor)
         self._editor.caret.visible = False
-        Editable._pack(self)
+        Editable._pack(self) # On init, call Editable._pack(), not the derived Field._pack().
         
     def _pack(self):
         self._editor.x = self._padding[0]
@@ -758,6 +756,7 @@ class Field(Editable):
         w = max(self.width, self.src["cap1"].width + self.src["cap2"].width)
         self._set_width(w)
         self._set_height(self.src["face"].height)
+        # Position the hint text (if no other text is in the field):
         self[0].x = self._padding[0]
         self[0]._set_height(self.height)
         self[0]._pack()
@@ -785,6 +784,7 @@ class Layout(Layer):
         """ A group of controls with a specific layout.
             Controls can be added with Layout.append().
             The layout will be applied when Layout.apply() is called.
+            This happens automatically if a layout is appended to a Panel.
         """
         kwargs["x"] = kwargs["y"] = kwargs["width"] = kwargs["height"] = 0
         Layer.__init__(self, **kwargs)
@@ -793,8 +793,6 @@ class Layout(Layer):
         for control in self: control.on_key_press(key)
     def on_key_release(self, key):
         for control in self: control.on_key_release(key)
-    def on_key_repeat(self, key):
-        for control in self: control.on_key_repeat(key)
     
     def apply(self, padding=0):
         """ Adjusts the position and size of the controls to match the layout.
@@ -822,8 +820,8 @@ class Rows(Layout):
         """
         self.controls.insert(i, control)
         self.captions.insert(i, Label(caption.upper(), 
-            fontsize = theme["fontsize"] * 0.75, 
-                fill = theme["text"].rgb+(theme["text"].a * 0.75,)))
+            fontsize = theme["fontsize"] * 0.8, 
+                fill = theme["text"].rgb+(theme["text"].a * 0.8,)))
         Layout.insert(self, i, self.controls[i])
         Layout.insert(self, i, self.captions[i])
         

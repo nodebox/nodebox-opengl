@@ -20,7 +20,7 @@ from time      import time
 from random    import choice, shuffle, random as rnd
 from new       import instancemethod
 from glob      import glob
-from os.path   import basename
+from os        import path
 from sys       import getrefcount
 from StringIO  import StringIO
 from hashlib   import md5
@@ -1682,6 +1682,11 @@ offscreen = FBO(640, 480)
 
 #--- FONT --------------------------------------------------------------------------------------------
 
+# Load platform-independent fonts.
+# By default, the Droid font is used (Apache 2.0 license).
+for f in glob(path.join(path.dirname(__file__), "..", "font", "*")):
+    pyglet.font.add_file(f)
+
 # Font weight
 NORMAL = "normal"
 BOLD   = "bold"
@@ -1693,7 +1698,7 @@ RIGHT  = "right"
 CENTER = "center"
 
 _fonts      = []             # Custom fonts loaded from file.
-_fontname   = "Verdana"      # Current state font name.
+_fontname   = "Droid Sans"   # Current state font name.
 _fontsize   = 12             # Current state font size.
 _fontweight = [False, False] # Current state font weight (bold, italic).
 _lineheight = 1.0            # Current state text lineheight.
