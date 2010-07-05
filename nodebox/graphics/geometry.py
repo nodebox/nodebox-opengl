@@ -263,12 +263,20 @@ class AffineTransform:
 
 #--- POINT -------------------------------------------------------------------------------------------
 
-class Point:
+class Point(object):
     
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
-    
+
+    def _get_xy(self):
+        return (self.x, self.y)
+    def _set_xy(self, (x,y)):
+        self.x = x
+        self.y = y
+        
+    xy = property(_get_xy, _set_xy)
+            
     def __repr__(self):
         return "Point(x=%.2f, y=%.2f)" % (self.x, self.y)
         

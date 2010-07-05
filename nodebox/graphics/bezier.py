@@ -7,6 +7,10 @@
 from context import BezierPath, PathElement, PathError, Point, MOVETO, LINETO, CURVETO, CLOSE
 from math import sqrt, pow
 
+class DynamicPathElement(PathElement):
+    # Not a "fixed" point in the BezierPath, but calculated with BezierPath.point().
+    pass
+
 #=====================================================================================================
 
 #--- BEZIER MATH ------------------------------------------------------------------------------------
@@ -178,15 +182,18 @@ def point(path, t, segments=None):
     p1 = path[i+1]
     if p1.cmd == CLOSE:
         x, y = linepoint(t, x0, y0, closeto.x, closeto.y)
-        return PathElement(LINETO, ((x, y),))
+        return DynamicPathElement(LINETO, ((x, y),))
     elif p1.cmd == LINETO:
         x1, y1 = p1.x, p1.y
         x, y = linepoint(t, x0, y0, x1, y1)
-        return PathElement(LINETO, ((x, y),))
+        return DynamicPathElement(LINETO, ((x, y),))
     elif p1.cmd == CURVETO:
+        # Note: the handles need to be interpreted differenty than in a BezierPath.
+        # In a BezierPath, ctrl1 is how the curve started, and ctrl2 how it arrives in this point.
+        # Here, ctrl1 is how the curve arrives, and ctrl2 how it continues to the next point.
         x3, y3, x1, y1, x2, y2 = p1.x, p1.y, p1.ctrl1.x, p1.ctrl1.y, p1.ctrl2.x, p1.ctrl2.y
         x, y, c1x, c1y, c2x, c2y = curvepoint(t, x0, y0, x1, y1, x2, y2, x3, y3)
-        return PathElement(CURVETO, ((c1x, c1y), (c2x, c2y), (x, y)))
+        return DynamicPathElement(CURVETO, ((c1x, c1y), (c2x, c2y), (x, y)))
     else:
         raise PathError, "Unknown cmd '%s' for p1 %s" % (p1.cmd, p1)
         
@@ -278,6 +285,9 @@ def findpath(points, curvature=1.0):
     # Construct the path with curves.
     curvature = 4 + (1.0-curvature)*40
     
+    # The first point's ctrl1 and ctrl2 and last point's ctrl2
+    # will be the same as that point's location;
+    # we cannot infer how the path curvature started or will continue.
     dx = {0: 0, len(points)-1: 0}
     dy = {0: 0, len(points)-1: 0}
     bi = {1: -0.25}

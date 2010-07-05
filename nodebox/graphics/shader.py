@@ -74,10 +74,13 @@ void main() {
 
 class vector(list): 
     pass
-
-def vec2(f1, f2)         : return vector((f1, f2))
-def vec3(f1, f2, f3)     : return vector((f1, f2, f3))
-def vec4(f1, f2, f3, f4) : return vector((f1, f2, f3, f4))
+    
+def vec2(f1, f2):
+    return vector((f1, f2))
+def vec3(f1, f2, f3):
+    return vector((f1, f2, f3))
+def vec4(f1, f2, f3, f4):
+    return vector((f1, f2, f3, f4))
 
 COMPILE = "compile" # Error occurs during glCompileShader().
 BUILD   = "build"   # Error occurs during glLinkProgram().
@@ -259,6 +262,24 @@ class Filter(object):
         self._shader.pop()
 
 #=====================================================================================================
+
+#--- INVERT -----------------------------------------------------------------------------------------
+
+_invert = Shader(fragment='''
+uniform sampler2D src;
+void main() {
+    gl_FragColor = texture2D(src, gl_TexCoord[0].xy);
+    gl_FragColor.rgb = 1.0 - gl_FragColor.rgb;
+}''')
+
+class Invert(Filter):
+    
+    def __init__(self, texture):
+        self._shader = _invert
+        self.texture = texture
+        
+    def push(self):
+        self._shader.push()
 
 #--- GRADIENT ----------------------------------------------------------------------------------------
 
@@ -588,13 +609,23 @@ class Gaussian3x3Blur(Filter):
 _compositing = '''
 uniform sampler2D src1;
 uniform sampler2D src2;
-uniform vec2 ratio;
+uniform vec2 extent;
 uniform vec2 offset;
+uniform vec2 ratio;
 uniform float alpha;
 void main() {
-    vec2 v  = gl_TexCoord[0].xy;
-    vec4 p1 = texture2D(src1, v.xy);
-    vec4 p2 = texture2D(src2, v.xy * ratio - offset);
+    vec2 v1 = gl_TexCoord[0].xy;
+    vec2 v2 = v1 * ratio - offset * extent;
+    vec4 p1 = texture2D(src1, v1.xy);
+    vec4 p2 = texture2D(src2, v2.xy);
+    if (v2.x < 0.0 || 
+        v2.y < 0.0 || 
+        v2.x > extent.x + 0.001 || 
+        v2.y > extent.y + 0.001) { 
+        gl_FragColor = p1; 
+        return; 
+    }
+    vec4 p  = vec4(0.0);
     %s
     gl_FragColor = p; 
 }'''
@@ -615,8 +646,12 @@ class Compositing(Filter):
         self.dy = dy 
 
     def push(self):
-        dx = float(self.dx) / ceil2(self.blend.width)
-        dy = float(self.dy) / ceil2(self.blend.height)
+        w  = float(self.blend.width)
+        h  = float(self.blend.height)
+        w2 = float(ceil2(w))
+        h2 = float(ceil2(h))
+        dx = float(self.dx) / w
+        dy = float(self.dy) / h
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(self.texture.target, self.texture.id)        
         glActiveTexture(GL_TEXTURE1)
@@ -624,8 +659,9 @@ class Compositing(Filter):
         glActiveTexture(GL_TEXTURE0)
         self._shader.set("src1", 0)
         self._shader.set("src2", 1)
-        self._shader.set("ratio", vec2(*ratio2(self.texture, self.blend))) # Size proportion.
-        self._shader.set("offset", vec2(dx, dy)) # Blend offset.
+        self._shader.set("extent", vec2(w/w2, h/h2)) # Blend extent.
+        self._shader.set("offset", vec2(dx, dy))     # Blend offset.
+        self._shader.set("ratio", vec2(*ratio2(self.texture, self.blend))) # Image-blend proportion.
         self._shader.set("alpha", self.alpha)
         self._shader.push()
 
@@ -640,7 +676,7 @@ void main() {
     gl_FragColor = vec4(p.rgb, p.a * alpha);
 }''')
 _alpha["mask"] = Shader(fragment=_compositing % '''
-    vec4 p = vec4(p1.rgb, p1.a * (1.0 - p2.r * p2.a * alpha));
+    p = vec4(p1.rgb, p1.a * (p2.r * p2.a * alpha));
 '''.strip())
 
 class AlphaTransparency(Filter):
@@ -675,36 +711,36 @@ HUE      = "hue"      # Hue from the blend image, brightness and saturation from
 
 # If the blend is opaque (alpha=1.0), swap base and blend.
 # This way lighten, darken, multiply and screen appear the same as in Photoshop and Core Image.
-_blendx = '''if (p2.a==1.0) { vec4 p3=p1; p1=p2; p2=p3; }
+_blendx = '''if (p2.a == 1.0) { vec4 p3=p1; p1=p2; p2=p3; }
     '''
 # Blending operates on RGB values, the A needs to be handled separately.
 # Where both images are transparent, their transparency is blended.
-# Where the base image is transparent, the blend image appears source over.
-# There is a slight gradual transition at transparent edges, which makes the edges less jagged.
+# Where the base image is fully transparent, the blend image appears source over.
+# There is a subtle transition at transparent edges, which makes the edges less jagged.
 _blendf = _compositing % '''
     vec3 w  = vec3(1.0); // white
     %s
     p = mix(p1, clamp(p, 0.0, 1.0), p2.a * alpha);
-    p = (v.x * ratio.x > 1.0 || v.y * ratio.y > 1.0)? p1 : p;
-    p = (p1.a < 0.1)? p*p1.a + p2 * (1.0-p1.a) : p;
+    p = (v1.x * ratio.x > 1.0 || v1.y * ratio.y > 1.0)? p1 : p;
+    p = (p1.a < 0.25)? p * p1.a + p2 * (1.0-p1.a) : p;
 '''.strip()
 _blend = {}
-_blend[ADD]      =           'vec4 p = vec4(p1.rgb + p2.rgb, 1.0);'
-_blend[SUBTRACT] =           'vec4 p = vec4(p1.rgb + p2.rgb - 1.0, 1.0);'
-_blend[LIGHTEN]  = _blendx + 'vec4 p = vec4(max(p1.rgb, p2.rgb), 1.0);'
-_blend[DARKEN]   = _blendx + 'vec4 p = vec4(min(p1.rgb, p2.rgb), 1.0);'
-_blend[MULTIPLY] = _blendx + 'vec4 p = vec4(p1.rgb * p2.rgb, 1.0);'
-_blend[SCREEN]   = _blendx + 'vec4 p = vec4(w - (w - p1.rgb) * (w - p2.rgb), 1.0);'
+_blend[ADD]      =           'p = vec4(p1.rgb + p2.rgb, 1.0);'
+_blend[SUBTRACT] =           'p = vec4(p1.rgb + p2.rgb - 1.0, 1.0);'
+_blend[LIGHTEN]  = _blendx + 'p = vec4(max(p1.rgb, p2.rgb), 1.0);'
+_blend[DARKEN]   = _blendx + 'p = vec4(min(p1.rgb, p2.rgb), 1.0);'
+_blend[MULTIPLY] = _blendx + 'p = vec4(p1.rgb * p2.rgb, 1.0);'
+_blend[SCREEN]   = _blendx + 'p = vec4(w - (w - p1.rgb) * (w - p2.rgb), 1.0);'
 _blend[OVERLAY]  = '''
     float L = dot(p1.rgb, vec3(0.2125, 0.7154, 0.0721)); // luminance
     vec4 a = vec4(2.0 * p1.rgb * p2.rgb, 1.0);
     vec4 b = vec4(w - 2.0 * (w - p1.rgb) * (w - p2.rgb), 1.0);
-    vec4 p = (L < 0.45)? a : (L > 0.55)? b : vec4(mix(a.rgb, b.rgb, (L - 0.45) * 10.0), 1.0);
+    p = (L < 0.45)? a : (L > 0.55)? b : vec4(mix(a.rgb, b.rgb, (L - 0.45) * 10.0), 1.0);
 '''
 _blend[HUE] = '''
     vec3 h1 = rgb2hsb(p1.rgb);
     vec3 h2 = rgb2hsb(p2.rgb);
-    vec4 p = vec4(hsb2rgb(vec3(h2.x, h1.yz)).rgb, p1.a);
+    p = vec4(hsb2rgb(vec3(h2.x, h1.yz)).rgb, p1.a);
 '''
 
 for f in _blend.keys():
@@ -824,6 +860,7 @@ class Distortion(Filter):
         self.dx = float(v) / self.texture.width
     def _set_abs_dy(self, v): 
         self.dy = float(v) / self.texture.height
+        
     abs_dx = property(_get_abs_dx, _set_abs_dx)
     abs_dy = property(_get_abs_dy, _set_abs_dy)
 
@@ -845,6 +882,15 @@ class Distortion(Filter):
 # Based on "Frame Buffer Object 101" (2006), Rob Jones, 
 # http://www.gamedev.net/reference/articles/article2331.asp
 
+_UID = 0
+def _uid():
+    # Each FBO has a unique ID.
+    global _UID; _UID+=1; return _UID;
+    
+def _texture(width, height):
+    # Returns an empty texture of the given width and height.
+    return pyglet.image.Texture.create(width, height)
+
 def glViewport(x=None, y=None, width=None, height=None):
     """ Returns a (x, y, width, height)-tuple with the current viewport bounds.
         If x, y, width and height are given, set the viewport bounds.
@@ -861,8 +907,11 @@ def glViewport(x=None, y=None, width=None, height=None):
     xywh = (GLint*4)(); glGetIntegerv(GL_VIEWPORT, xywh)
     return tuple(xywh)
 
-def _texture(width, height):
-    return pyglet.image.Texture.create(width, height)
+# The FBO stack keeps track of nested FBO's.
+# When FBO.pop() is called, we revert to the previous buffer.
+# Usually, this is the onscreen canvas, but in a render() function that contains
+# filters or nested render() calls, this is the previous FBO.
+_FBO_STACK = []
 
 class FBOError(Exception):
     pass
@@ -874,12 +923,13 @@ class FBO:
             It is useful as a place to chain multiple shaders,
             since each shader has its own program and we can only install one program at a time.
         """
-        self.id = c_uint(0)
+        self.id = c_uint(_uid())
         glGenFramebuffersEXT(1, byref(self.id))
         self._viewport = (None, None, None, None) # The canvas bounds, set in FBO.push().
         self._texture  = None
         self._active   = False
         self._init(width, height)
+        #self._init_depthbuffer()
         
     def _init(self, width, height):
         self._texture = _texture(width, height)  
@@ -905,8 +955,9 @@ class FBO:
             The offscreen buffer has its own transformation state,
             so any translate(), rotate() etc. does not affect the onscreen canvas.
         """
+        _FBO_STACK.append(self)
         glBindTexture(self._texture.target, self._texture.id)
-        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, self.id.value)
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, self.id.value)      
         glFramebufferTexture2DEXT(
             GL_FRAMEBUFFER_EXT, 
             GL_COLOR_ATTACHMENT0_EXT, 
@@ -914,8 +965,8 @@ class FBO:
             self._texture.id, 
             self._texture.level
         )
-        # FBO's can fail when not supported by your graphics hardware,
-        # when supplied an image of size 0 or unequal width/height.
+        # FBO's can fail when not supported by the graphics hardware,
+        # or when supplied an image of size 0 or unequal width/height.
         # Check after glBindFramebufferEXT() and glFramebufferTexture2DEXT().
         if glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT:
             msg = self._texture.width == self._texture.height == 0 and "width=0, height=0." or ""
@@ -926,27 +977,36 @@ class FBO:
         glPushMatrix()
         glLoadIdentity()
         glViewport(0, 0, self._texture.width, self._texture.height)
-        # Blending transparent images in a transparent FBO doesn't work right.
-        # Because alpha is premultiplied, an image with 50% transparency
-        # will come out with 25% transparency.
+        glColor4f(1.0,1.0,1.0,1.0)
+        # FBO's work with a simple GL_LINE_SMOOTH anti-aliasing.
+        # The instructions on how to enable framebuffer multisampling are pretty clear:
+        # (http://www.opengl.org/wiki/GL_EXT_framebuffer_multisample)
+        # but glRenderbufferStorageMultisampleEXT doesn't appear to work (yet),
+        # plus there is a performance drop.
+        glEnable(GL_LINE_SMOOTH)
+        # Blending transparent images in a transparent FBO is a bit tricky
+        # because alpha is premultiplied, an image with 50% transparency
+        # will come out 25% transparency with glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA).
         # http://www.opengl.org/discussion_boards/ubbthreads.php?ubb=showflat&Number=257630
         # http://www.openframeworks.cc/forum/viewtopic.php?f=9&t=2215
         # This blend mode gives better results:
         glEnable(GL_BLEND)
-        glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
         self._active = True
     
     def pop(self):
         """ Reverts to the onscreen canvas. 
             The contents of the offscreen buffer can be retrieved with FBO.texture.
         """
-        # Switch to onscreen canvas size.
-        # Switch to onscreen transformation state.
+        # Switch to onscreen canvas size and transformation state.
+        # Switch to onscreen canvas.
+        # Reset to the normal blending mode.
+        _FBO_STACK.pop(-1)
         glViewport(*self._viewport)
         glPopMatrix()
-        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0)
-        # Reset to the normal blending mode.
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, _FBO_STACK and _FBO_STACK[-1].id or 0)
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+        #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self._active = False
     
     def render(self):
@@ -982,25 +1042,23 @@ class FBO:
             raise FBOError, "can't resize FBO when active."
         self._init(width, height) 
 
-    #def _init_depthbuffer(self):
-    #    # Some of these steps should happen after the framebuffer has been bound I think.
-    #    self._depthbuffer = c_uint(0)
-    #    glGenRenderbuffersEXT(1, byref(self._depthbuffer))
-    #    glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, self._depthbuffer)
-    #    glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH_COMPONENT, width, height)
-    #    glFramebufferRenderbufferEXT(
-    #        GL_FRAMEBUFFER_EXT,
-    #        GL_DEPTH_ATTACHMENT_EXT,
-    #        GL_RENDERBUFFER_EXT,
-    #        self._depthbuffer
-    #    )
-    
-    #def _delete_depthbuffer(self):
-    #    glDeleteRenderbuffersEXT(1, self._depthbuffer)
+    def _init_depthbuffer(self):
+        self._depthbuffer = c_uint(_uid())
+        glGenRenderbuffersEXT(1, byref(self._depthbuffer))
+        glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, self._depthbuffer)
+        glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_DEPTH_COMPONENT, self.width, self.height)
+        glFramebufferRenderbufferEXT(
+            GL_FRAMEBUFFER_EXT,
+            GL_DEPTH_ATTACHMENT_EXT,
+            GL_RENDERBUFFER_EXT,
+            self._depthbuffer
+        )
     
     def __del__(self):
         if glDeleteFramebuffersEXT:
             glDeleteFramebuffersEXT(1, self.id)
+        if glDeleteRenderbuffersEXT and hasattr(self, "_depthbuffer"):
+            glDeleteRenderbuffersEXT(1, self._depthbuffer)
 
 OffscreenBuffer = FBO
 
@@ -1009,7 +1067,7 @@ OffscreenBuffer = FBO
 #--- OFFSCREEN RENDERING -----------------------------------------------------------------------------
 # Uses an offscreen buffer to render filters and drawing commands to images.
 
-_fbo = FBO(640, 480)
+_buffer = FBO(640, 480)
 
 from context import Image, texture
 
@@ -1019,17 +1077,23 @@ def filter(img, filter=None, clear=True):
         - filter: an instance of the Filter class, with parameters set.
         - clear : if True, clears the contents of the offscreen buffer and resizes it to the image.
     """
+    # Reuse main _buffer when possible, otherwise create one on the fly
+    # (this will be necessary when filter() is nested inside render()).
+    buffer = not _buffer.active and _buffer or FBO(640, 480)
     # For file paths, textures and Pixel objects, create an Image first.
     if not isinstance(img, Image):
         img = Image(img)
     if clear == True:
-        _fbo.resize(img.texture.width, img.texture.height)
-    _fbo.push()
+        buffer.resize(img.texture.width, img.texture.height)
+    buffer.push()
     if filter != None:
         filter.texture = img.texture # Register the current texture with the filter.
         filter.push()
+    # This blend mode gives better results for transparent images:
+    glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
     # Note: Image.alpha and Image.color attributes won't work here,
     # because the shader overrides the default drawing behavior.
+    # Instead, add the transparent() and colorize() filters to the chain.
     img.x, x = 0, img.x
     img.y, y = 0, img.y
     img.draw()
@@ -1037,10 +1101,24 @@ def filter(img, filter=None, clear=True):
     img.y = y
     if filter != None:
         filter.pop()
-    _fbo.pop()
-    return img.copy(texture=_fbo.texture)
+    buffer.pop()
+    return img.copy(texture=buffer.texture)
+
+class RenderedImage(Image):
     
-def render(function, width, height, clear=True):
+    def draw(self):
+        # Textures rendered in the FBO look slightly washed-out.
+        # The render() command yield RenderedImage object,
+        # whose draw() method use a little blending trick to correct the colors:
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+        Image.draw(self)
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+    
+    def save(self, path):
+        # XXX Colors will appear washed out in the exported image.
+        Image.save(self, path)
+    
+def render(function, width, height, clear=True, **kwargs):
     """ Returns an Image object from a function containing drawing commands (i.e. a procedural image).
         This is useful when, for example, you need to render filters on paths.
         - function: a function containing drawing commands.
@@ -1048,15 +1126,23 @@ def render(function, width, height, clear=True):
         - height  : height of the offscreen canvas.
         - clear   : when False, retains the contents of the offscreen canvas, without resizing it.
     """
+    # Reuse main _buffer when possible, otherwise create one on the fly
+    # (this will be necessary when render() is nested inside another render()).
+    buffer = not _buffer.active and _buffer or FBO(640, 480)
     if clear == True:
-        _fbo.resize(width, height)
-    _fbo.push()
-    function()
-    _fbo.pop()
-    return Image(_fbo.texture)
+        buffer.resize(width, height)
+    buffer.push()
+    function(**kwargs)
+    buffer.pop()
+    return RenderedImage(buffer.texture)
     
 #--- OFFSCREEN FILTERS -------------------------------------------------------------------------------
 # Images are rendered offscreen with the filter applied, and the new image returned.
+
+def invert(img):
+    """ Returns an image with inverted colors (e.g. white becomes black).
+    """
+    return filter(img, Invert(img.texture))
 
 def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     """ Generates a gradient image and returns it.
@@ -1071,14 +1157,15 @@ def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     img = filter(img, f(img.texture, vec4(*clr1), vec4(*clr2)))
     # If the given dimensions are not power of 2,
     # scale down the gradient to the given dimensions.
+    buffer = not _buffer.active and _buffer or FBO(640, 480)
     if width != img.width or height != img.height:
-        _fbo.resize(width, height)
-        _fbo.push()
+        buffer.resize(width, height)
+        buffer.push()
         img.width  = width
         img.height = height
         img.draw()
-        _fbo.pop()
-        return img.copy(texture=_fbo.texture)
+        buffer.pop()
+        return img.copy(texture=buffer.texture)
     return img
 
 def colorize(img, color=(1,1,1,1), bias=(0,0,0,0)):
@@ -1263,7 +1350,7 @@ def pinch(img, dx=0.5, dy=0.5, **kwargs):
     return filter(img, filter=Distortion(PINCH, img, dx-0.5, dy-0.5, m, i))
 
 #def twirl(img, dx=0.5, dy=0.5, radius=1.0, angle=180.0)
-def twirl(img, dx=0.5, dy=0.5, radius=1.0, angle=180.0):
+def twirl(img, dx=0.5, dy=0.5, **kwargs):
     """ Returns the image with a twirl distortion applied to it.
         - dx: horizontal origin of the effect, between 0.0 and 1.0.
         - dy: vertical origin of the effect, between 0.0 and 1.0.
@@ -1274,7 +1361,7 @@ def twirl(img, dx=0.5, dy=0.5, radius=1.0, angle=180.0):
     return filter(img, filter=Distortion(TWIRL, img, dx-0.5, dy-0.5, m, i))
 
 #def splash(img, dx=0.5, dy=0.5, radius=0.5)
-def splash(img, dx=0.5, dy=0.5, radius=0.5):
+def splash(img, dx=0.5, dy=0.5, **kwargs):
     """ Returns the image with a light-tunnel distortion applied to it.
         - dx: horizontal origin of the effect, between 0.0 and 1.0.
         - dy: vertical origin of the effect, between 0.0 and 1.0.
@@ -1284,7 +1371,7 @@ def splash(img, dx=0.5, dy=0.5, radius=0.5):
     return filter(img, filter=Distortion(SPLASH, img, dx-0.5, dy-0.5, m, i))
 
 #def stretch(img, dx=0.5, dy=0.5, radius=0.5, zoom=1.0)
-def stretch(img, dx=0.5, dy=0.5, radius=0.5, zoom=1.0):
+def stretch(img, dx=0.5, dy=0.5, **kwargs):
     """ Returns the image with a zoom box distortion applied to it.
         - dx: horizontal origin of the effect, between 0.0 and 1.0.
         - dy: vertical origin of the effect, between 0.0 and 1.0.
@@ -1314,7 +1401,7 @@ def colorized(color=(1,1,1,1), bias=(0,0,0,0)):
     
 def blurred(scale=1.0):
     return Gaussian3x3Blur(None, scale)
-
+    
 def desaturated():
     return SaturationAdjustment(None, 0.0)
 

@@ -174,7 +174,7 @@ class Label(Control):
            "fontsize" : popdefault(kwargs, "fontsize", theme["fontsize"]),
          "fontweight" : popdefault(kwargs, "fontweight", theme["fontweight"]),
          "lineheight" : 1,
-              "align" : CENTER        
+              "align" : CENTER
         })
         kwargs.setdefault("width", txt.metrics[0])
         kwargs.setdefault("height", txt.metrics[1])
@@ -188,6 +188,7 @@ class Label(Control):
     def _set_caption(self, string):
         self._text.text = string
         self._pack()
+        
     caption = property(_get_caption, _set_caption)
 
     @property
@@ -238,6 +239,7 @@ class Button(Control):
     def _set_caption(self, string):
         self[0].caption = string
         self._pack()
+        
     caption = property(_get_caption, _set_caption)
     
     def _pack(self):
@@ -360,6 +362,7 @@ class Slider(Control):
         return self.min + self._t * (self.max-self.min)
     def _set_value(self, value):
         self._t = clamp(float(value-self.min) / (self.max-self.min or -1), 0.0, 1.0)
+        
     value = property(_get_value, _set_value)
         
     @property
@@ -388,7 +391,7 @@ class Slider(Control):
         image(im1, x=0, y=0)
         image(im2, x=self.width-im2.width, y=0)
         image(im3, x=im1.width, y=0, width=t-im1.width)
-        image(im4, x=t, y=0, width=self.width-t-im2.width)
+        image(im4, x=t, y=0, width=self.width-t-im2.width+1)
 
     def on_mouse_press(self, mouse):
         self.pressed = True
@@ -605,6 +608,7 @@ class Editable(Control):
         self._editor.document.text = string or " "
         self._editor.end_update()
         self._empty = string == "" and True or False
+        
     value = property(_get_value, _set_value)
 
     def _get_selection(self):
@@ -615,6 +619,7 @@ class Editable(Control):
     def _set_selection(self, (i,j)):
         self._editor.selection_start = max(min(i, j), 0)
         self._editor.selection_end   = min(max(i, j), len(self.value))
+        
     selection = property(_get_selection, _set_selection)
     
     @property
