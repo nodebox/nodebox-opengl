@@ -1094,11 +1094,7 @@ def filter(img, filter=None, clear=True):
     # Note: Image.alpha and Image.color attributes won't work here,
     # because the shader overrides the default drawing behavior.
     # Instead, add the transparent() and colorize() filters to the chain.
-    img.x, x = 0, img.x
-    img.y, y = 0, img.y
-    img.draw()
-    img.x = x
-    img.y = y
+    img.draw(0, 0)
     if filter != None:
         filter.pop()
     buffer.pop()
@@ -1106,12 +1102,12 @@ def filter(img, filter=None, clear=True):
 
 class RenderedImage(Image):
     
-    def draw(self):
+    def draw(self, *args, **kwargs):
         # Textures rendered in the FBO look slightly washed-out.
         # The render() command yield RenderedImage object,
         # whose draw() method use a little blending trick to correct the colors:
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-        Image.draw(self)
+        Image.draw(self, *args, **kwargs)
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
     
     def save(self, path):
@@ -1143,6 +1139,12 @@ def invert(img):
     """ Returns an image with inverted colors (e.g. white becomes black).
     """
     return filter(img, Invert(img.texture))
+
+def solid(width, height, clr=(0,0,0,0)):
+    """ Generates an image filled with a solid color.
+    """
+    clr = tuple([int(v*255) for v in clr])
+    return Image(pyglet.image.SolidColorImagePattern(clr).create_image(width, height).get_texture())
 
 def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     """ Generates a gradient image and returns it.
@@ -1395,7 +1397,10 @@ def mirror(img, dx=0.5, dy=0.5, **kwargs):
 #--- ONSCREEN FILTERS --------------------------------------------------------------------------------
 # These can be used directly as filter parameter for the image() command.
 # This may be faster because no offscreen buffer is used to render the effect.
-    
+
+def inverted():
+    return Invert(None)
+
 def colorized(color=(1,1,1,1), bias=(0,0,0,0)):
     return Colorize(None, vec4(*color), vec4(*bias))
     
@@ -1412,5 +1417,5 @@ def blended(mode, img, alpha=1.0, dx=0, dy=0):
     return Blend(mode, None, _q(img).texture, alpha, dx, dy)
     
 def distorted(type, dx=0.5, dy=0.5, **kwargs):
-    m, i = distortion_mixin(type, dx, dy, **kwargs)
+    dx, dy, m, i = distortion_mixin(type, dx, dy, **kwargs)
     return Distortion(type, None, dx-0.5, dy-0.5, m, i)

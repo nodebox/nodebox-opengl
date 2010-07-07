@@ -278,7 +278,7 @@ class Point(object):
     xy = property(_get_xy, _set_xy)
             
     def __repr__(self):
-        return "Point(x=%.2f, y=%.2f)" % (self.x, self.y)
+        return "Point(x=%.1f, y=%.1f)" % (self.x, self.y)
         
     def __eq__(self, pt):
         if not isinstance(pt, Point): return False

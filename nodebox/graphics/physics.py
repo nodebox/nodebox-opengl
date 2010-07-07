@@ -3,6 +3,8 @@
 # License: GPL (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 
+# This module can benefit greatly from loading psyco.
+
 from math   import sqrt, pow
 from math   import sin, cos, atan2, degrees, radians, pi
 from random import random, shuffle
@@ -430,6 +432,10 @@ class Flock(list):
                          0.5 * (depth  or 0))
             self.append(b)
     
+    @property
+    def boids(self):
+        return iter(self)
+    
     def copy(self):
         f = Flock(0, self.x, self.y, self.width, self.height, self.depth)        
         f.scattered = self.scattered
@@ -512,3 +518,285 @@ class Flock(list):
         
 def flock(amount, x, y, width, height, depth=1.0):
     return Boids(amount, x, y, width, height, depth)
+
+#=== SYSTEM ==========================================================================================
+# A computer graphics technique to simulate certain fuzzy phenomena, 
+# which are otherwise very hard to reproduce with conventional rendering techniques. 
+# Examples of such phenomena which are commonly replicated using particle systems include:
+# fire, explosions, smoke, moving water, sparks, falling leaves, clouds, fog, snow, dust, 
+# meteor tails, hair, fur, grass, or abstract visual effects like glowing trails, magic spells.
+
+# These should be implemented for System.draw():
+def line(x1, y1, x2, y2):
+    pass
+def ellipse(x, y, width, height):
+    pass
+
+#--- FORCE -------------------------------------------------------------------------------------------
+
+class Force:
+    
+    def __init__(self, particle1, particle2, strength=1.0, threshold=100.0):
+        """ An attractive or repulsive force that causes objects with a mass to accelerate.
+            A negative strength indicates an attractive force.
+        """
+        self.particle1 = particle1
+        self.particle2 = particle2
+        self.strength  = strength
+        self.threshold = threshold
+                
+    def apply(self):
+        """ Applies the force between two particles, based on the distance and mass of the particles.
+        """
+        # Distance has a minimum threshold to keep forces from growing too large,
+        # e.g. distance 100 divides force by 10000, distance 5 only by 25.
+        # Decreasing the threshold moves particles that are very close to each other away faster.
+        dx = self.particle2.x - self.particle1.x
+        dy = self.particle2.y - self.particle1.y
+        d = sqrt(dx*dx + dy*dy)
+        d = max(d, self.threshold)
+        # The force between particles increases according to their weight.
+        # The force decreases as distance between them increases.
+        f = 10.0 * -self.strength * self.particle1.mass * self.particle2.mass
+        f = f / (d*d)
+        fx = f * dx / d
+        fy = f * dy / d
+        self.particle1.force.x += fx
+        self.particle1.force.y += fy
+        self.particle2.force.x -= fx
+        self.particle2.force.y -= fy
+
+    def __repr__(self):
+        return "Force(strength=%.2f)" % self.strength
+
+#--- SPRING ------------------------------------------------------------------------------------------
+
+class Spring:
+    
+    def __init__(self, particle1, particle2, length, strength=1.0):
+        """ A force that exerts attractive resistance when its length changes.
+            A spring acts as a flexible (but secure) connection between two particles.
+        """
+        self.particle1 = particle1
+        self.particle2 = particle2
+        self.strength  = strength
+        self.length    = length
+        self.snapped   = False
+    
+    def snap(self):
+        """ Breaks the connection between the two particles.
+        """
+        self.snapped = True
+    
+    def apply(self):
+        """ Applies the force between two particles.
+        """
+        if self.snapped: 
+            return
+        # Distance between two particles.
+        dx = self.particle2.x - self.particle1.x
+        dy = self.particle2.y - self.particle1.y
+        d = sqrt(dx*dx + dy*dy)
+        if d == 0: 
+            return
+        # The attractive strength decreases for heavy particles.
+        # The attractive strength increases when the spring is stretched.
+        f = 10.0 * self.strength / (self.particle1.mass * self.particle2.mass)
+        f = f * (d - self.length)
+        fx = f * dx / d
+        fy = f * dy / d
+        self.particle1.force.x += fx
+        self.particle1.force.y += fy
+        self.particle2.force.x -= fx
+        self.particle2.force.y -= fy
+        
+    def draw(self):
+        if not self.snapped:
+            line(self.particle1.x, self.particle1.y, 
+                 self.particle2.x, self.particle2.y)
+
+    def __repr__(self):
+        return "Spring(strength='%.2f', length='%.2f')" % (self.strength, self.length)
+
+#--- PARTICLE ----------------------------------------------------------------------------------------
+
+class Particle(object):
+    
+    def __init__(self, x, y, velocity=(0.0,0.0), mass=10.0, radius=10.0, life=None, fixed=False):
+        """ An object with a mass subjected to attractive and repulsive forces.
+            The object's velocity is an inherent force (e.g. a rocket propeller to escape gravity).
+        """
+        self.id       = _uid()
+        self.x        = x
+        self.y        = y
+        self.mass     = mass
+        self.radius   = radius
+        self.velocity = isinstance(velocity, tuple) and Vector(*velocity) or velocity
+        self.force    = Vector(0.0, 0.0) # Force accumulator.
+        self.life     = life
+        self._age     = 0.0
+        self.dead     = False
+        self.fixed    = fixed
+        
+    def _get_age(self):
+        # Yields the particle's age as a number between 0.0 and 1.0.
+        return self.life and min(1.0, float(self._age) / self.life) or 0.0
+    def _set_age(self, v):
+        self._age = v * self.life
+    age = property(_get_age, _set_age)
+    
+    def draw(self):
+        r = self.radius * (1 - self.age)
+        ellipse(self.x, self.y, r*2, r*2)
+   
+    def __repr__(self):
+        return "Particle(x=%.1f, y=%.1f, radius=%.1f, mass=%.1f)" % (
+            self.x, self.y, self.radius, self.mass)
+
+#--- SYSTEM ------------------------------------------------------------------------------------------
+
+class flist(list):
+    
+    def __init__(self, system):
+        self.system = system
+    
+    def insert(self, i, force):
+        list.insert(self, i, force)
+        self.system._dynamics.setdefault(force.particle1.id, []).append(force)
+        self.system._dynamics.setdefault(force.particle2.id, []).append(force)
+    def append(self, force):
+        self.insert(len(self), force)
+    def extend(self, forces):
+        for f in forces: self.append(f)
+
+    def pop(self, i):
+        f = list.pop(self, i)
+        self.system._dynamics.pop(force.particle1.id)
+        self.system._dynamics.pop(force.particle2.id)
+        return f        
+    def remove(self, force):
+        i = self.index(force); self.pop(i)
+
+class System(object):
+    
+    def __init__(self, gravity=(0,0)):
+        """ A collection of particles and the forces working on them.
+        """
+        self.particles = []
+        self.forces    = flist(self)
+        self.springs   = flist(self)
+        self.gravity   = isinstance(gravity, tuple) and Vector(*gravity) or gravity
+        self._dynamics = {} # Particle id linked to list of applied forces.
+
+    def len(self):
+        return len(self.particles)
+    def __iter__(self):
+        return iter(self.particles)
+    def __getitem__(self, i):
+        return self.particles[i]
+
+    def extend(self, x):
+        for x in x: self.append(x)
+    def append(self, x):
+        if isinstance(x, Particle):
+            self.particles.append(x)
+        elif isinstance(x, Force):
+            self.forces.append(x)
+        elif isinstance(x, Spring):
+            self.springs.append(v)
+
+    def _cross(self, f=lambda particle1, particle2: None, source=None, particles=[]):
+        # Applies function f to any two given particles in the list,
+        # or between source and any other particle if source is given.
+        P = particles or self.particles
+        for i, p1 in enumerate(P):
+            if source is None: 
+                [f(p1, p2) for p2 in P[i+1:]]
+            else:
+                f(source, p1)
+
+    def force(self, strength=1.0, threshold=100, source=None, particles=[]):
+        """ The given force is applied between each two particles.
+            The effect this yields (with a repulsive force) is an explosion.
+            - source: one vs. all, apply the force to this particle with all others.
+            - particles: a list of particles to apply the force to (some vs. some or some vs. source).
+            Be aware that 50 particles wield yield 1250 forces: O(n**2/2); or O(n) with source.
+        """
+        f = lambda p1, p2: self.forces.append(Force(p1, p2, strength, threshold))
+        self._cross(f, source, particles)
+        
+    def dynamics(self, particle, type=None):
+        """ Returns a list of forces working on the particle, optionally filtered by type (e.g. Spring).
+        """
+        F = self._dynamics.get(isinstance(particle, Particle) and particle.id or particle, [])
+        F = [f for f in F if type is None or isinstance(f, type)]
+        return F
+        
+    def limit(self, particle, m=None):
+        """ Limits the movement of the particle to m.
+            When repulsive particles are close to each other, their force can be very high.
+            This results in large movement steps, and gaps in the animation.
+            This can be remedied by limiting the total force.
+        """
+        # The right way to do it requires 4x sqrt():
+        # if m and particle.force.length > m: 
+        #    particle.force.length = m
+        # if m and particle.velocity.length > m: 
+        #    particle.velocity.length = m
+        if m is not None:
+            for f in (particle.force, particle.velocity):
+                if abs(f.x) > m: 
+                    f.y *= m / abs(f.x)
+                    f.x *= m / abs(f.x)
+                if abs(f.y) > m: 
+                    f.x *= m / abs(f.y)
+                    f.y *= m / abs(f.y)
+
+    def update(self, limit=30):
+        """ Updates the location of the particles by applying all the forces.
+        """
+        for p in self.particles:
+            # Apply gravity. Heavier objects have a stronger attraction.
+            p.force.x = 0
+            p.force.y = 0
+            p.force.x += self.gravity.x * p.mass
+            p.force.y += self.gravity.y * p.mass
+        for f in self.forces:
+            # Apply attractive and repulsive forces between particles.
+            if not f.particle1.dead and \
+               not f.particle2.dead:
+                f.apply()
+        for s in self.springs:
+            # Apply spring forces between particles.
+            if not s.particle1.dead and \
+               not s.particle2.dead:
+                s.apply()
+        for p in self.particles:
+            # Apply velocity.
+            if not p.fixed:
+                p.force.x += p.velocity.x
+                p.force.y += p.velocity.y
+                self.limit(p, limit)
+                p.x += p.force.x
+                p.y += p.force.y
+            if p.life:
+                p._age += 1
+                p.dead = p._age > p.life
+    
+    @property
+    def dead(self):
+        # Yields True when all particles are dead (and we don't need to update anymore).
+        for p in self.particles:
+            if not p.dead: return False
+        return True
+    
+    def draw(self):
+        """ Draws the system at the current iteration.
+            With die=False, particles do not reduce in size as they grow older.
+        """
+        for s in self.springs:
+            if not s.particle1.dead and not s.particle2.dead:
+                s.draw()
+        for p in self.particles:
+            if not p.dead:
+                p.draw()

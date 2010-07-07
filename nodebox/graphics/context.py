@@ -224,10 +224,12 @@ def background(*args):
     global _background
     if args:
         _background = Color(*args)
-        glClearColor(_background[0], _background[1], _background[2], _background[3])
-        glClear(GL_COLOR_BUFFER_BIT)
-        glClear(GL_DEPTH_BUFFER_BIT)
-        glClear(GL_STENCIL_BUFFER_BIT)    
+        xywh = (GLint*4)(); glGetIntegerv(GL_VIEWPORT, xywh); x,y,w,h = xywh
+        rect(x, y, w, h, fill=_background, stroke=None)
+        #glClearColor(_background[0], _background[1], _background[2], _background[3])
+        #glClear(GL_COLOR_BUFFER_BIT)
+        #glClear(GL_DEPTH_BUFFER_BIT)
+        #glClear(GL_STENCIL_BUFFER_BIT)    
     return _background
 
 def fill(*args):
@@ -818,6 +820,12 @@ class PathElement(object):
         
     def __ne__(self, pt):
         return not self.__eq__(pt)
+        
+    def __repr__(self):
+        return "%s(cmd='%s', x=%.1f, y=%.1f, ctrl1=(%.1f, %.1f), ctrl2=(%.1f, %.1f))" % (
+            self.__class__.__name__, self.cmd, self.x, self.y, 
+            self.ctrl1.x, self.ctrl1.y, 
+            self.ctrl2.x, self.ctrl2.y)
 
     def copy(self):
         if self.cmd == MOVETO \
@@ -1117,7 +1125,10 @@ class BezierPath(list):
         id = str(id)
         id = md5(id).hexdigest()
         return id
-        
+    
+    def __repr__(self):
+        return "BezierPath(%s)" % repr(list(self))
+    
     def __del__(self):
         # Note: it is important that __del__() is called since it unloads the cache from GPU.
         # BezierPath and PathElement should contain no circular references, e.g. no PathElement.parent.
@@ -1420,10 +1431,12 @@ class Image:
         img = texture is None \
           and self.__class__(self._src[0], data=self._src[1]) \
            or self.__class__(texture)
-        img.x     = self.x
-        img.y     = self.y
-        img.quad  = self.quad.copy()
-        img.color = self.color.copy()
+        img.x      = self.x
+        img.y      = self.y
+        img.width  = self.width
+        img.height = self.height
+        img.quad   = self.quad.copy()
+        img.color  = self.color.copy()
         if width is not None: 
             img.width = width
         if height is not None: 
@@ -1476,36 +1489,61 @@ class Image:
         self.color[1] *= g
         self.color[2] *= b
         self.color[3] *= a
-    
-    def draw(self):
+        
+    def draw(self, x=None, y=None, width=None, height=None, alpha=None, color=None, filter=None):
         """ Draws the image.
+            The given parameters (if any) override the image's attributes.
         """
+        # Calculate and cache the quad vertices as a Display List.
+        # If the quad has changed, update the cache.
         if self._cache is None or self.quad._dirty:
-            # Calculate and cache the quad vertices as a Display List.
-            # If the quad has changed, update the cache.
             flush(self._cache)
             self._cache = precompile(_render, self._texture, self.quad)
             self.quad._dirty = False
-        # Round position to nearest integer to avoid sub-pixel rendering.
+        # Given parameters override Image attributes.
+        if x is None: 
+            x = self.x
+        if y is None: 
+            y = self.y
+        if width is None: 
+            width = self.width 
+        if height is None: 
+            height = self.height
+        if color and len(color) < 4:
+            color = color[0], color[1], color[2], 1.0
+        if color is None: 
+            color = self.color
+        if alpha is not None:
+            color = color[0], color[1], color[2], alpha
+        if filter:
+            filter.texture = self._texture # Register the current texture with the filter.
+            filter.push()
+        # Round position (x,y) to nearest integer to avoid sub-pixel rendering.
         # This ensures there are no visual artefacts on transparent borders (e.g. the "white halo").
         # Halo can also be avoided by overpainting in the source image, but this requires some work:
         # http://technology.blurst.com/remove-white-borders-in-transparent-textures/
-        x = round(self.x)
-        y = round(self.y)
-        w = float(self.width) / self._texture.width
-        h = float(self.height) / self._texture.height
+        x = round(x)
+        y = round(y)
+        w = float(width) / self._texture.width
+        h = float(height) / self._texture.height
         # Transform and draw the quads.
         glPushMatrix()
         glTranslatef(x, y, 0)
         glScalef(w, h, 0)
-        glColor4f(*self.color)
+        glColor4f(*color)
         glCallList(self._cache)
-        glPopMatrix()
+        glPopMatrix() 
+        if filter:
+            filter.pop()
     
     def save(self, path):
         """ Exports the image as a PNG-file.
         """
         self._texture.save(path)
+    
+    def __repr__(self):
+        return "%s(x=%.1f, y=%.1f, width=%.1f, height=%.1f, alpha=%.2f)" % (
+            self.__class__.__name__, self.x, self.y, self.width, self.height, self.alpha)
     
     def __del__(self):
         if hasattr(self, "_cache") and self._cache is not None and flush:
@@ -1515,7 +1553,7 @@ _IMAGE_CACHE = 200
 _image_cache = {} # Image object referenced by Image.texture.id.
 _image_queue = [] # Most recent id's are at the front of the list.
 def image(img, x=None, y=None, width=None, height=None, 
-          alpha=None, color=None, quad=None, filter=None, data=None, draw=True):
+          alpha=None, color=None, filter=None, data=None, draw=True):
     """ Draws the image at (x,y), scaling it to the given width and height.
         The image's transparency can be set with alpha (0.0-1.0).
         Applies the given color adjustment, quad distortion and filter (one filter can be specified).
@@ -1524,44 +1562,21 @@ def image(img, x=None, y=None, width=None, height=None,
     """
     if not isinstance(img, Image):
         # If the given image is not an Image object, create one on the fly.
-        # This object is cached for reuse - as long as no quad distortion is defined.
+        # This object is cached for reuse.
         # The cache has a limited size (100), so the oldest Image objects are deleted.
         t = texture(img, data=data)
         if t.id in _image_cache: 
             img = _image_cache[t.id]
         else:
             img = Image(img, data=data)
-            if quad is None:
-                _image_cache[img.texture.id] = img
-                _image_queue.insert(0, img.texture.id)
-                for id in reversed(_image_queue[_IMAGE_CACHE:]): 
-                    del _image_cache[id]
-                    del _image_queue[-1]
-    # Given parameters override Image attributes.
-    if x is not None:
-        img.x = x
-    if y is not None:
-        img.y = y
-    if width is not None:
-        img.width = width
-    if height is not None:
-        img.height = height
-    if color is not None:
-        img.color[0] = color[0]
-        img.color[1] = color[1]
-        img.color[2] = color[2]
-    if alpha is not None:
-        img.color[3] = alpha
-    if quad is not None:
-        img.quad = Quad(*quad)
+            _image_cache[img.texture.id] = img
+            _image_queue.insert(0, img.texture.id)
+            for id in reversed(_image_queue[_IMAGE_CACHE:]): 
+                del _image_cache[id]
+                del _image_queue[-1]
     # Draw the image.
     if draw:
-        if filter:
-            filter.texture = img.texture # Register the current texture with the filter.
-            filter.push()
-        img.draw()
-        if filter:
-            filter.pop()
+        img.draw(x, y, width, height, alpha, color, filter)
     return img
 
 def imagesize(img):
@@ -1609,8 +1624,8 @@ class Pixels(list):
             The Pixels object can be passed to the image() command.
         """
         self._img  = texture(img).get_image_data()
-        # A negative pitch means the pixels are stored from bottom row to top row.
-        self._flipped = self._img.pitch < 0
+        # A negative pitch means the pixels are stored top-to-bottom row.
+        self._flipped = self._img.pitch >= 0
         # Data yields a byte array if no conversion (e.g. BGRA => RGBA) was necessary,
         # or a byte string otherwise - which needs to be converted to a list of ints.
         data = self._img.get_data("RGBA", self._img.width*4 * (-1,1)[self._flipped])
@@ -1690,7 +1705,7 @@ class Pixels(list):
         """
         data = self.array
         data = "".join(map(chr, data))
-        self._img.set_data("RGBA", -self.width*4, data)
+        self._img.set_data("RGBA", self._img.width*4*(-1,1)[self._flipped], data)
         self._texture = self._img.get_texture()
         
     @property
@@ -1698,10 +1713,6 @@ class Pixels(list):
         if self._texture is None:
             self.update()
         return self._texture
-        
-    @property
-    def image(self):
-        return Image(self.texture)
 
 pixels = Pixels
 
@@ -2988,11 +2999,8 @@ class Mouse(Point):
     button = property(_get_button, _set_button)
 
     def __repr__(self):
-        return "Mouse(x=%s, y=%s, pressed=%s, dragged=%s)" % (
-            repr(self.x),
-            repr(self.y),
-            repr(self.pressed),
-            repr(self.dragged))
+        return "Mouse(x=%.1f, y=%.1f, pressed=%s, dragged=%s)" % (
+            self.x, self.y, repr(self.pressed), repr(self.dragged))
 
 #--- KEYBOARD ----------------------------------------------------------------------------------------
 
@@ -3043,10 +3051,7 @@ class Key(object):
         
     def __repr__(self):
         return "Key(char=%s, code=%s, modifiers=%s, pressed=%s)" % (
-            repr(self.char), 
-            repr(self.code), 
-            repr(self.modifiers), 
-            repr(self.pressed))
+            repr(self.char), repr(self.code), repr(self.modifiers), repr(self.pressed))
 
 #=====================================================================================================
 

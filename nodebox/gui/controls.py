@@ -445,7 +445,7 @@ class Flag(Control):
             self.value = not self.value
             self.on_action()
 
-Checkbox = Flag
+Checkbox = CheckBox = Flag
 
 #=====================================================================================================
 
