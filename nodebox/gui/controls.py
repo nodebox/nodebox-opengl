@@ -72,8 +72,6 @@ class Control(Layer):
         Layer.__init__(self, **kwargs)
         self.id        = id
         self.src       = {}    # Collection of source images.
-        self.pressed   = False # True when mouse is pressed in the control.
-        self.dragged   = False # True when mouse is dragged in the control.
         self.enabled   = True  # Enable event listener.
         self.duration  = 0     # Disable tweening.
         self._controls = {}    # Lazy dictionary of child controls indexed by id.
@@ -103,12 +101,7 @@ class Control(Layer):
             self._press = None
             self.on_mouse_doubleclick(mouse)
         self._press = (mouse.x, mouse.y, mouse.button, mouse.modifiers, time())
-        self.pressed = True
-    def on_mouse_drag(self, mouse):
-        self.dragged = True
-    def on_mouse_release(self, mouse):
-        self.pressed = False
-        self.dragged = False
+        
     def on_mouse_doubleclick(self, mouse):
         pass
         
@@ -123,8 +116,7 @@ class Control(Layer):
         pass
         
     def reset(self):
-        self.pressed = False
-        self.dragged = False
+        pass
 
     def _draw(self):
         Layer._draw(self)
@@ -331,7 +323,7 @@ class Handle(Control):
         self.parent.on_mouse_release(mouse)
         
     def draw(self):
-        clr = self.parent.pressed and (0.75, 0.75, 0.75) or (1.0, 1.0, 1.0)
+        clr = self.parent.pressed | self.pressed and (0.75, 0.75, 0.75) or (1.0, 1.0, 1.0)
         image(self.parent.src["handle"], 0, 0, color=clr)
 
 class Slider(Control):
@@ -394,7 +386,6 @@ class Slider(Control):
         image(im4, x=t, y=0, width=self.width-t-im2.width+1)
 
     def on_mouse_press(self, mouse):
-        self.pressed = True
         x0, y0 = self.absolute_position() # Can be nested in other layers.
         step = 1.0 / max(self.steps, 1)
         # Calculate relative value from the slider handle position.
@@ -406,7 +397,6 @@ class Slider(Control):
         self.on_action()
     
     def on_mouse_drag(self, mouse):
-        self.dragged = True
         self.on_mouse_press(mouse)
 
 #=====================================================================================================
@@ -548,11 +538,10 @@ class Panel(Control):
         mouse.cursor = DEFAULT
 
     def on_mouse_press(self, mouse):
-        self.pressed = True
         self.dragged = not self.fixed and mouse.y > self.y+self.height-self.src["top"].height
 
     def on_mouse_drag(self, mouse):
-        if self.dragged:
+        if self.dragged and not self.fixed:
             self.x += mouse.vx
             self.y += mouse.vy
     
@@ -584,7 +573,7 @@ class Editable(Control):
         kwargs["width"]  = width
         kwargs["height"] = height
         Control.__init__(self, **kwargs)
-        self.focus    = False
+        self.active   = False # User has clicked in the control, cursor is blinking.
         self._padding = padding
         self._empty   = value == "" and True or False
         self._editor  = IncrementalTextLayout(txt._label.document, width, height, multiline=wrap)
@@ -651,7 +640,7 @@ class Editable(Control):
         self.selection = (i, i)
         self._editor.caret.visible = True
         self._editor.caret.position = i
-        self.focus = True
+        self.active = True
         Control.on_mouse_press(self, mouse)
         
     def on_mouse_release(self, mouse):
@@ -682,7 +671,7 @@ class Editable(Control):
         self.selection = (a, b)
 
     def on_key_press(self, key):
-        if self.focus:
+        if self.active:
             self._editor.caret.visible = True
             i = self._editor.caret.position
             if   key.code == LEFT:
@@ -703,11 +692,11 @@ class Editable(Control):
             elif key.code == TAB:
                 # The tab key navigates away from the control.
                 self._editor.caret.position = 0
-                self._editor.caret.visible = self.focus = False
+                self._editor.caret.visible = self.active = False
             elif key.code == ENTER:
                 # The enter key executes on_action() and navigates away from the control.
                 self._editor.caret.position = 0
-                self._editor.caret.visible = self.focus = False
+                self._editor.caret.visible = self.active = False
                 self.on_action()
             elif key.code == BACKSPACE and self.selected:
                 # The backspace key removes the character at the text cursor.
@@ -770,7 +759,7 @@ class Field(Editable):
         pass
         
     def update(self):
-        self[0].hidden = self.focus or self.value != ""
+        self[0].hidden = self.active or self.value != ""
     
     def draw(self):
         im1, im2, im3 = self.src["cap1"], self.src["cap2"], self.src["face"]

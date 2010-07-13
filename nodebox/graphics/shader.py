@@ -72,7 +72,7 @@ void main() {
     gl_FragColor = texture2D(src, gl_TexCoord[0].xy);
 }'''
 
-class vector(list): 
+class vector(tuple): 
     pass
     
 def vec2(f1, f2):

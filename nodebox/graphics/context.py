@@ -1720,65 +1720,62 @@ pixels = Pixels
 # A sequence of images displayed in a loop.
 # Useful for storing pre-rendered effect frames like explosions etc.
 
-FADE = "fade"
-
 class Animation(list):
     
-    def __init__(self, *a, **kwargs):
-        """ Constructs an animation loop from the given image frames:
-            a = Animation(img1, img2, img2, ..., transition=None, duration=1.0)
-            a = Animation([img1, img2, img3, ...], transition=None, duration=1.0)
-            The transition can be set to FADE, in which case image frames will blend into each other.
+    def __init__(self, images=[], duration=None, loop=False, **kwargs):
+        """ Constructs an animation loop from the given image frames.
             The duration specifies the time for the entire animation to run.
             Animations are useful to cache effects like explosions,
             that have for example been prepared in an offscreen buffer.
         """
-        if len(a) == 1 and isinstance(a[0], (list, tuple)):
-            a = a[0]
-        list.__init__(self, a)
+        list.__init__(self, list(images))
+        self.duration = duration # Duration of the entire animation.
+        self.loop     = loop     # Loop from last frame to first frame?
+        self._i       = -1       # Frame counter.
         self._t = Transition(0, interpolation=kwargs.get("interpolation", LINEAR))
-        self.transition = kwargs.get("transition", None) # None or FADE
-        self.duration   = kwargs.get("duration", 1.0) 
     
-    def copy(self):
-        a = Animation(self, transition=self.transition, duration=self.duration)
-        a._t = self._t.copy()
-        return a
+    def copy(self, **kwargs):
+        return Animation(self, 
+              duration = kwargs.get("duration", self.duration), 
+                  loop = kwargs.get("loop", self.loop), 
+         interpolation = self._t._interpolation)
     
-    def update(self, pause=False):
-        """ Blend to the next image frame (and wait there if pause=True).
-        """
-        if self._t.done and not pause:
-            self._t.set(self._t._v1+1, self.duration)
-        self._t.update()
+    def update(self):
+        if self.duration is not None:
+            # With a duration,
+            # skip to a next frame so that the entire animation takes the given time.
+            if self._i < 0 or self.loop and self._i == len(self)-1:
+                self._t.set(0, 0)
+                self._t.update()
+                self._t.set(len(self)-1, self.duration)
+            self._t.update()
+            self._i = int(self._t.current)
+        else:
+            # Without a duration,
+            # Animation.update() simply moves to the next frame.
+            if self._i < 0 or self.loop and self._i == len(self)-1:
+                self._i = -1
+            self._i = min(self._i+1, len(self)-1)
     
     @property
     def frames(self):
-        return self.__iter__()
-    
-    @property
-    def current(self):
-        return self[self._t._v1 % len(self)]
-    
-    @property
-    def next(self):
-        return self[(self._t._v1+1) % len(self)]
+        return self
         
     @property
-    def time(self):
-        # Elapsed transition time between two image frames (between 0.0 and 1.0).
-        return self._t._vi-self._t._v0
+    def frame(self):
+        # Yields the current frame Image (or None).
+        try: return self[self._i]
+        except:
+            return None
+        
+    @property
+    def done(self):
+        # Yields True when the animation has stopped (or hasn't started).
+        return self.loop is False and self._i == len(self)-1
     
     def draw(self, *args, **kwargs):
-        # Note: if transition is set to FADE, frames will blend in and out with transparency.
-        # This might not give the desired result if the frames themselves are transparent.
-        alpha = kwargs.get("alpha", 1)
-        if self.transition == FADE:
-            kwargs["alpha"] = alpha * (1-self.time)
-        image(self.current, *args, **kwargs)
-        if self.transition == FADE:
-            kwargs["alpha"] = alpha * self.time
-            image(self.next, *args, **kwargs)
+        if not self.done:
+            image(self.frame, *args, **kwargs)
 
 animation = Animation
 
@@ -2050,14 +2047,19 @@ class Text(object):
         self._update()
         return self._label.content_width, self._label.content_height
         
-    def draw(self):
+    def draw(self, x=None, y=None):
         """ Draws the text.
         """
+        # Given parameters override Text attributes.
+        if x is None:
+            x = self.x
+        if y is None:
+            y = self.y
         # Fontsize is rounded, and fontsize 0 will output a default font.
         # Therefore, we don't draw text with a fontsize smaller than 0.5.
         if self._label.font_size >= 0.5:
             glPushMatrix()
-            glTranslatef(self.x, self.y, 0)
+            glTranslatef(x, y, 0)
             self._update()
             self._label.draw()
             glPopMatrix()
@@ -2108,6 +2110,9 @@ class Text(object):
         self._label.begin_update()
         self._label.document.set_style(i, j, attributes)
 
+    def __len__(self):
+        return len(self.text)
+
     def __del__(self):
         if hasattr(self, "_label") and self._label:
             self._label.delete()
@@ -2119,14 +2124,16 @@ def text(str, x=None, y=None, width=None, height=None, draw=True, **kwargs):
     """ Draws the string at the given position, with the current font().
         Lines of text will span the given width before breaking to the next line.
         The text will be displayed with the current state font(), fontsize(), fontweight(), etc.
-        When the given text is a Text object, the state will not be applied however.
+        When the given text is a Text object, the state will not be applied.
     """
-    if not isinstance(str, Text):
+    if isinstance(str, Text) and width is None and height is None and len(kwargs) == 0:
+        txt = str
+    else:
         # If the given text is not a Text object, create one on the fly.
         # Dynamic Text objects are cached by (font, fontsize, bold, italic),
         # and those that are no longer referenced by the user are recycled.
         # Changing Text properties is still faster than creating a new Text.
-        # The cache has a limited size (100), so the oldest Text objects are deleted.
+        # The cache has a limited size (200), so the oldest Text objects are deleted.
         fontname, fontsize, bold, italic, lineheight, align = font_mixin(**kwargs)
         fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
         id = (fontname, int(fontsize), bold, italic)
@@ -2154,22 +2161,8 @@ def text(str, x=None, y=None, width=None, height=None, draw=True, **kwargs):
             for id in reversed(_text_queue[_TEXT_CACHE:]): 
                 del _text_cache[id][0]
                 del _text_queue[-1]
-    else:
-        txt = str
-        # Given parameters override Text attributes.
-        if x is not None:
-            txt.x = x or 0
-        if y is not None:
-            txt.y = y or 0
-        if width is not None:
-            txt.width = width
-        if height is not None:
-            txt.height = height
-        for k,v in kwargs.items():
-            if getattr(txt, k) != v:
-                setattr(txt, k, v)
     if draw:
-        txt.draw()
+        txt.draw(x, y)
     return txt
 
 def textwidth(txt, **kwargs):
@@ -2362,16 +2355,13 @@ class Prototype(object):
 
 #--- EVENT HANDLER ------------------------------------------------------------------------------------
 
-class EventListener:
+class EventHandler:
     
     def __init__(self):
-        # Receive mouse events from the canvas? (for layers this means doing hit testing)
-        self.enabled = True
-
-class EventHandler(EventListener):
-    
-    def __init__(self):
-        EventListener.__init__(self)
+        self.enabled = True  # Receive events from the canvas?
+        self.focus   = False # True when this object receives the focus.
+        self.pressed = False # True when the mouse is pressed on this object.
+        self.dragged = False # True when the mouse is dragged on this object.
         
     def on_mouse_enter(self, mouse):
         pass
@@ -2392,6 +2382,11 @@ class EventHandler(EventListener):
         pass
     def on_key_release(self, key):
         pass
+    
+    # Note: there is no event propagation.
+    # Event propagation means that, for example, if a layer is pressed
+    # all its child (or parent) layers receive an on_mouse_press() event as well.
+    # If this kind of behavior is desired, it is the responsibility of custom subclasses of Layer.
 
 #=====================================================================================================
 
@@ -2472,13 +2467,17 @@ class Transition(object):
 # - it has child layers that transform relative to this layer,
 # - when its attributes (position, scale, angle, ...) change, they will tween smoothly over time. 
 
+_UID = 0
+def _uid():
+    global _UID; _UID+=1; return _UID
+
 RELATIVE = "relative"
 ABSOLUTE = "absolute"
 
 class Layer(list, Prototype, EventHandler):
 
     def __init__(self, x=0, y=0, width=None, height=None, origin=(0,0), 
-                 scale=1.0, rotation=0, opacity=1.0, duration=1.0, name=None, 
+                 scale=1.0, rotation=0, opacity=1.0, duration=0.0, name=None, 
                  parent=None, **kwargs):
         """ Creates a new drawing layer that can be appended to the canvas.
             The duration defines the time (seconds) it takes to animate transformations or opacity.
@@ -2487,10 +2486,14 @@ class Layer(list, Prototype, EventHandler):
         if origin == CENTER:
             origin = (0.5,0.5)
             origin_mode = RELATIVE
+        elif isinstance(origin[0], float) \
+         and isinstance(origin[1], float):
+            origin_mode = RELATIVE
         else:
             origin_mode = ABSOLUTE
         Prototype.__init__(self) # Facilitates extension on the fly.
         EventHandler.__init__(self)
+        self._id       = _uid()
         self.name      = name                  # Layer name. Layers are accessible as ParentLayer.[name]
         self.parent    = parent                # The layer this layer is a child of.
         self.group     = None                  # The group this layer belongs to.
@@ -2513,27 +2516,28 @@ class Layer(list, Prototype, EventHandler):
         self._transform_stack = None           # Cache of the cumulative transformation matrix.
     
     @classmethod
-    def from_image(self, img, **kwargs):
+    def from_image(self, img, *args, **kwargs):
         """ Returns a new layer that renders the given image, and with the same size as the image.
             The layer has a draw() method and an additional image property.
         """
+        img = Image(img, data=kwargs.get("data"))
+        kwargs.setdefault("width", img.width)
+        kwargs.setdefault("height", img.height)
         def draw(layer):
             image(layer.image, alpha=layer.image.alpha * layer.opacity)
-        layer = Layer(**kwargs)
+        layer = Layer(*args, **kwargs)
         layer.set_method(draw)
-        layer.set_property("image", Image(img, data=kwargs.get("data")))
-        layer.width  = layer.image.width
-        layer.height = layer.image.height
+        layer.set_property("image", img)
         return layer
         
     @property
-    def from_function(self, function, **kwargs):
+    def from_function(self, function, *args, **kwargs):
         """ Returns a new layer that renders the drawing commands in the given function.
             The layer has a draw() method.
         """
         def draw(layer):
             function()
-        layer = Layer(**kwargs)
+        layer = Layer(*args, **kwargs)
         layer.set_method(draw)
         return layer
         
@@ -2541,7 +2545,7 @@ class Layer(list, Prototype, EventHandler):
         """ Returns a copy of the layer.
             All properties will be copied, except for the new parent which you need to define.
         """
-        layer = Layer()
+        layer = Layer(origin=self.origin(relative=self._origin==RELATIVE))
         layer.duration = 0 # Copy all transitions instantly.
         layer.parent   = parent
         layer.name     = self.name
@@ -2549,7 +2553,6 @@ class Layer(list, Prototype, EventHandler):
         layer.y        = self.y
         layer.width    = self.width
         layer.height   = self.height
-        layer.origin   = self.origin
         layer.scaling  = self.scaling
         layer.rotation = self.rotation
         layer.opacity  = self.opacity
@@ -2768,16 +2771,19 @@ class Layer(list, Prototype, EventHandler):
             glScalef(-1, 1, 1)
         glRotatef(self._rotation.current, 0, 0, 1)
         glScalef(self._scale.current, self._scale.current, 1)
-        glTranslatef(-round(dx), -round(dy), 0)
         # Draw contents: 
         # layers on top first, then my own contents, then layers below.
         for layer in self:
             if layer.top is False:
                 layer._draw()
+        glPushMatrix()
+        glTranslatef(-round(dx), -round(dy), 0) # Layers are drawn relative from parent origin.
         self.draw()
+        glPopMatrix()
         for layer in self:
             if layer.top is True:
                 layer._draw()
+                
         glPopMatrix()
         
     def draw(self):
@@ -2837,7 +2843,7 @@ class Layer(list, Prototype, EventHandler):
         state = self._transform_state # integer version ID
         layer = self.parent
         while layer is not None:
-            dated = layer._transform_state > state 
+            dated = layer._transform_state > state
             state = layer._transform_state
             layer = layer.parent
             if dated:
@@ -2848,7 +2854,7 @@ class Layer(list, Prototype, EventHandler):
         """ Returns the transformation matrix of the layer:
             a calculated state of its translation, rotation and scaling.
             If local=False, prepends all transformations of the parent layers,
-            e.g. you get the actual transformation state of a nested layer.
+            i.e. you get the absolute transformation state of a nested layer.
         """
         if self._transform_cache is None:
             # Calculate the local transformation matrix.
@@ -2856,14 +2862,13 @@ class Layer(list, Prototype, EventHandler):
             # translate => flip => rotate => scale => origin.
             tf = Transform()
             dx, dy = self.origin(relative=False)
-            #tf.translate(dx, dy)
-            tf.translate(self._x.current, self._y.current)
+            tf.translate(round(self._x.current), round(self._y.current))
             if self.flipped:
                 tf.scale(-1, 1)
             tf.rotate(self._rotation.current)
             tf.scale(self._scale.current, self._scale.current)
-            tf.translate(-dx, -dy)
-            self._transform_state += 1
+            tf.translate(-round(dx), -round(dy))
+            self._transform_state += 1            
             self._transform_cache = tf
             self._transform_stack = None
         if local:
@@ -2880,9 +2885,20 @@ class Layer(list, Prototype, EventHandler):
                 if self.parent is not None:
                     # Accumulate all the parent layer transformations.
                     # In the process, we update the transformation state of any outdated parent.
-                    self._transform_stack.prepend(self.parent._transform(local=False))
-                    self._transform_state = self.parent._transform_state
-            return self._transform_stack            
+                    dx, dy = self.parent.origin(relative=False)
+                    tf = self.parent._transform(local=False).copy()
+                    tf.translate(round(dx), round(dy)) # Layers are drawn relative from parent origin.
+                    self._transform_stack.prepend(tf)  # Prepend all parent transformations.
+                    self._transform_state += 1
+                    layer = self.parent
+                    while layer is not None:
+                        layer._transform_state = self._transform_state
+                        layer = layer.parent                 
+            return self._transform_stack
+    
+    @property
+    def transform(self):
+        return self._transform(local=False)
     
     def absolute_position(self, root=None):
         """ Returns the absolute (x,y) position (i.e. cumulative with parent position).
@@ -2902,16 +2918,15 @@ class Layer(list, Prototype, EventHandler):
             and it will report correctly as long as the layer (or parent layer)
             is not rotated or scaled, and has its origin at (0,0).
         """
-        w = self._width.current or float("inf")
-        h = self._height.current or float("inf")
+        w = self._width.current or geometry.INFINITE
+        h = self._height.current or geometry.INFINITE
         if not transformed:
             x0, y0 = self.absolute_position()
             return x0 <= x and y0 <= y \
                and (w is None or x <= x0+w) \
                and (h is None or y <= y0+h)
         # Find the transformed bounds of the layer:
-        tf = self._transform(local=False)
-        p = tf.map([(0,0), (w,0), (w,h), (0,h)])
+        p = self.transform.map([(0,0), (w,0), (w,h), (0,h)])
         return geometry.point_in_polygon(p, x, y)
         
     hit_test = contains
@@ -2933,8 +2948,11 @@ class Layer(list, Prototype, EventHandler):
             self.duration
         )
         
-    def __hash__(self):
-        return hash(id(self))
+    def __eq__(self, other):
+        return isinstance(other, Layer) and self._id == other._id
+    
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 layer = Layer
 
@@ -3112,9 +3130,7 @@ class Canvas(list, Prototype, EventHandler):
         self._buffer                  = None        # Rendered screenshot of the canvas.
         self._mouse                   = Mouse(self) # The mouse cursor location. 
         self._key                     = Key(self)   # The key pressed on the keyboard.
-        self._current_layers          = []          # Layers that the mouse moves over.
-        self._current_layer           = None        # Layer on top the mouse moves over.
-        self._dragged_layer           = None        # Layer being dragged by the mouse.
+        self._focus                   = None        # The layer being focussed by the mouse.
         # Mouse and keyboard events:
         self._window.on_mouse_enter   = self._on_mouse_enter
         self._window.on_mouse_leave   = self._on_mouse_leave
@@ -3190,10 +3206,14 @@ class Canvas(list, Prototype, EventHandler):
     def key(self):
         return self._key
         
+    @property
+    def focus(self):
+        return self._focus
+        
     #--- Event dispatchers ------------------------------
     
     def layer_at(self, x, y, **kwargs):
-        """ Find the layer at the specified coordinates.
+        """ Find the topmost layer at the specified coordinates.
             This method returns None if no layer was found.
         """
         for layer in reversed(self):
@@ -3211,38 +3231,36 @@ class Canvas(list, Prototype, EventHandler):
         self._mouse.x = x
         self._mouse.y = y
         self.on_mouse_leave(self._mouse)
-        for layer in self._current_layers:
-            layer.on_mouse_leave(self._mouse)
-        self._dragged_layer  = None
-        self._current_layer  = None
-        self._current_layers = []
+        # When the mouse leaves the canvas, no layer has the focus.
+        if self._focus is not None:
+            self._focus.on_mouse_leave(self._mouse)
+            self._focus.focus   = False
+            self._focus.pressed = False
+            self._focus.dragged = False
+            self._focus = None
         
     def _on_mouse_motion(self, x, y, dx, dy):
         self._mouse.x  = x
         self._mouse.y  = y
         self._mouse.vx = dx
         self._mouse.vy = dy
-        self.on_mouse_motion(self._mouse)
-        # Find the layers that were previously entered and now being left.
-        leaving = []
-        for layer in self._current_layers:
-            if not layer.contains(x,y):
-                leaving.append(layer)
-        # Leave the marked layers.
-        for layer in leaving:
-            layer.on_mouse_leave(self._mouse)
-            self._current_layers.remove(layer)
+        self.on_mouse_motion(self._mouse)        
         # Get the topmost layer over which the mouse is hovering.
-        # The layer and all of its parents in the hierarchy receive the on_mouse_enter event.
-        # The layer itself also receives the on_mouse_motion event.
-        self._current_layer = layer = self.layer_at(x, y, enabled=True)
-        if layer is not None:
-            while layer is not None:
-                if layer not in self._current_layers:
-                    self._current_layers.append(layer)
-                    layer.on_mouse_enter(self._mouse)
-                layer = layer.parent
-            self._current_layer.on_mouse_motion(self._mouse)
+        layer = self.layer_at(x, y, enabled=True)
+        # If the layer differs from the layer which currently has the focus,
+        # or the mouse is not over any layer, remove the current focus.
+        if self._focus is not None and (self._focus != layer or not self._focus.contains(x,y)):
+            self._focus.on_mouse_leave(self._mouse)
+            self._focus.focus = False
+            self._focus = None
+        # Set the focus.
+        if self.focus != layer and layer is not None:
+            self._focus = layer
+            self._focus.focus = True
+            self._focus.on_mouse_enter(self._mouse)
+        # Propagate mouse motion to layer with the focus.
+        if self._focus is not None:
+            self._focus.on_mouse_motion(self._mouse)
     
     def _on_mouse_press(self, x, y, button, modifiers):
         self._mouse.pressed   = True
@@ -3252,9 +3270,10 @@ class Canvas(list, Prototype, EventHandler):
              (SHIFT, pyglet.window.key.MOD_SHIFT), 
             (OPTION, pyglet.window.key.MOD_OPTION)) if modifiers & b]
         self.on_mouse_press(self._mouse)
-        if self._current_layer is not None:
-            self._current_layer.on_mouse_press(self._mouse)
-            self._dragged_layer = self._current_layer
+        # Propagate mouse clicking to the layer with the focus.
+        if self._focus is not None:
+            self._focus.pressed = True
+            self._focus.on_mouse_press(self._mouse)
         
     def _on_mouse_release(self, x, y, button, modifiers):
         self._mouse.button    = None
@@ -3262,9 +3281,23 @@ class Canvas(list, Prototype, EventHandler):
         self._mouse.pressed   = False
         self._mouse.dragged   = False
         self.on_mouse_release(self._mouse)
-        if self._dragged_layer is not None:
-            self._dragged_layer.on_mouse_release(self._mouse)
-        self._dragged_layer = None
+        if self._focus is not None:
+            self._focus.on_mouse_release(self._mouse)
+            self._focus.pressed = False
+            self._focus.dragged = False
+            # Get the topmost layer over which the mouse is hovering.
+            layer = self.layer_at(x, y, enabled=True)
+            # If the mouse is no longer over the layer with the focus
+            # (this can happen after dragging), remove the focus.
+            if self._focus != layer or not self._focus.contains(x,y):
+                self._focus.on_mouse_leave(self._mouse)
+                self._focus.focus = False
+                self._focus = None
+            # Propagate mouse to the layer with the focus.
+            if self._focus != layer and layer is not None:
+                layer.focus = True
+                layer.on_mouse_enter(self._mouse)
+            self._focus = layer
 
     def _on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         self._mouse.dragged   = True
@@ -3278,15 +3311,18 @@ class Canvas(list, Prototype, EventHandler):
             (OPTION, pyglet.window.key.MOD_OPTION)) if modifiers & b]
         # XXX also needs to log buttons.
         self.on_mouse_drag(self._mouse)
-        if self._dragged_layer is not None: 
-            self._dragged_layer.on_mouse_drag(self._mouse)
+        # Propagate mouse dragging to the layer with the focus.
+        if self._focus is not None:
+            self._focus.dragged = True
+            self._focus.on_mouse_drag(self._mouse)
             
     def _on_mouse_scroll(self, x, y, scroll_x, scroll_y):
         self._mouse.scroll.x = scroll_x
         self._mouse.scroll.y = scroll_y
         self.on_mouse_scroll(self._mouse)
-        if self._current_layer is not None:
-            self._current_layer.on_mouse_scroll(self._mouse)
+        # Propagate mouse scrolling to the layer with the focus.
+        if self._focus is not None:
+            self._focus.on_mouse_scroll(self._mouse)
 
     def _on_key_press(self, keycode, modifiers):
         self._key.pressed   = True

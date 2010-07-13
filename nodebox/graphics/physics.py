@@ -12,12 +12,12 @@ from random import random, shuffle
 _UID = 0
 def _uid():
     global _UID; _UID+=1; return _UID
-    
-def shuffled(list):
-    indices = range(len(list))
-    shuffle(indices)
-    for i in indices: 
-        yield(list[i])
+        
+# These should be implemented for Vector.draw() and System.draw():
+def line(x1, y1, x2, y2):
+    pass
+def ellipse(x, y, width, height):
+    pass
 
 #=====================================================================================================
 
@@ -136,8 +136,8 @@ class Vector(object):
         return degrees(atan2(self.y, self.x))
     def _set_angle(self, degrees):
         d = self.length
-        self.x = cos(radians(-degrees)) * d
-        self.y = sin(radians(-degrees)) * d
+        self.x = cos(radians(degrees)) * d
+        self.y = sin(radians(degrees)) * d
     angle = direction = property(_get_angle, _set_angle)
 
     def rotate(self, degrees):
@@ -216,20 +216,14 @@ class Vector(object):
         return not self.__eq__(v)
 
     def __repr__(self): 
-        return "%s(%s, %s, %s)" % (self.__class__.__name__, self.x, self.y, self.z)
+        return "%s(%.2f, %.2f, %.2f)" % (self.__class__.__name__, self.x, self.y, self.z)
 
-    def draw(self, x, y, arrow=5):
+    def draw(self, x, y):
         """ Draws the vector in 2D (z-axis is ignored). 
             Set stroke() and strokewidth() first.
         """
-        from context import line, push, transform, translate, rotate, pop
+        ellipse(x, y, 4, 4)
         line(x, y, x+self.x, y+self.y)
-        push()
-        translate(x+self.x, y+self.y)
-        rotate(self.angle)
-        line(0, 0, -arrow, -arrow*0.5)
-        line(0, 0, -arrow, +arrow*0.5)
-        pop()
 
 #=====================================================================================================
 
@@ -253,19 +247,19 @@ class Boid:
             - sight : radius of local flockmates when calculating cohesion and alignment.
             - space : radius of personal space when calculating separation.
         """
-        self.id       = _uid()
+        self._id      = _uid()
         self.flock    = flock
         self.x        = x
         self.y        = y
         self.z        = z
         self.velocity = Vector(random()*2-1, random()*2-1, random()*2-1)
         self.target   = None  # A target Vector towards which the boid will steer.
-        self.sight    = sight # The radius of cohesion ang alignment, and visible obstacles.
+        self.sight    = sight # The radius of cohesion and alignment, and visible obstacles.
         self.space    = space # The radius of separation.
     
     def __eq__(self, other):
         # Comparing boids by id makes it significantly faster.
-        return isinstance(other, Boid) and self.id == other.id
+        return isinstance(other, Boid) and self._id == other._id
     def __ne__(self, other):
         return not self.__eq__(other)
                 
@@ -395,6 +389,9 @@ class Boid:
         """ Sets the given Vector as the boid's target.
         """
         self.target = vector
+        
+    def __repr__(self):
+        return "Boid(x=%.1f, y=%.1f, z=%.1f)" % (self.x, self.y, self.z)
 
 class Obstacle:
     
@@ -409,6 +406,9 @@ class Obstacle:
         
     def copy(self):
         return Obstacle(self.x, self.y, self.z, self.radius)
+
+    def __repr__(self):
+        return "Obstacle(x=%.1f, y=%.1f, z=%.1f, radius=%.1f)" % (self.x, self.y, self.z, self.radius)
 
 class Flock(list):
     
@@ -434,7 +434,7 @@ class Flock(list):
     
     @property
     def boids(self):
-        return iter(self)
+        return self
     
     def copy(self):
         f = Flock(0, self.x, self.y, self.width, self.height, self.depth)        
@@ -515,22 +515,17 @@ class Flock(list):
         """ Returns the boids in the flock sorted by depth (z-axis).
         """
         return sorted(self, key=lambda boid: boid.z)
-        
-def flock(amount, x, y, width, height, depth=1.0):
-    return Boids(amount, x, y, width, height, depth)
+
+    def __repr__(self):
+        return "Flock(%s)" % repr(list(self))
+
+flock = Flock
 
 #=== SYSTEM ==========================================================================================
 # A computer graphics technique to simulate certain fuzzy phenomena, 
-# which are otherwise very hard to reproduce with conventional rendering techniques. 
-# Examples of such phenomena which are commonly replicated using particle systems include:
+# which are otherwise very hard to reproduce with conventional rendering techniques: 
 # fire, explosions, smoke, moving water, sparks, falling leaves, clouds, fog, snow, dust, 
 # meteor tails, hair, fur, grass, or abstract visual effects like glowing trails, magic spells.
-
-# These should be implemented for System.draw():
-def line(x1, y1, x2, y2):
-    pass
-def ellipse(x, y, width, height):
-    pass
 
 #--- FORCE -------------------------------------------------------------------------------------------
 
@@ -569,6 +564,8 @@ class Force:
     def __repr__(self):
         return "Force(strength=%.2f)" % self.strength
 
+force = Force
+
 #--- SPRING ------------------------------------------------------------------------------------------
 
 class Spring:
@@ -591,8 +588,6 @@ class Spring:
     def apply(self):
         """ Applies the force between two particles.
         """
-        if self.snapped: 
-            return
         # Distance between two particles.
         dx = self.particle2.x - self.particle1.x
         dy = self.particle2.y - self.particle1.y
@@ -611,59 +606,68 @@ class Spring:
         self.particle2.force.y -= fy
         
     def draw(self):
-        if not self.snapped:
-            line(self.particle1.x, self.particle1.y, 
-                 self.particle2.x, self.particle2.y)
+        line(self.particle1.x, self.particle1.y, 
+             self.particle2.x, self.particle2.y)
 
     def __repr__(self):
         return "Spring(strength='%.2f', length='%.2f')" % (self.strength, self.length)
 
+spring = Spring
+
 #--- PARTICLE ----------------------------------------------------------------------------------------
 
-class Particle(object):
+MASS = "mass"
+
+class Particle:
     
     def __init__(self, x, y, velocity=(0.0,0.0), mass=10.0, radius=10.0, life=None, fixed=False):
         """ An object with a mass subjected to attractive and repulsive forces.
             The object's velocity is an inherent force (e.g. a rocket propeller to escape gravity).
         """
-        self.id       = _uid()
-        self.x        = x
-        self.y        = y
+        self._id      = _uid()
+        self.x        = x + random()
+        self.y        = y + random()
         self.mass     = mass
-        self.radius   = radius
+        self.radius   = radius == MASS and mass or radius
         self.velocity = isinstance(velocity, tuple) and Vector(*velocity) or velocity
         self.force    = Vector(0.0, 0.0) # Force accumulator.
         self.life     = life
         self._age     = 0.0
         self.dead     = False
         self.fixed    = fixed
-        
-    def _get_age(self):
+    
+    @property
+    def age(self):
         # Yields the particle's age as a number between 0.0 and 1.0.
         return self.life and min(1.0, float(self._age) / self.life) or 0.0
-    def _set_age(self, v):
-        self._age = v * self.life
-    age = property(_get_age, _set_age)
     
     def draw(self):
         r = self.radius * (1 - self.age)
         ellipse(self.x, self.y, r*2, r*2)
+        
+    def __eq__(self, other):
+        return isinstance(other, Particle) and self._id == other._id
+    def __ne__(self, other):
+        return not self.__eq__(other)
    
     def __repr__(self):
         return "Particle(x=%.1f, y=%.1f, radius=%.1f, mass=%.1f)" % (
             self.x, self.y, self.radius, self.mass)
+
+particle = Particle
 
 #--- SYSTEM ------------------------------------------------------------------------------------------
 
 class flist(list):
     
     def __init__(self, system):
+        # List of forces or springs that keeps System.dynamics in synch.
         self.system = system
     
     def insert(self, i, force):
         list.insert(self, i, force)
-        self.system._dynamics.setdefault(force.particle1.id, []).append(force)
-        self.system._dynamics.setdefault(force.particle2.id, []).append(force)
+        self.system._dynamics.setdefault(force.particle1._id, []).append(force)
+        self.system._dynamics.setdefault(force.particle2._id, []).append(force)
     def append(self, force):
         self.insert(len(self), force)
     def extend(self, forces):
@@ -671,24 +675,26 @@ class flist(list):
 
     def pop(self, i):
         f = list.pop(self, i)
-        self.system._dynamics.pop(force.particle1.id)
-        self.system._dynamics.pop(force.particle2.id)
+        self.system._dynamics.pop(force.particle1._id)
+        self.system._dynamics.pop(force.particle2._id)
         return f        
     def remove(self, force):
         i = self.index(force); self.pop(i)
 
 class System(object):
     
-    def __init__(self, gravity=(0,0)):
+    def __init__(self, gravity=(0,0), drag=0.0):
         """ A collection of particles and the forces working on them.
         """
         self.particles = []
+        self.emitters  = []
         self.forces    = flist(self)
         self.springs   = flist(self)
         self.gravity   = isinstance(gravity, tuple) and Vector(*gravity) or gravity
+        self.drag      = drag
         self._dynamics = {} # Particle id linked to list of applied forces.
 
-    def len(self):
+    def __len__(self):
         return len(self.particles)
     def __iter__(self):
         return iter(self.particles)
@@ -698,12 +704,16 @@ class System(object):
     def extend(self, x):
         for x in x: self.append(x)
     def append(self, x):
-        if isinstance(x, Particle):
+        if isinstance(x, Particle) and not x in self.particles:
             self.particles.append(x)
         elif isinstance(x, Force):
             self.forces.append(x)
         elif isinstance(x, Spring):
-            self.springs.append(v)
+            self.springs.append(x)
+        elif isinstance(x, Emitter):
+            self.emitters.append(x)
+            self.extend(x.particles)
+            x.system = self
 
     def _cross(self, f=lambda particle1, particle2: None, source=None, particles=[]):
         # Applies function f to any two given particles in the list,
@@ -721,6 +731,8 @@ class System(object):
             - source: one vs. all, apply the force to this particle with all others.
             - particles: a list of particles to apply the force to (some vs. some or some vs. source).
             Be aware that 50 particles wield yield 1250 forces: O(n**2/2); or O(n) with source.
+            The force is applied to particles present in the system,
+            those added later on are not subjected to the force.
         """
         f = lambda p1, p2: self.forces.append(Force(p1, p2, strength, threshold))
         self._cross(f, source, particles)
@@ -728,7 +740,7 @@ class System(object):
     def dynamics(self, particle, type=None):
         """ Returns a list of forces working on the particle, optionally filtered by type (e.g. Spring).
         """
-        F = self._dynamics.get(isinstance(particle, Particle) and particle.id or particle, [])
+        F = self._dynamics.get(isinstance(particle, Particle) and particle._id or particle, [])
         F = [f for f in F if type is None or isinstance(f, type)]
         return F
         
@@ -755,12 +767,15 @@ class System(object):
     def update(self, limit=30):
         """ Updates the location of the particles by applying all the forces.
         """
+        for e in self.emitters:
+            # Fire particles from emitters.
+            e.update()
         for p in self.particles:
             # Apply gravity. Heavier objects have a stronger attraction.
             p.force.x = 0
             p.force.y = 0
-            p.force.x += self.gravity.x * p.mass
-            p.force.y += self.gravity.y * p.mass
+            p.force.x += 0.1 *  self.gravity.x * p.mass
+            p.force.y += 0.1 * -self.gravity.y * p.mass
         for f in self.forces:
             # Apply attractive and repulsive forces between particles.
             if not f.particle1.dead and \
@@ -769,17 +784,23 @@ class System(object):
         for s in self.springs:
             # Apply spring forces between particles.
             if not s.particle1.dead and \
-               not s.particle2.dead:
+               not s.particle2.dead and \
+               not s.snapped:
                 s.apply()
         for p in self.particles:
-            # Apply velocity.
             if not p.fixed:
+                # Apply drag.
+                p.velocity.x *= 1.0 - min(1.0, self.drag)
+                p.velocity.y *= 1.0 - min(1.0, self.drag)
+                # Apply velocity.
                 p.force.x += p.velocity.x
                 p.force.y += p.velocity.y
+                # Limit the accumulated force and update the particle's position.
                 self.limit(p, limit)
                 p.x += p.force.x
                 p.y += p.force.y
             if p.life:
+                # Apply lifespan.
                 p._age += 1
                 p.dead = p._age > p.life
     
@@ -795,8 +816,99 @@ class System(object):
             With die=False, particles do not reduce in size as they grow older.
         """
         for s in self.springs:
-            if not s.particle1.dead and not s.particle2.dead:
+            if not s.particle1.dead and \
+               not s.particle2.dead and \
+               not s.snapped:
                 s.draw()
         for p in self.particles:
             if not p.dead:
                 p.draw()
+
+    def __repr__(self):
+        return "System(particles=%i, forces=%i, springs=%i)" % \
+            (len(self.particles), len(self.forces), len(self.springs))
+
+system = System
+
+# Notes:
+# While this system is interesting for many effects, it is unstable.
+# If for example very strong springs are applied, particles will start "shaking".
+# This is because the forces are simply added to the particle's position instead of integrated.
+# See also:
+# http://local.wasp.uwa.edu.au/~pbourke/miscellaneous/particle/
+# http://local.wasp.uwa.edu.au/~pbourke/miscellaneous/particle/particlelib.c
+
+#def euler_derive(particle, dt=0.1):
+#    particle.x += particle.velocity.x * dt
+#    particle.y += particle.velocity.y * dt
+#    particle.velocity.x += particle.force.x / particle.mass * dt
+#    particle.velocity.y += particle.force.y / particle.mass * dt
+
+# If this is applied, springs will need a velocity dampener:
+#fx = f + 0.01 + (self.particle2.velocity.x - self.particle1.velocity.x) * dx / d
+#fy = f + 0.01 + (self.particle2.velocity.y - self.particle1.velocity.y) * dy / d
+
+# In pure Python this is slow, since only 1/10 of the force is applied each System.update().
+
+#--- EMITTER -----------------------------------------------------------------------------------------
+
+class Emitter(object):
+    
+    def __init__(self, x, y, angle=0, strength=1.0, spread=10):
+        """ A source that shoots particles in a given direction with a given strength.
+        """
+        self.system    = None   # Set when appended to System.
+        self.particles = []
+        self.x         = x
+        self.y         = y
+        self.velocity  = Vector(1, 1, length=strength, angle=angle)
+        self.spread    = spread # Angle-of-view.
+        self._i        = 0      # Current iteration.
+
+    def __len__(self):
+        return len(self.particles)
+    def __iter__(self):
+        return iter(self.particles)
+    def __getitem__(self, i):
+        return self.particles[i]
+
+    def extend(self, x):
+        for x in x: self.append(x)
+    def append(self, particle, life=100):
+        particle.life = particle.life or life
+        particle._age = particle.life
+        particle.dead = True
+        self.particles.append(particle)
+        if self.system is not None:
+            # Also append the particle to the system the emitter is part of.
+            self.system.append(particle)
+    
+    def _get_angle(self):
+        return self.velocity.angle
+    def _set_angle(self, v):
+        self.velocity.angle = v
+        
+    angle = property(_get_angle, _set_angle)
+
+    def _get_strength(self):
+        return self.velocity.length
+    def _set_strength(self, v):
+        self.velocity.length = max(v, 0.01)
+        
+    strength = length = magnitude = property(_get_strength, _set_strength)
+            
+    def update(self):
+        """ Update the system and respawn dead particles.
+            When a particle dies, it can be reused as a new particle fired from the emitter.
+            This is more efficient than creating a new Particle object.
+        """
+        self._i += 1 # Respawn occurs gradually.
+        p = self.particles[self._i % len(self.particles)]
+        if p.dead:
+            p.x        = self.x
+            p.y        = self.y
+            p.velocity = self.velocity.rotated(self.spread * 0.5 * (random()*2-1))
+            p._age     = 0
+            p.dead     = False
+
+emitter = Emitter

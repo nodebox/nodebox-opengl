@@ -236,16 +236,15 @@ class AffineTransform:
     def transform_path(self, path):
         """ Returns a BezierPath object with the transformation applied.
         """
-        from context import BezierPath, LINETO, CURVETO, MOVETO, CLOSE
-        p = BezierPath()
+        p = path.__class__() # Create a new BezierPath.
         for pt in path:
-            if pt.cmd == CLOSE:
+            if pt.cmd == "close":
                 p.closepath()
-            elif pt.cmd == MOVETO:
+            elif pt.cmd == "moveto":
                 p.moveto(*self.apply(pt.x, pt.y))
-            elif pt.cmd == LINETO:
+            elif pt.cmd == "lineto":
                 p.lineto(*self.apply(pt.x, pt.y))
-            elif pt.cmd == CURVETO:
+            elif pt.cmd == "curveto":
                 vx1, vy1 = self.apply(pt.ctrl1.x, pt.ctrl1.y)
                 vx2, vy2 = self.apply(pt.ctrl2.x, pt.ctrl2.y)
                 x, y = self.apply(pt.x, pt.y)
@@ -445,7 +444,8 @@ class Tessellate(list):
     """ Tessellation state that stores data from the callback functions
         while tessellate() is processing.
     """
-    def __init__(self): self.reset()
+    def __init__(self): 
+        self.reset()
     def clear(self):
         list.__init__(self, []) # Populated during _tessellate_vertex().
     def reset(self):
@@ -453,7 +453,7 @@ class Tessellate(list):
         self.mode      = None   # GL_TRIANGLE_FAN | GL_TRIANGLE_STRIP | GL_TRIANGLES.
         self.triangles = []     # After tessellation, contains lists of (x,y)-vertices,
         self._combined = []     # which can be drawn with glBegin(GL_TRIANGLES) mode.
-        
+
 _tessellate = Tessellate()
 
 def _tessellate_callback(type):
