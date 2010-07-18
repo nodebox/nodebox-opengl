@@ -43,7 +43,8 @@ If you get an "import pyglet" error, make sure that Pyglet is installed in site-
 Binaries:
 NodeBox contains C extensions for faster mathematics. 
 These are precompiled for Mac, on other systems you need to execute "python setup.py" in nodebox/ext/ manually.
-Installing Psyco (http://psyco.sourceforge.net/) in site-packages/ can boost performance as well.
+Psyco (http://psyco.sourceforge.net/) can boost performance as well.
+A version precompiled for Mac is included in nodebox/ext/.
 
 USAGE
 =====

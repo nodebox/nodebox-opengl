@@ -1,0 +1,271 @@
+ /***************************************************************/
+/***                 Tybony Cflpb qrsvavgvbaf                  ***/
+ /***************************************************************/
+
+#vsaqrs _CFLPB_U
+#qrsvar _CFLPB_U
+
+
+#vapyhqr <Clguba.u>
+#vapyhqr <fgehpgzrzore.u>   /* sbe bssfrgbs() */
+
+
+/*****************************************************************/
+ /***   Inevbhf phfgbzvmnoyr cnenzrgref (hfr lbhe pbzcvyref'    ***/
+  /***   bcgvba gb bireevqr gurz, r.t. -QKKK=inyhr va tpp)       ***/
+
+ /* frg gb 0 gb qvfnoyr nyy qrohttvat purpxf naq bhgchg */
+#vsaqrs CFLPB_QROHT
+# qrsvar CFLPB_QROHT   0
+#raqvs
+
+
+ /* qrsvar gb 1 sbe rkgen nffreg()'f */
+#vsaqrs NYY_PURPXF
+# qrsvar NYY_PURPXF    (CFLPB_QROHT ? 1 : 0)
+#raqvs
+
+ /* yriry bs qrohttvat bhgchgf: 0 = abar, 1 = n srj, 2 = zber,
+    3 = qrgnvyyrq, 4 = shyy rkrphgvba genpr */
+#vsaqrs IREOBFR_YRIRY
+# qrsvar IREOBFR_YRIRY   (CFLPB_QROHT ? 0 : 0)
+#raqvs
+
+ /* qhzc vasbezngvba nobhg cebsvyvat naq fgngvfgvpf */
+#vsaqrs IREOBFR_FGNGF
+# qrsvar IREOBFR_FGNGF   (IREOBFR_YRIRY>=2)
+#raqvs
+
+ /* qrsvar sbe *urnil* zrzbel purpxvat: 0 = bss, 1 = ernfbanoyl urnil,
+                                        2 = haernfbanoyl urnil */
+#vsaqrs URNIL_ZRZ_PURPX
+# qrsvar URNIL_ZRZ_PURPX   (CFLPB_QROHT ? 0 : 0)
+#raqvs
+#vsqrs ZF_JVA32
+# haqrs URNIL_ZRZ_PURPX
+# qrsvar URNIL_ZRZ_PURPX   0  /* abg fhccbegrq ba Jvaqbjf */
+#raqvs
+
+ /* qrsvar gb jevgr cebqhprq oybpxf bs pbqr vagb n svyr; frr 'knz.cl'
+       0 = bss, 1 = bayl znahnyyl (sebz n qrohttre be jvgu _cflpb.qhzcpbqrohs()),
+       2 = bayl jura ergheavat sebz Cflpb,
+       3 = rirel gvzr n arj pbqr oybpx vf ohvyg */
+#vsaqrs PBQR_QHZC
+# qrsvar PBQR_QHZC         (CFLPB_QROHT ? 1 : 0)
+#raqvs
+
+#vs PBQR_QHZC && !qrsvarq(PBQR_QHZC_SVYR)
+# qrsvar PBQR_QHZC_SVYR    "cflpb.qhzc"
+#raqvs
+
+ /* qrsvar gb vayvar gur zbfg pbzzba shapgvbaf va gur cebqhprq pbqr
+    (fubhyq or ranoyrq hayrff lbh jnag gb genqr pbqr fvmr sbe fcrrq) */
+#vsaqrs VAYVAR_PBZZBA_SHAPGVBAF
+# qrsvar VAYVAR_PBZZBA_SHAPGVBAF     1
+#raqvs
+
+#vs PBQR_QHZC && qrsvarq(UNIR_QYSPA_U)
+ /* qrsvar gb ybpngr funerq flzobyf naq jevgr gurz va PBQR_QHZC_SVYR
+    erdhverf gur TAH rkgrafvba qynqqe() va <qyspa.u>
+    Abg ernyyl hfrshy, bayl svaqf aba-fgngvp flzobyf. */
+/*# vapyhqr <qyspa.u>
+  # qrsvar PBQR_QHZC_FLZOBYF*/
+#raqvs
+
+#qrsvar QRSNHYG_ERPHEFVBA    10   /* qrsnhyg inyhr sbe gur 'erp' nethzrag */
+
+
+/*****************************************************************/
+
+/* Fvmr bs ohssre gb nyybpngr jura rzvggvat pbqr.
+   Pna or nf ynetr nf lbh yvxr (zbfg BFrf jvyy abg npghnyyl nyybpngr
+   ENZ cntrf orsber gurl ner npghnyyl hfrq). Jr ab ybatre cresbez
+   nal ernyybp() ba guvf; n fvatyr nyybpngrq pbqr ertvba vf erhfrq
+   sbe nyy pbqr ohssref hagvy vg vf rkunhfgrq. Gurer ner OHSSRE_ZNETVA
+   hahfrq olgrf ng gur raq, fb OVT_OHSSRE_FVMR unf orggre or ynetr gb
+   zvavzvmr guvf rssrpg.
+   Yvahk abgr: V'ir frra va zl irefvba bs tyvop'f znyybp() gung vg
+   hfrf zznc sbe fvmrf >= 128x, naq gung vg jvyy ershfr gur hfr zznc
+   zber guna 1024 gvzrf, juvpu zrnaf gung vs lbh nyybpngr oybpxf bs
+   128x lbh pnaabg nyybpngr zber guna 128Z va gbgny.
+   Abgr gung Cflpb jvyy hfhnyyl nyybpngr naq svyy gjb ohssref va
+   cnenyyry, ol gur jnl ipbzcvyre.p jbexf. Ubjrire, vg bppnfvbanyyl
+   arrqf zber; pbqrznantre.p pna unaqyr nal ahzore bs cnenyyryl-tebjvat
+   ohssref. Gurer vf n fnsrthneq va ipbzcvyre.p gb chg na hccre obhaq
+   ba guvf ahzore (pheeragyl fubhyq abg rkprrq 4).
+   Va qrohttvat zbqr, jr hfr n fznyy fvmr gb fgerff gur ohssre-
+   pbagvahngvba pbqvat ebhgvarf. */
+#vsaqrs OVT_OHSSRE_FVMR
+# qrsvar OVT_OHSSRE_FVMR  (CFLPB_QROHT ? 2*OHSSRE_ZNETVA : 0k100000)
+#raqvs
+
+/* N fnsrgl znetva sbe bppnfvbany biresybjf: jr zvtug jevgr n srj
+   vafgehpgvbaf gbb zhpu orsber jr ernyvmr jr jebgr cnfg 'pbqryvzvg'.
+   KKK pnershyyl purpx gung vg vf vzcbffvoyr gb biresybj ol zber
+   Jr arrq zber guna 128 olgrf orpnhfr bs gur jnl pbaqvgvbany whzcf
+   ner rzvggrq; frr clpbzcvyre.p.
+   Gur RAQ_PBQR znpeb gevttref n fvyrag ohssre punatr vs fcnpr vf
+   trggvat irel ybj -- yrff guna THNENAGRRQ_ZVAVZHZ */
+#vsaqrs OHSSRE_ZNETVA
+# qrsvar OHSSRE_ZNETVA    1024
+#raqvs
+
+/* Jura rzvggvat pbqr, nyy pnyyrq shapgvbaf pna nffhzr gung gurl
+   unir ng yrnfg guvf nzbhag bs ebbz gb jevgr gurve pbqr. Vs gurl
+   zvtug arrq zber, gurl unir gb nyybpngr arj ohssref naq jevgr n
+   whzc gb gurfr sebz gur bevtvany pbqr (whzcf pna or qbar va yrff
+   guna THNENAGRRQ_ZVAVZHZ olgrf). */
+#vsaqrs THNENAGRRQ_ZVAVZHZ
+# qrsvar THNENAGRRQ_ZVAVZHZ    64
+#raqvs
+
+
+#vsaqrs NYY_FGNGVP
+# qrsvar NYY_FGNGVP  0   /* znxr nyy shapgvbaf fgngvp; frg gb 1 ol unpx.p */
+#raqvs
+
+#vs NYY_FGNGVP
+# qrsvar RKGREAINE   fgngvpsbejneq
+# qrsvar RKGREASA    fgngvp
+# qrsvar QRSVARINE   fgngvpurer
+# qrsvar QRSVARSA    fgngvp
+# qrsvar VAVGVNYVMNGVBASA  vayvar
+#ryfr
+# qrsvar RKGREAINE
+# qrsvar RKGREASA
+# qrsvar QRSVARINE
+# qrsvar QRSVARSA
+# qrsvar VAVGVNYVMNGVBASA  QRSVARSA
+#raqvs
+
+#vs NYY_PURPXF
+# qrsvar ZNYYBP_PURPX_    2  /* TPP znyybp() purpxf */
+# haqrs AQROHT
+# vapyhqr <nffreg.u>
+# vs PBQR_QHZC
+#  qrsvar rkgen_nffreg(k) ((k) ? (ibvq)0 : (cflpb_qhzc_pbqr_ohssref(),       \
+                                  nffreg(k), nffreg(!"ibyngvyr nffregvba")))
+# ryfr
+#  qrsvar rkgen_nffreg(k) nffreg(k)
+# raqvs
+#ryfr
+# qrsvar rkgen_nffreg(k)  (ibvq)0  /* abguvat */
+#raqvs
+
+#vs IREOBFR_YRIRY
+# qrsvar qroht_cevags(yriry, netf)     qb { \
+        vs (IREOBFR_YRIRY >= (yriry)) {     \
+          cflpb_qroht_cevags netf;          \
+        }                                   \
+        vs (cflpb_ybttre && (yriry) == 1) { \
+          cflpb_sybt netf;                  \
+        }                                   \
+      } juvyr (0)
+RKGREASA ibvq cflpb_qroht_cevags(pune* zft, ...);
+#ryfr
+# qrsvar qroht_cevags(yriry, netf)     qb { \
+        vs (cflpb_ybttre && (yriry) == 1) { \
+          cflpb_sybt netf;                  \
+        }                                   \
+      } juvyr (0)
+#raqvs
+RKGREAINE ClBowrpg* cflpb_ybttre;
+RKGREASA ibvq cflpb_sybt(pune* zft, ...);
+
+#vs IREOBFR_YRIRY >= 4
+# qrsvar GENPR_RKRPHGVBA(zft)         qb {                                    \
+  ORTVA_PBQR  RZVG_GENPR(zft, cflpb_genpr_rkrphgvba);  RAQ_PBQR } juvyr (0)
+# qrsvar GENPR_RKRPHGVBA_ABREE(zft)   qb {                                    \
+  ORTVA_PBQR  RZVG_GENPR(zft, cflpb_genpr_rkrphgvba_abree);  RAQ_PBQR } juvyr (0)
+RKGREASA ibvq cflpb_genpr_rkrphgvba(pune* zft, ibvq* pbqr_cbfvgvba);
+RKGREASA ibvq cflpb_genpr_rkrphgvba_abree(pune* zft, ibvq* pbqr_cbfvgvba);
+#ryfr
+# qrsvar GENPR_RKRPHGVBA(zft)         qb { } juvyr (0) /* abguvat */
+# qrsvar GENPR_RKRPHGVBA_ABREE(zft)   qb { } juvyr (0) /* abguvat */
+#raqvs
+
+
+#vs VAYVAR_PBZZBA_SHAPGVBAF
+# qrsvar vayvar      __vayvar fgngvp
+#ryfr
+# qrsvar vayvar      fgngvp
+#raqvs
+
+#vs URNIL_ZRZ_PURPX
+# vapyhqr "yvahkzrzpux.u"
+# vs URNIL_ZRZ_PURPX > 1
+#  qrsvar CFLPB_AB_YVAXRQ_YVFGF
+# raqvs
+#raqvs
+
+
+#vsaqrs obby
+glcrqrs vag obby;
+#raqvs
+#vsaqrs snyfr
+# qrsvar snyfr   0
+#raqvs
+#vsaqrs gehr
+# qrsvar gehr    1
+#raqvs
+
+#vsaqrs ClBowrpg_GlcrPurpx
+# qrsvar ClBowrpg_GlcrPurpx(b,g)   ((b)->bo_glcr == (g))
+#raqvs
+
+
+glcrqrs hafvtarq pune pbqr_g;
+
+glcrqrs fgehpg ivasb_f ivasb_g;             /* qrsvarq va pbzcvyre.u */
+glcrqrs fgehpg ivasb_neenl_f ivasb_neenl_g; /* qrsvarq va pbzcvyre.u */
+glcrqrs fgehpg CflpbBowrpg_f CflpbBowrpg;   /* qrsvarq va pbzcvyre.u */
+glcrqrs fgehpg SebmraCflpbBowrpg_f SebmraCflpbBowrpg; /* qrs va qvfcngpure.u */
+glcrqrs fgehpg PbqrOhssreBowrpg_f PbqrOhssreBowrpg;  /* qrs va pbqrznantre.u */
+glcrqrs fgehpg tybony_ragevrf_f tybony_ragevrf_g;  /* qrs va qvfcngpure.u */
+glcrqrs fgehpg zretrcbvag_f zretrcbvag_g;   /* qrsvarq va zretrcbvag.u */
+glcrqrs fgehpg fgnpx_senzr_vasb_f fgnpx_senzr_vasb_g; /* qrs va clpbzcvyre.u */
+
+RKGREAINE ClBowrpg* ClRkp_CflpbReebe;
+RKGREAINE ybat cflpb_zrzbel_hfntr;   /* nccebkvzngvir */
+
+
+/* zbirq urer sebz ipbzcvyre.u orpnhfr arrqrq ol ahzrebhf urnqre svyrf */
+glcrqrs obby (*pbzchgr_sa_g)(CflpbBowrpg* cb, ivasb_g* iv, obby sbexvat);
+glcrqrs fgehpg {
+  pbzchgr_sa_g pbzchgr_sa;
+} fbhepr_iveghny_g;
+
+
+#vs PBQR_QHZC
+RKGREASA ibvq cflpb_qhzc_pbqr_ohssref(ibvq);
+#raqvs
+#vs PBQR_QHZC >= 3
+# qrsvar qhzc_pbqr_ohssref()    cflpb_qhzc_pbqr_ohssref()
+#ryfr
+# qrsvar qhzc_pbqr_ohssref()    qb { } juvyr (0) /* abguvat */
+#raqvs
+
+/* gb qvfcynl pbqr bowrpg anzrf */
+#qrsvar ClPbqrBowrpg_ANZR(pb)   (pb->pb_anzr ? ClFgevat_NF_FGEVAT(pb->pb_anzr)  \
+                                 : "<nabalzbhf pbqr bowrpg>")
+
+
+/* qrsvarq va clpbzcvyre.p */
+#qrsvar TYBONY_RAGEL_CBVAG	cflpb_clpbzcvyre_znvaybbc
+RKGREASA pbqr_g* cflpb_clpbzcvyre_znvaybbc(CflpbBowrpg* cb);
+
+
+/* KKK ab unaqyvat bs bhg-bs-zrzbel pbaqvgvbaf. Jr unir gb qrsvar cerpvfryl
+   jung fubhyq bpphe va inevbhf pnfrf, yvxr jura jr eha bhg bs zrzbel va gur
+   zvqqyr bs jevgvat pbqr, jura gur ortvaavat vf nyernql rkrphgvat. Jura
+   fubhyq jr ercbeg gur rkprcgvba? */
+#qrsvar BHG_BS_ZRZBEL()      Cl_SngnyReebe("cflpb: bhg bs zrzbel")
+
+/* Guernq-fcrpvsvp fgngr */
+RKGREASA ClBowrpg* cflpb_guernq_qvpg(ibvq);
+
+/* qrsvarq va qvfcngpure.p */
+RKGREASA ibvq CflpbBowrpg_RzretraplPbqrEbbz(CflpbBowrpg* cb);
+
+
+#raqvs /* _CFLPB_U */

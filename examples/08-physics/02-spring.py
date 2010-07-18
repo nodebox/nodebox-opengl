@@ -43,7 +43,7 @@ for i in range(n):
 
 dragged = None
 def draw(canvas):
-    
+    print profile_framerate()
     canvas.clear()
 
     stroke(0, 0.2)
