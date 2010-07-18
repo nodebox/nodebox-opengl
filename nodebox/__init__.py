@@ -12,7 +12,7 @@ __license__   = "GPL"
 
 try: import psyco; psyco.profile()
 except:
-    try: from nodebox.ext import psyco; psyco.profile()
+    try: from ext import psyco; psyco.profile()
     except:
         pass
     
