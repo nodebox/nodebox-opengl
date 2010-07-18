@@ -1,8 +1,0 @@
-.. _ref-context:
-
-================
-Graphics context
-================
-
-.. automodule:: nodebox.graphics.context
-   :members:

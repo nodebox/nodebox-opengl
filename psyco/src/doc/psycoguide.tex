@@ -1,0 +1,1131 @@
+\documentclass{manual}
+
+\title{The Ultimate Psyco Guide}
+
+\author{Armin Rigo}
+
+\authoraddress{
+        Email: \email{arigo@tunes.org} \\
+        Psyco Home page: \url{http://psyco.sourceforge.net/}
+}
+
+\date{updated June 10th, 2007}
+
+\release{1.5.2+SVN}                   % release version
+
+\makeindex
+
+
+
+\begin{document}
+\catcode`\@=11
+\renewcommand{\py@reset}{}
+\catcode`\@=13
+
+\maketitle
+
+
+\begin{abstract}
+
+\noindent
+Psyco is a Python extension module which can massively speed up the execution of any Python code.
+
+%\strong{This document is an evolving Draft.}
+
+\end{abstract}
+
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%         INSTALLATION          %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Installation}
+
+\section{Requirements}\label{req}
+
+Psyco currently requires:
+
+\begin{itemize}
+  
+\item \strong{A 32-bit Pentium or any other Intel 386 compatible processor.}  Sorry, no other processor is supported.  Psyco does not support the 64-bit x86 architecture, unless you have a Python compiled in 32-bit compatibility mode.
+
+\item \strong{Linux, Windows, BSD} are known to work.  Mac OS/X support should be easy but no one bothered so far (see below).
+  
+\item \strong{A regular Python installation, version 2.2.2 or up.}  Psyco is not a replacement for the Python interpreter and libraries, it works on top of them.
+  
+\end{itemize}
+
+Psyco is not strongly dependent on a particular OS.  Precompiled binaries are provided for Windows.  Compiling on Linux (or other Unixes) should be easy.
+
+Mac OS/X is not supported because of a difference in the calling convention.  If you want to help, see \url{http://mail.python.org/pipermail/pythonmac-sig/2006-June/017533.html} for instructions about how to fix it.
+
+
+\section{Installing}\label{binaries}
+
+Binaries are now only available for Windows as installers for recent Python versions.  You need to compile from the source (see \ref{sources}) in all other cases (it is trivial on non-Windows platforms, though).
+
+Be sure to download the version of Psyco that corresponds to your Python version.  Binary releases are at \url{http://sourceforge.net/project/showfiles.php?group_id=41036}.  Only some pre-compiled versions are available (contributions for missing ones are welcome).
+
+\begin{tableiii}{l|l|l}{filenq}{File name}{Python versions}{Well-tested with}
+  \lineiii{ psyco-x.y-win32-py2.2.2.exe  }{2.2.2 and up}   {2.2.2 and 2.2.3}
+  \lineiii{ psyco-x.y-win32-py2.3.exe    }{2.3 and up}     {2.3 and 2.3.3}
+  \lineiii{ psyco-x.y-win32-py2.4.exe    }{2.4 and up}     {2.4.*}
+  \lineiii{ psyco-x.y-win32-py2.5.exe    }{2.5 and up}     {2.4}
+\end{tableiii}
+
+Note that the 2.2.2 version will **not** work on the 2.2 or 2.2.1 Pythons!
+
+
+\section{Installing from the sources}\label{sources}
+
+You should get the source code from its most current Subversion version at \url{http://codespeak.net/svn/psyco/dist/}.  The command is:
+        
+\begin{verbatim}
+    svn co http://codespeak.net/svn/psyco/dist/ psyco-dist
+\end{verbatim}
+
+People unfamiliar with Subversion or whose Subversion access is firewalled can use a web grabber (e.g.\ ``wget -r http://codespeak.net/svn/psyco/dist/ -I /svn/psyco/dist``), or download a snapshop at \url{http://wyvern.cs.uni-duesseldorf.de/psyco/psyco-snapshot.tar.gz}.
+
+Note that the Subversion tree is considered the latest official release.  It evolves slowly and it is more stable than the packaged version.  But if you really really prefer official releases (though there is not much point, Psyco being stable and slow-changing nowadays), have a look at \url{http://sourceforge.net/project/showfiles.php?group_id=41036}.
+
+To install from the source, run the top-level installation script \file{setup.py}:
+
+\begin{verbatim}
+    python setup.py install
+\end{verbatim}
+
+Warning, many Linux distributions (e.g.\ Debian) ship with an incomplete Python.  You need to install the ``python-dev'' package for this to work.
+
+As usual, other commands are available, e.g.\ 
+
+\begin{verbatim}
+    python setup.py build_ext -i
+\end{verbatim}
+
+will compile the C source and put the result directly into the \file{py-support/} subdirectory (no administrator priviledge is required). After this step, the \file{py-support/} directory is a complete package (exactly as found in the binary distributions) that you can rename to \file{psyco} and copy around.
+
+
+\section{Compiling Psyco in Debug mode}\label{debugpsyco}
+
+In case of trouble that you suspect to be a bug in Psyco, you can recompile it with additional coherency checks that will be done during the compilation of your Python functions (they should not slow down the execution of the compiled code).
+
+Additionally, Psyco will dump debugging information to the standard error.  The debugging version of Psyco can also dump the whole compiled code buffers and associated data structures, using \function{psyco.dumpcodebuf}.
+
+Follow the instructions in \file{setup.py} to enable debugging.  For fine-grained control under Unix, I use a custom \file{Makefile} instead of \file{setup.py}; this \file{Makefile} is present in the CVS tree too.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%           TUTORIAL            %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Tutorial}
+
+The goal of Psyco is to be extremely easy to use, and ideally it should be completely transparent.  If this were the case, this user guide would be empty.  This is not the case because it is still experimental, and because you will probably like to keep control over what you trust Psyco to accelerate and how much resources (mainly memory) you are ready to let it spend.
+
+
+\section{Quick examples}
+
+Psyco comes as a package module that you can use in your applications, althought you will seldom need to use functions that are not exported via the top-level \module{psyco} module.  Try adding the following two lines at the beginning of your main \file{.py} source file:
+
+\begin{verbatim}
+import psyco
+psyco.full()
+\end{verbatim}
+
+This instructs Psyco to compile and run as much of your application code as possible.  This is the simplest interface to Psyco.  In good cases you can just add these two lines and enjoy the speed-up.  If your application does a lot of initialization stuff before the real work begins, you can put the above two lines after this initialization -- e.g. after importing modules, creating constant global objects, etc.  Psyco usually doesn't speed up the initialization of a program; it rather tends to make start-up slower.  A good place to put these lines is at the beginning of the \code{__main__} part of the script:
+
+\begin{verbatim}
+if __name__ == '__main__':
+    # Import Psyco if available
+    try:
+        import psyco
+        psyco.full()
+    except ImportError:
+        pass
+    # ...your code here...
+\end{verbatim}
+
+For larger applications, try:
+
+\begin{verbatim}
+import psyco
+psyco.profile()
+\end{verbatim}
+
+Psyco will do some profiling behind the scene to discover which functions are worth being compiled.
+
+\begin{verbatim}
+import psyco
+psyco.log()
+psyco.profile()
+\end{verbatim}
+
+Enable logging to a file named \file{xxx.log-psyco} by default, where \file{xxx} is the name of the script you ran.
+
+\begin{verbatim}
+import psyco
+psyco.log()
+psyco.profile(0.2)
+\end{verbatim}
+
+The extra argument \code{0.2} to \function{profile} is called the watermark; it means that Psyco will compile all functions that take at least 20\% of the time.  The exact meaning of the watermark will be given in the reference manual; simply keep in mind that smaller numbers (towards \code{0.0}) mean more functions compiled, and larger numbers (towards \code{1.0}) mean less functions compiled.  The default watermark is \code{0.09}.
+
+\begin{verbatim}
+import psyco
+psyco.log()
+psyco.full(memory=100)
+psyco.profile(0.05, memory=100)
+psyco.profile(0.2)
+\end{verbatim}
+
+This example combines the previous ones.  All functions are compiled until it takes 100 kilobytes of memory.  Aggressive profiling (watermark \code{0.05}) is then used to select further functions until it takes an extra 100 kilobytes of memory.  Then less aggressive profiling (watermark \code{0.2}) is used for the rest of the execution.  \note{The limit of 100 kilobytes is largely underestimated by Psyco: your process' size will grow by much more than that before Psyco switches to the next profiler.}
+
+If you want to keep control over what gets compiled, you can select individual functions:
+
+\begin{verbatim}
+import psyco
+psyco.bind(myfunction1)
+psyco.bind(myfunction2)
+\end{verbatim}
+
+This only selects the two given functions for compilation. Typically, you would select functions that do CPU-intensive computations, like walking lists or working on strings or numbers.  Note that the functions called by the functions you select will also be compiled.
+
+\begin{verbatim}
+import psyco
+g = psyco.proxy(f)
+g(args)            # Psyco-accelerated call
+f(args)            # regular slow call
+\end{verbatim}
+
+Unlike \function{psyco.bind}, \function{psyco.proxy} does not affect your original function at all, but only creates a Psyco-accelerated copy of it (a ``proxy'').  Useful if you only want to use Psyco at a very specific moment.  One can also argue that \code{f=psyco.proxy(f)} looks more Pythonic than \code{psyco.bind(f)}.
+
+
+\section{Zope's TAL: a real example with benchmarks}
+
+As an example of a good real-life candidate for Psyco acceleration, I chose \strong{TAL}, the simpler of the two templating languages of Zope (\url{http://www.zope.org}).  TAL is an extension of HTML in which you can write templates which are used to generate real HTML pages dynamically.  The translation from templates to real pages is a typical data-manipulation algorithm that is much faster in C than in Python, but much more obfuscated too.  TAL is currently implemented in Python only.
+
+For these tests, we will use the file \file{TAL.markbench.py} of a Zope 2 installation (if you did not install Zope, the file is in the \file{lib/python} subdirectory of the source archive).  You may have to create a file named \file{.path} to be able to run \file{markbench.py}, as explained when you first try to run it.
+
+On a Dual Pentium Linux running Python 2.2.2, using the Zope 2.6.1 distribution, I get the following times (lower numbers mean faster runs; I have added the horizontal line at test 9 for emphasis):
+
+\begin{verbatim}
+##:        ZPT        TAL       DTML
+01:          0          0          0
+02:          0          0          0
+03:          2          1          0
+04:          9          6          3
+05:         16         12          4
+06:         19         13         10
+07:         15         10          1
+08:         10          7          1
+09: ------ 123 ------- 90 ------- 32
+10:         14          6          3
+11:         28         18         10
+12:         20         15          6
+\end{verbatim}
+
+If I add the following line at the top of \file{markbench.py} the times drop massively --- the longest-running tests run two to three times faster!
+
+\begin{verbatim}
+import psyco; psyco.log(); psyco.full()
+\end{verbatim}
+
+Results:
+
+\begin{verbatim}
+##:        ZPT        TAL       DTML
+01:          0          0          0
+02:          0          0          0
+03:          1          0          0
+04:          5          2          2
+05:          8          4          4
+06:         11          5         10
+07:          7          4          1
+08:          6          2          1
+09: ------- 61 ------- 34 ------- 32
+10:         10          3          2
+11:         17          7         10
+12:         11          6          6
+\end{verbatim}
+
+Here you see in the DTML test the first rule about Psyco: some code is obviously not seen by Psyco at all.  In other words for some reason this code runs in the normal interpreter only.  There are a lot of potential reasons for this, which range from Psyco failing to ``steal'' the code from the Python interpreter before it executes it to code using unsupported constructs (see appendix \ref{unsupported}).
+
+\begin{verbatim}
+import psyco; psyco.log(); psyco.profile()
+\end{verbatim}
+
+Results:
+
+\begin{verbatim}
+##:        ZPT        TAL       DTML
+01:          0          0          0
+02:          0          0          0
+03:          4          3          0
+04:         15         11          3
+05:         20         13          5
+06:         16          5         12
+07:          7          5          1
+08:          5          2          1
+09: ------- 65 ------- 35 ------- 40
+10:         11          3          2
+11:         18          8         10
+12:         12          6          6
+\end{verbatim}
+
+If you use the profiler instead of compiling everything, the small tests won't run much faster, but the long-running ones will be about as fast as above.  It means that the profiler is a powerful tool that can be useful on arbitrarily large programs.  However, in the case of a large program in which you know where most of the processor time is spent, you can choose to selectively compile this part:
+
+\begin{verbatim}
+from TALInterpreter import TALInterpreter
+import psyco; psyco.bind(TALInterpreter)
+\end{verbatim}
+
+Results:
+
+\begin{verbatim}
+##:        ZPT        TAL       DTML
+01:          0          0          0
+02:          0          0          0
+03:          2          0          0
+04:          9          2          2
+05:         16          4          4
+06:         19          5         10
+07:         14          4          1
+08:         10          3          1
+09: ------ 122 ------- 33 ------- 32
+10:         13          3          3
+11:         28          8         10
+12:         20          6          6
+\end{verbatim}
+
+Here you can see that only the TAL test is accelerated.  If you have a Zope server using TAL, you could try to add the above two lines to it.  You may get very interesting speed-ups for a very reasonable memory overweight!  (untested: please tell me about it --- there is no real Zope server I can play with myself.)
+
+Another ceveat of Psyco is that it is not always easy to know which module or class Psyco has just acclerated in \code{psyco.full()} mode.  It took me some time to discover what I should bind to accelerate specifically the ZPT test.  Here is how: I ran Psyco in \code{psyco.log();psyco.profile()} mode, running only the ZPT test, and inspected the log file.  Indeed, when a function is about to be accelerated, Psyco writes a line \samp{tag function: xxx}.  In this case I figured out from the \file{markbench.log-psyco} file that I had to write this:
+
+\begin{verbatim}
+import TAL.TALInterpreter
+import psyco; psyco.bind(TAL.TALInterpreter.TALInterpreter.interpret)
+\end{verbatim}
+
+Results:
+
+\begin{verbatim}
+##:        ZPT        TAL       DTML
+01:          0          0          0
+02:          0          0          0
+03:          1          2          0
+04:          5          6          2
+05:          9         11          4
+06:         11         13         10
+07:          8         10          1
+08:          6          7          1
+09: ------- 66 ------- 90 ------- 32
+10:         10          6          4
+11:         18         18         10
+12:         12         15          6
+\end{verbatim}
+
+
+\section{Old-style classes vs. Built-in types}\label{metaclass}
+
+Althought Psyco can plug itself over various versions of the interpreter, there are some features that depend on specific extensions.
+
+A major introduction of Python 2.2 are the so-called new-style classes, which have a (positive) performance impact on Psyco.  So you should, as much as possible, let your classes be built-in types and not old-style classes (which is done by inheriting from another new-style class, or from \class{object} for root classes).
+
+In addition, Psyco 1.4 provides a compact alternative to Python's new-style instances: the \class{psyco.compact} root class.  Currently, you have to use or inherit from \class{psyco.compact} explicitely.  This lets Psyco produce faster code and reduces the memory used by your instances.  Even better, if you add the line
+
+\begin{verbatim}
+from psyco.classes import *
+\end{verbatim}
+
+at the top of the module(s) that define the classes, then not only will all your classes automatically inherit from \class{psyco.compact}, but all the methods defined in your classes will automatically be compiled as if you had called \function{psyco.bind()} on them.
+
+\warning{In Python, instances of classes that inherit from a built-in type are subject to some semantic differences that you should know about.  These are described in \url{http://www.python.org/2.2.2/descrintro.html}.  An immediate difference is that if \var{x} contains an instance of such a new-style class, then \code{type(x)} will be \code{x.__class__} instead of \constant{types.InstanceType}.}
+
+For more information see sections \ref{psycodotclasses} and \ref{psycocompact}.
+
+
+\section{Known bugs}\label{tutknownbugs}
+
+Almost any Python code should execute correctly when run under Psyco, including code that uses arbitrary C extension modules.  Some features of Python which are marked as ``not supported'' by Psyco will not cause Psyco to fail to produce the correct result; instead, it will revert to the regular Python interpreter and the code will run non-accelerated.
+
+All exceptions to this rule are bugs, but there are a couple of them because they would be either very hard to fix or fixing them would severely hurt performance.  They correspond to uncommon situations.  The current list is in appendix \ref{bugs}.
+
+There are also performance bugs: situations in which Psyco slows down the code instead of accelerating it.  It is difficult to make a complete list of the possible reasons, but here are a few common ones:
+
+\begin{itemize}
+\item The built-in \function{map} and \function{filter} functions must be avoided and replaced by list comprehension.  For example, \code{map(lambda x: x*x, lst)} should be replaced by the more readable but more recent syntax \code{[x*x for x in lst]}.
+\item The compilation of regular expressions doesn't seem to benefit from Psyco.  (The execution of regular expressions is unaffected, since it is C code.)  Don't enable Psyco on this module; if necessary, disable it explicitely, e.g.\ by calling \code{psyco.cannotcompile(re.compile)}.
+\end{itemize}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%     USER REFERENCE GUIDE      %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{User Reference Guide}
+
+\declaremodule{}{psyco}
+
+This chapter describes in detail what you will find in the \module{psyco} package module.
+
+The various functions described here are all concerned with how you tell Psyco what it should compile and what it should leave to the standard interpreter to execute.  Compiling everything is often overkill for medium- or large-sized applications.  The drawbacks of compiling too much are in the time spent compiling, plus the amount of memory that this process consumes.  It is a subtle balance to keep.
+
+
+\section{Selecting the functions to compile}
+
+With the following functions you can explicitely control what parts of your application get compiled.
+
+\begin{funcdesc}{bind}{object, rec=10}
+  Tells Psyco that the given \var{object} should be compiled for faster execution.
+
+  If \var{object} is a Python function,  \function{bind} modifies the function object in-place (specifically, its \member{func_code} attribute is changed).  All future calls to the function will go through Psyco.  Remember that in Python no behavior can depend on which reference to the function you use to make the call; in other words, after
+
+\begin{verbatim}
+g = f
+bind(f)
+\end{verbatim}
+
+  calls to both \var{f} and \var{g} will go through Psyco.
+
+  The \var{object} argument can also be:
+  \begin{itemize}
+    \item a method, either bound or unbound, implemented in Python; it underlying implementation is bound.
+    \item a class (or anything with a \member{__dict__} attribute); in this case, all functions and methods found in \code{c.__dict__} are bound (which means, for classes, all methods defined in the class but not in its parents).
+  \end{itemize}
+
+  Note that compilation never actually starts before a function is first called.
+
+  All functions called by a compiled function are also compiled, as well as the functions called by these, and so on, up to some limit (by default 10) that you can specify as the optional second argument.
+\end{funcdesc}
+
+\begin{funcdesc}{proxy}{function-or-method, rec=10}
+  Makes a Psyco-enabled copy of \var{object}.
+
+  This function returns a new object, which is a copy of the \var{function-or-method} with the same behavior but going through Psyco.  The function or method must be implemented in Python.  The argument itself is not affected; if you call it, it will still be run by the regular interpreter.
+
+  Thus, \samp{bind(f)} is similar to \samp{f=proxy(f)}, except that any reference to \var{f} that might previously have been taken (for example by a \samp{from spam import *} statement) are unaffected in the second case.
+\end{funcdesc}
+
+\begin{funcdesc}{unbind}{object}
+  Cancels the action of \function{bind}.
+
+  Note that Psyco currently cannot release the memory occupied by the compilation of a function.
+\end{funcdesc}
+
+\begin{funcdesc}{unproxy}{proxy-object}
+  Reverse of \function{proxy}.
+
+  \code{unproxy(proxy(f))} is a new function object equal to \var{f}.  Calling it does no longer invoke Psyco.
+\end{funcdesc}
+
+\begin{funcdesc}{cannotcompile}{object}
+  Prevents the given function to be ever compiled by Psyco.  \var{object} can also be a method object or directly a code object.  Raises \exception{psyco.error} if the object is already being compiled.  Note that this does not prevent functions called by \var{object} to be compiled, if they are bound or proxied or if the profiler chooses to compile them.
+\end{funcdesc}
+
+\begin{funcdesc}{setfilter}{func or None}
+  Sets a global filter function: ``func(co)`` will be called once per code object \var{co} considered by Psyco.  If it returns \var{False}, the code object will not be compiled.  Note that ``func(co)`` will not be called if Psyco already started to compile the code object before you called \function{setfilter}, nor if the code object contains constructs that prevents Psyco from compiling it anyway.  The return value of \function{setfilter} is the previous filter function or \var{None}.
+\end{funcdesc}
+
+The same function will never be compiled over and over again, so that you can freely mix calls to \function{bind}, \function{proxy}, \function{unbind} and \function{unproxy} and to the profile-based routines described in the next section.
+
+
+\section{Profile-based compilation}
+
+This section lists the functions that use the Python profiler and line tracer to discover which functions it should compile.  These routines are best to use if your application doesn't have a clear "slow spot" where a lot of time is spent algorithmically.  If it does, the previous section is all you need.
+
+\begin{funcdesc}{full}{memory=None, time=None, memorymax=None, timemax=None}
+  Compile as much as possible.
+
+  Very efficient for small scripts and applications.  Might be overkill for large applications: the memory blow-up and the time spent compiling a large amount of code could outweight the benefits.
+
+  The (optional) arguments are described in the next sections.
+\end{funcdesc}
+
+\begin{funcdesc}{profile}{watermark=0.09, halflife=0.5, pollfreq=20, parentframe=0.25, memory=None, time=None, memorymax=None, timemax=None}
+  Do profiling to detect the functions that consume a lot of interpretation time, and only compile those.
+
+  As far as I can tell, the best solution for large applications.  If a function takes a long time to run, it will be detected and compiled \emph{while it is still running,} in the middle of its execution.  Psyco takes it away from the standard interpreter.
+
+  The (optional) arguments are used for fine-tuning.  They are described in the next sections.
+\end{funcdesc}
+
+\begin{funcdesc}{background}{watermark=0.09, halflife=0.5, pollfreq=100, parentframe=0.25, memory=None, time=None, memorymax=None, timemax=None}
+  This is similar to \function{psyco.profile}, but does not use active profiling.  It only starts a background thread that periodically checks where the execution point is in all the other threads, and collects statistics based on this.
+
+  While quite less accurate, this method has the advantage of adding only a very small overhead to the standard execution and might be suited to large applications with an occasional algorithmically-intensive function.
+
+  The (optional) arguments are used for fine-tuning.  They are described in the next sections.  Try putting a \samp{psyco.background()} call in your \file{site.py} file, with a larger \var{watermark}.  Psyco will stay in the shadow and you should not notice it at all until you do some heavy work in Python.
+\end{funcdesc}
+
+\begin{funcdesc}{runonly}{memory=None, time=None, memorymax=None, timemax=None}
+  Run the compiled functions but don't compile new ones.
+
+  The usefulness of this routine is unknown.  See below.
+\end{funcdesc}
+
+\begin{funcdesc}{stop}{}
+  Stop the current profiler and purge the profiler queue (described below).
+
+  Calling this function prevents Psyco from compiling any new function.  It will still execute the ones that have already been compiled.
+\end{funcdesc}
+
+\note{most comments on the performance are based on small tests and extrapolations.  Just don't trust what I guess and try yourself.  Any comment about which routine you found most useful or what value you often give to parameters are welcome!}
+
+
+\subsection{Charge profilers}\label{charges}
+
+The ``profilers'' invoked by the above functions \function{profile} or \function{background} work on the following principles.  During the regular execution of your application, Psyco measures the time spent by your functions.  Individual functions are selected for compilation based on these data.
+
+Python 2.2.2 (and up) maintains a counter of executed bytecode instructions; this number is the most accurate (well, the least inaccurate) method I found out to guess how much a function could benefit from being run by Psyco.  This number counts the number of bytecode instructions (or elementary steps) taken during the interpretation, which gives a ``time'' estimate.  This ``time'' does not include things like time spent waiting for data to be read or written to a file, for example, which is a good thing because Psyco cannot optimize this anyway.
+
+The ``time'' thus charged to various functions is accumulated, until some limit is reached.  To favour functions that have recently be seen running over old-timers, the charge of each function ``decays'' with time, following an exponential law as if the amount of time was stored as a dissipating electric charge.  The limit at which a function is compiled is given as a fraction of the total charge; in other words, when a function's charge reaches at least xx percents of the total current charge, it is compiled.  As all the charges decay with time, reaching such a limit is easier than it may seem; for example, if the limit is set at 10\%, and if the execution stays for several seconds within the same 10 functions, then at least one of them will eventually reach the limit.  In practice, it seems to be a very good way to measure the charge; a few CPU-intensive functions will very quickly reach the limit, even if the program has already been running for a long time.
+
+The functions \function{profile} and \function{background} take the following optional keyword arguments:
+%
+\withsubitem{(profiling)}{
+  \ttindex{watermark}
+  \ttindex{halflife}
+  \ttindex{pollfreq}
+  \ttindex{parentframe}}
+%
+\begin{description}
+
+\item[watermark]
+  The limit, as a fraction of the total charge, between \code{0.0} and \code{1.0}.  The default value is \code{0.09}, or 9\%.
+
+\item[halflife]
+  The time (in seconds) it takes for the charge to drop to half its initial value by decay.  After two half-lifes, the charge is one-fourth of the initial value; after three, one-eighth; and so on.  The default value is \code{0.5} seconds.
+  
+\item[pollfreq]
+  How many times per second statistics must be collected.  This parameter is central to \function{background}'s operation.  The default value is \code{100}.  This is a maximum for a number of operating systems, whose \function{sleep} function is quite limited in resolution.
+
+  \var{pollfreq} also applies to \function{profile}, whose main task is to do active profiling, but which collects statistics in the background too so that it can discover long-running functions that never call other functions.  The default value in this case is \code{20}.
+
+\item[parentframe]
+  When a function is charged, its parent (the function that called it) is also charged a bit.  The purpose is to discover functions that call several other functions, each of which does a part of the job, but none of which does enough to be individually identified and compiled.  When a function is charged some amount of time, its the parent is additionally charged a fraction of it.  The parent of the parent is charged too, and so on recursively, althought the effect is more and more imperceptible.  This parameter controls the fraction.  The default value of \code{0.25} means that the parent is charged one-fourth of what a child is charged.  \note{Do not use values larger than \code{0.5}.}
+  
+\end{description}
+
+\note{All default values need tuning.  Any comments about values that seem to give better results in common cases are welcome.}
+
+Profiling data is not stored on disk (currently).  Profiling starts anew each time you restart your application.  This is consistent with the way the ``electric charges'' approach works: any charge older than a few half-lifes gets very close to zero anyway.  Moreover, in the current implementation, a full reset of the charges occurs every 120 half-lifes, but the effect should go unnoticed.
+
+
+\subsection{Limiting memory usage}\label{memlimits}
+
+Psyco can and will use large amounts of memory.  To give you more control, the effect of the various ``profilers'' selected by the functions \function{full}, \function{profile} and \function{background} can be limited.
+
+Here are the corresponding optional keyword arguments.
+%
+\withsubitem{(profiler limit)}{
+  \ttindex{memory}
+  \ttindex{time}
+  \ttindex{memorymax}
+  \ttindex{timemax}}
+%
+\begin{description}
+
+\item[memory]
+  Stop when the profiler has caused the given amount of memory to be consumed in code compilation (in kilobytes).
+
+  Note that the value is very approximative because it only takes some of the data structures of Psyco in account.  The actual amount of memory consumed by Psyco will be much larger than that.
+
+\item[time]
+  Only run the profiler for the given amount of seconds.
+
+\item[memorymax]
+  Stop when the memory consumed by Psyco reached the limit (in kilobytes).  This limit includes the memory consumed before this profiler started.
+
+\item[timemax]
+  Stop after the given number of seconds has elapsed, counting from now.
+
+  The difference with \var{time} is only apparent when the profiler does not actually start immediately, if it is queued as explained in the next section.
+  
+\end{description}
+
+
+\subsection{The profilers queue}
+
+Profilers can be chained.  By calling several of the above profiling functions (or maybe the same function several times with different arguments), only the first one is started.  The second one will only be started when the first one reaches one of its limits, and so on.  For example:
+
+\begin{verbatim}
+import psyco
+psyco.full(memory=100)
+psyco.profile()
+\end{verbatim}
+
+causes Psyco to compile everything until it takes 100 kilobytes of memory, and then only compile based on collected statistics.  Remember that the limit of 100 kilobytes is largely underestimated by Psyco: your process' size will grow by much more than that before Psyco switches to profiling.
+
+If all profilers reach their limits, profiling is stopped.  Already-compiled functions will continue to run faster.
+
+You may try to add a line \samp{psyco.runonly()} after the last profiler, if all your profilers may stop (i.e.\ all of them have limits).  It might help, or it might not.  Feedback appreciated.
+
+\note{Besides the limits, external events may prevent a specific profiler from running.  When this occurs, Psyco falls back to the next profiler but may come back later when the external condition changes again.  This occurs if some other program (e.g.\ the \module{pdb} debugger) sets a profiling or line-by-line tracing hook.  Psyco always gracefully leaves the priority to other programs when they want to occupy Python's hooks.}
+
+
+\section{Exceptions and warnings}
+
+\begin{excdesc}{error}
+  The \exception{psyco.error} exception is raised in case of a Psyco-specific error during the call of one of the above functions or during profiling.  It is never automatically raised within one of your function that is accelerated by Psyco.
+\end{excdesc}
+
+\begin{excdesc}{warning}
+  The \exception{psyco.warning} warning is issued in the hopefully rare cases where the meaning of your functions may change because of Psyco.  Unlike \exception{psyco.error}, this warning is typically issued while Psyco is running your own Python code, during a call to one of the functions described in appendix \ref{patchedfunctions}.
+\end{excdesc}
+
+
+\section{The \module{psyco.classes} module}\label{psycodotclasses}
+
+The \module{psyco.classes} module defines a practical metaclass that you can use in your applications.
+
+A metaclass is the type of a class.  Just like a class controls how its instances behave, a metaclass controls how its classes behave.  The purpose of the present metaclass is to make your classes more Psyco-friendly.
+
+\begin{classdesc*}{psymetaclass}
+The new metaclass.  This is a subclass of \class{psyco.compacttype}. Any user-defined class using this metaclass will be a new-style class and will automatically bind all the methods defined in the class body for compilation with Psyco.  It will also automatically inherit from \class{psyco.compact} (see section \ref{psycocompact}).
+\end{classdesc*}
+
+\begin{classdesc*}{__metaclass__}
+A synonym for \class{psymetaclass}.
+\end{classdesc*}
+
+\begin{classdesc*}{psyobj}
+An empty class whose metaclass is \class{psymetaclass}, suitable for subclassing in the same way that the built-in \class{object} is the generic empty new-style class which you can subclass.
+\end{classdesc*}
+
+See \url{http://www.python.org/2.2.2/descrintro.html} for more information about old-style vs.\ new-style classes.  Be aware of the changes in semantics, as recalled in section \ref{metaclass} (Psyco tutorial).
+
+By using \class{psyco.classes.__metaclass__} as the metaclass of your commonly-used classes, Psyco will call \function{psyco.bind} for you on all methods defined in the class (this does not include inherited parent methods or methods added after the class is first created).  Additionally, these classes are ``compact'' (section \ref{psycocompact}), i.e.\ Psyco can produce quite fast code to handle instances of these classes and they use less memory each.
+
+\subsection{Examples}
+
+The following examples both define a Psyco-friendly class \class{X} and bind the method \function{f}.
+
+\begin{verbatim}
+from psyco.classes import __metaclass__
+class X:
+    def f(x):
+        return x+1
+\end{verbatim}
+
+\samp{import __metaclass__} affects all classes defined in the module.  To select individual classes instead:
+
+\begin{verbatim}
+import psyco.classes
+class X(psyco.classes.psyobj):
+    def f(x):
+        return x+1
+\end{verbatim}
+
+
+\section{The \module{psyco.compact} type}\label{psycocompact}
+
+Starting from version 1.4, Psyco exports two extension types: \class{psyco.compact} and \class{psyco.compacttype}.  (In some future version, Psyco may be able to patch the features implemented by these types directly into the standard interpreter's built-in types).
+
+\begin{classdesc*}{psyco.compact}
+A base class whose instances are stored more compactly in memory.  Can be directly instantiated or subclassed.  The instances behave roughly like normal Python instances, i.e.\ you can store and read attributes, and put methods and other attributes in the subclasses, including Python's special methods (\function{__init__}, \function{__str__}, etc.). Their advantages over regular instances are:
+%
+\begin{itemize}
+\item They are more compact in memory, with a footprint similar to that of Python's \code{__slots__}-constrained instances.  For example, an instance with two integer attributes uses around 180 bytes in plain Python, and only around 44 if you use \code{__slots__} or with \class{psyco.compact}.  The advantage over \code{__slots__} is that you don't have to know all possible attributes in advance.
+\item In non-Psyco-accelerated function, there is a space/time trade-off: attribute accesses are a bit slower.  However,
+\item Psyco-accelerated functions handle \class{psyco.compact} instances extremely efficiently, both in space and in time.  For example, an assignment like \code{x.attr=(a,b,c)} stores the individual values of \code{a}, \code{b} and \code{c} directly into the instance data without building a tuple in memory.
+\end{itemize}
+
+There are a few visible differences and limitations:
+%
+\begin{enumerate}
+\item Explicit use of \code{__slots__} is forbidden.
+\item Weak references to instances are not allowed.  (Please write me if you would like me to remove this limitation.)
+\item Instances are not based on a real dictionary; the \code{__dict__} attribute returns a dictionary proxy (which however supports all dict operations, including writes).
+\item When assigning to \code{__dict__}, a copy of the data is stored into the instance; the dict and the instance do not reflect each other's future changes (they do in plain Python).
+\item Instances have a \code{__members__} attribute which lists the current attributes, in the order in which they have been set.
+\item For internal reasons, the subclasses' \code{__bases__} attribute will always contain \class{psyco.compact} as the last item, even if one or several other base classes were specified.
+\item Three methods \code{__getslot__}, \code{__setslot__} and \code{__delslot__} show up for internal purposes.
+\end{enumerate}
+\end{classdesc*}
+
+\begin{classdesc*}{psyco.compacttype}
+The metaclass of \class{psyco.compact}.  It inherits from \class{type}.  It means that when you subclass \class{psyco.compact}, your classes are by default of type \class{psyco.compacttype} instead of \class{type}.  The sole purpose of this metaclass is to force \class{psyco.compact} to appear in the subclasses' bases, and to check for \code{__slots__}.
+
+Note that you should not mix \class{psyco.compacttype} classes and normal classes in the same hierarchy.  Although this might work, the instances will still each have an unused allocated dictionary.
+\end{classdesc*}
+
+\subsection{Examples}
+
+\begin{verbatim}
+import psyco
+class Rectangle(psyco.compact):
+    def __init__(self, w, h):
+        self.w = w
+        self.h = h
+    def getarea(self):
+        return self.w * self.h
+
+r = Rectangle(6, 7)
+assert r.__dict__ == {'w': 6, 'h': 7}
+print r.getarea()
+\end{verbatim}
+
+The above example runs without using Psyco's compilation features.  The \code{r} instance is stored compactly in memory.  (Thus this feature of Psyco probably works on any processor, but this hasn't been tested.)
+
+The same example using the metaclass:
+
+\begin{verbatim}
+import psyco
+class Rectangle:
+    __metaclass__ = psyco.compacttype
+    def __init__(self, w, h):
+        self.w = w
+        self.h = h
+    def getarea(self):
+        return self.w * self.h
+
+r = Rectangle(6, 7)
+assert r.__dict__ == {'w': 6, 'h': 7}
+print r.getarea()
+\end{verbatim}
+
+
+\section{Logging}
+
+\begin{funcdesc}{log}{logfile='', mode='w', top=10}
+This function enables logging. Psyco will write information to the file \var{logfile}, opened in the given \var{mode} (which should be \code{'w'} for overwriting or \code{'a'} for appending).
+
+If unspecified, \var{logfile} defaults to the base script name (i.e.\ the content of \code{sys.argv[0]} without the final \file{.py}) with a \file{.log-psyco} extension appened.
+
+See below for the meaning of \var{top}.
+\end{funcdesc}
+
+A log file has the structure outlined in the following example (from \file{test/bpnn.py}):
+
+\begin{verbatim}
+11:33:53.19  Logging started, 12/22/02                  %%%%%%%%%%%%%%%%%%%%
+11:33:53.29  ActivePassiveProfiler: starting                           %%%%%
+11:33:53.40   ______
+        #1   |95.1 %|  active_start              ...psyco\profiler.py:258
+        #2   | 0.9 %|  ?                         ...\lib\traceback.py:1
+        #3   | 0.8 %|  ?                                      bpnn.py:8
+        #4   | 0.7 %|  time                                   bpnn.py:22
+        #5   | 0.4 %|  seed                      ...222\lib\random.py:140
+        #6   | 0.3 %|  ?                         ...\lib\linecache.py:6
+        #7   | 0.3 %|  write                     ...s\psyco\logger.py:22
+        #8   | 0.3 %|  __init__                               bpnn.py:48
+        #9   | 0.2 %|  go                        ...psyco\profiler.py:31
+11:33:53.62  tag function: backPropagate                                   %
+11:33:53.62  tag function: update                                          %
+11:33:53.67  tag function: train                                           %
+11:33:54.12   ______
+        #1   |58.4 %|  active_start              ...psyco\profiler.py:258
+        #2   | 2.5 %|  random                    ...222\lib\random.py:168
+        #3   | 2.1 %|  __init__                               bpnn.py:48
+        #4   | 2.1 %|  demo                                   bpnn.py:167
+        #5   | 2.0 %|  dumpcharges               ...s\psyco\logger.py:56
+        #6   | 1.2 %|  do_profile                ...psyco\profiler.py:299
+        #7   | 1.2 %|  rand                                   bpnn.py:36
+        #8   | 0.9 %|  makeMatrix                             bpnn.py:40
+        #9   | 0.8 %|  time                                   bpnn.py:22
+        #10  | 0.6 %|  ?                                      bpnn.py:8
+(...cut...)
+11:33:55.50   ______
+        #1   |42.5 %|  active_start              ...psyco\profiler.py:258
+        #2   | 8.3 %|  random                    ...222\lib\random.py:168
+        #3   | 6.7 %|  dumpcharges               ...s\psyco\logger.py:56
+        #4   | 6.6 %|  __init__                               bpnn.py:48
+        #5   | 4.0 %|  rand                                   bpnn.py:36
+        #6   | 3.4 %|  demo                                   bpnn.py:167
+        #7   | 2.9 %|  makeMatrix                             bpnn.py:40
+        #8   | 2.3 %|  do_profile                ...psyco\profiler.py:299
+        #9   | 1.3 %|  time                                   bpnn.py:22
+        #10  | 1.0 %|  test                                   bpnn.py:140
+11:33:55.50  tag function: random                                          %
+11:33:55.94  memory usage: 220+ kb                                         %
+11:33:55.94  program exit, 12/22/02                     %%%%%%%%%%%%%%%%%%%%
+\end{verbatim}
+
+The first column is a time (hours, minutes, seconds, hundredths).  Most lines end in a number of percent signs; the more percent signs, the more important the line is, so that you can for example do a \samp{grep \%\%\% bpnn.log-psyco} to see the lines of importance 3 or more.  As an exception, lines produced by the Psyco C core (as opposed to the Python glue, e.g.\ the profiler logic) end in \samp{\%\ \%} (percent, space, percent).
+
+The most common lines you will find in logs are:
+%
+\begin{description}
+
+\item[\#1, \#2, \#3,\ldots]
+  List (on several lines) of the functions which currently have the highest charge.  You can typically use this to tune the watermark (section \ref{charges}).  The displayed list is limited to the first 10 items by default; this can be customized with the \var{top} argument of \function{psyco.log}.
+
+\item[memory usage: \var{x}+ kb]
+  Psyco's current notion of how much memory is consumes for the emitted machine code and supporting data structures.  This is a rouch estimation of the memory overhead (the \code{+} sign is supposed to remind you that this figure is highly underestimated).  Use this info to tune the memory limits (section \ref{memlimits}).
+
+\item[unsupported opcode \var{x} at \var{y}:\var{z}]
+  The function \var{y} cannot be compiled.  Look up the opcode number \var{x} in the table of appendix \ref{unsupported}.
+
+\item[tag function: \var{x}]
+  The function charge has reached the watermark.  Its code object is compiled.  Execution of the function goes on in the compiled version.
+
+\item[bind function: \var{x}]
+  The function charge has reached the watermark and it is bound (with \function{psyco.bind}).  Only when function tagging is impossible (when doing passive profiling only).  Bound functions are only compiled the next time the function is called, which means that any work that is still done before the current call returns will be done uncompiled.  The profiler will continue to charge the function for that work and possibly bind the same function several times (with no bad consequences).
+
+\item[cannot find function \var{x} in \var{y}]
+  The profiler's attempt to use \function{psyco.bind} failed because the function object could not be found.  Indeed, the profiler charges code objects, and \function{psyco.bind} only applies to function objects.  Looking for a function when we only have the code object is difficult (not to mention that some code objects may have been created by \function{compile} or \function{execfile} and are not owned by any function whatsoever).  Psyco currently only locates the functions defined at the module top-level and the methods of top-level classes.  (This is one reason why profilers tag and don't bind if they can.)
+
+\item[profiling stopped, binding \var{n} functions]
+  When active profiling stops, the profiler calls \function{psyco.bind} on all currently tagged functions.  If you feel that this operation is too heavy (e.g.\ makes a visible pause in your real-time application) use the \function{psyco.runonly} profiler to prevent this from occuring.  Normally it only applies if you have set limits on all the profilers queued so far.
+
+\item[disabled (\var{L} limit reached)]
+  The profiler is stopped because it reached the limit \var{L}.  The next queued profiler can start.
+
+\item[disabled by psyco.error]
+  Failed to set the profiling or tracing hooks.  Normally means that some other code (e.g.\ a debugger) is already using them.  Psyco profiling will restart when the other program let go of the hooks.
+
+\item[resetting stats]
+  Profiling charges are reset to zero.  Occurs periodically.
+
+\item[no locals() in functions bound by Psyco]
+  Logged the first time the corresponding \exception{psyco.warning} is issued.  This is just a reminder.  To locate the problem, use the information Python prints to the terminal.
+  
+\item[unsupported ** argument in call to \var{x}]
+  The call to the function \var{x} cannot be compiled because of the \code{**} argument.  This is a limitation of Psyco; try to avoid \code{**} arguments (or write to me and insist on this feature).
+  
+\item[unsupported free or cell vars in \var{x}]
+  Psyco currently cannot compile functions that use nested scopes.
+
+\end{description}
+
+
+\section{Machine code inspection}
+
+Psyco works by directly emitting machine code for the processor.  Typically, it will write a large number of small blocks of code, with numerous jumps from one to the other.
+
+As you can guess, debugging this machine code with traditional tools was difficult, so I had to write helpers.  They can be found in the \file{py-utils} subdirectory.  You need a version of Psyco compiled in debugging mode; see section \ref{debugpsyco} for instructions on how to build it.
+
+\begin{funcdesc}{dumpcodebuf}{}
+  This function (to be called near the end of your program) dumps all the machine code and supporting data structures into a file \file{psyco.dump}.  This function has no effect if Psyco was not compiled in debugging mode.
+\end{funcdesc}
+
+Run the script \program{httpxam.py} with as argument the name of the directory which contains the \file{psyco.dump} file to examine.  This script formats the data as HTML pages and presents them via a web server built on Python's standard \class{SimpleHTTPServer}.  When it is running, point your browser to \url{http://127.0.0.1:8000}.
+
+\program{httpxam.py} probably only works on Linux.  It requires the programs \program{objdump} or \program{ndisasm} to disassemble the code and \program{nm} to list symbol addresses in the Python and Psyco executables.
+
+The cross-calling code buffers are presented as cross-linked HTML pages.  Bold lines show the targets of another jump.  If preceeded by a blank line, a bold line shows that another code buffer jumps directly at this position.  The end of the buffer is often garbage; it is not code, but data added there (typically for the promotion of a value).  There are various kind of code buffers, depending (only) on why Psyco produced it:
+%
+\begin{description}
+\item[normal]        normal mainstream compilation
+\item[respawn]       execution jumps here when an error occurs, but never did so yet
+\item[respawned]     replaces a respawn buffer when execution has jumped here
+\item[unify]         small buffer whose purpose is to jump back to an existing one
+\item[load_global]   called when a change is detected in a global variable
+\item[coding_pause]  not yet compiled, will be compiled if execution jumps here
+\end{description}
+
+
+
+%%%%%%%%%%%%%%%
+%%  CAVEATS  %%
+%%%%%%%%%%%%%%%
+\appendix
+\chapter{Caveats}
+
+
+\section{Known bugs}\label{bugs}
+
+Apart from speed, functions are supposed to run identically under Psyco and under Python, with the following known exceptions:
+%
+\withsubitem{(in frame objects)}{
+  \ttindex{f_back}
+  \ttindex{f_code}
+  \ttindex{f_globals}
+  \ttindex{f_locals}}
+\withsubitem{(exception)}{
+  \ttindex{KeyboardInterrupt}}
+%
+\begin{itemize}
+
+\item The functions \function{locals}, \function{eval}, \function{execfile}, \function{vars}, \function{dir} and \function{input} should work as expected starting from Psyco 1.3, but see section \ref{patchedfunctions}.
+  
+\item \strong{Frame objects} are emulated.  The \function{sys._getframe} function returns an instance of a custom class which emulates the standard frame objects' behavior as much as possible.  The frames corresponding to a Psyco-accelerated frame have some placeholder attributes, notably \member{f_locals}.  \emph{There is no way to read the local variables of a Psyco-accelerated frame.}  Actually, only the \member{f_code}, \member{f_globals}, \member{f_back} and \member{f_lineno} fields are well-tested.  Also keep in mind that if you obtain a real frame object (which you can do with some other mean than \function{sys._getframe}, e.g.\ via a traceback object), the \member{f_back} chained list will not include the Psyco-accelerated frames.
+
+\item The compiled machine code does not include the regular polling done by Python, meaning that a \exception{KeyboardInterrupt} will not be detected before execution comes back to the regular Python interpreter.  Your program cannot be interrupted if caught into an infinite Psyco-compiled loop.  (This could be fixed if requested.)
+
+\item Infinite recursions are not correctly detected. They are likely to result in segmentation faults (or whatever a stack overflow triggers on your system) instead of Python's nice \exception{RuntimeError}. Similarily, circularities among data structures can cause troubles (e.g.\ printing or comparing lists that contain themselves).
+
+\end{itemize}
+
+At other points, Psyco makes assumptions that may be wrong (and will cause damage if they turn out to be):
+%
+\withsubitem{(module)}{
+  \ttindex{rexec}}
+%
+\begin{itemize}
+  
+\item \strong{Built-ins} are assumed never to change.  Global variables can change, of course, but you must not add or remove a global variable to shadow or expose a built-in (at least not after a module is initialized).
+
+\item Do not \strong{dynamically change the methods} of the new-style classes (classes that inherit from a built-in type).
+
+\item Psyco assumes that \strong{types never change}.  This is basically wrong (you can assign to \code{__class__}).  This might cause Psyco to randomly believe that instances are still of their previous type.
+
+\item Do not use Psyco together with \strong{restricted execution} (the \module{rexec} module).  (Given that \module{rexec} is deprecated and not safe in the first place, not using it is probably a good idea anyway.)
+
+\end{itemize}
+
+Some minor points:
+%
+\begin{itemize}
+  
+\item The error message coming with exceptions will occasionally differ from Python's (but not the exception class).
+  
+\item The \code{is} operator might occasionally work unexpectedly on immutable built-in objects across function calls.  For example, in
+\begin{verbatim}
+def save(x):
+  global g
+  g = x
+def test(i):
+  n = i+1
+  save(n)
+  return n is g
+\end{verbatim}
+  there is no guarantee with Psyco that the integer object stored in \var{g} is identical to the object seen as \var{n} by the operator \code{is} (althought they would of course be equal).  Well, \code{is} is not supposed to be too useful for immutable objects anyway.  There are interesting exceptions, but these work as expected.  Consider the above \function{test} function as broken because it should be (but is not) equivalent to
+\begin{verbatim}
+def test(i):
+  f(i+1)
+  return (i+1) is g
+\end{verbatim}
+  
+\item I did not test these artificial examples of tricky code accessing a list while it is being sorted.  The potential problem here is that Psyco assumes that the type of an object never changes, while Python (before 2.3) changes the type of the list to make it immutable during the sort.
+  
+\item Running out of memory during compilation is hard to recover from.  I made it a fatal error.
+  
+\item Occasionally, objects become immortal.  An example of such a situation that comes in mind is the initial value of a then-changing global variable.  In general, however, this concerns objects that are immortal anyway (like a global variable that does not change or constants in the code).
+  
+\end{itemize}
+
+
+\section{Patched functions}\label{patchedfunctions}
+
+When Psyco starts, it replaces a few functions from the \module{__builtin__} and \module{sys} modules with a version of its own.  This trick fails if you made a copy of one of these functions elsewhere before Psyco has a chance to replace it, because the old copy will not behave properly in the presence of Psyco.
+
+\withsubitem{(built-in function)}{
+  \ttindex{globals}
+  \ttindex{locals}
+  \ttindex{vars}
+  \ttindex{dir}
+  \ttindex{eval}
+  \ttindex{execfile}
+  \ttindex{input}
+  \ttindex{sys._getframe}
+  \ttindex{_getframe (sys)}}
+%
+\begin{tableii}{c|l}{function}{Built-in function}{Notes}
+  \lineii{ globals       }{}
+  \lineii{ locals        }{(1)}
+  \lineii{ vars          }{(1) when called with no argument}
+  \lineii{ dir           }{(1) when called with no argument}
+  \lineii{ eval          }{(1)(2) when called with a single argument}
+  \lineii{ execfile      }{(1) when called with a single argument}
+  \lineii{ input         }{(1)}
+  \lineii{ sys._getframe }{(3)}
+\end{tableii}
+
+\noindent
+Notes:
+%
+\begin{description}
+\item[(1)]
+  A function run by Psyco has no native \function{locals} dictionary.  Psyco 1.3 and above can emulate it properly if a certain optimization (early dead variable deletion) is disabled.  Psyco should turn off this optimization automatically for functions where it detects a call to one of the above built-in functions, but this detection is a guess over the function's bytecode.  It means that certain indirect calls can be missed.  If this occurs at run-time, a \exception{psyco.warning} is issued and the emulated \function{locals} dictionary is empty.
+\item[(2)]
+  Note that it is common to find Python programs that use dynamic code evaluation for an effect that can be obtained by calling an ad-hoc built-in function instead.  For example, \code{eval('self.'+attr)} is better written as \code{getattr(self, attr)} and \code{exec 'import '+module} is better written as \code{__import__(module, globals(), locals(), [])}.
+\item[(3)]
+  Frames corresponding to Psyco-evaluated functions are incomplete, as described in section \ref{bugs}.
+\end{description}
+
+Additionally, the \code{exec} statement is not supported yet, as seen in section \ref{unsupported}.
+
+
+\section{Unsupported Python constructs}\label{unsupported}
+
+Psyco only compiles functions.  It will not accelerate any code that runs outside any function, like:
+
+\begin{itemize}
+\item top-level module code\footnote{Support for top-level module code is possible but disabled by default in recent versions of Psyco; contact me for more information.}
+\item the code defining a class --- i.e.\ the execution of the \code{class} statement.  Methods themselves are accelerated just fine when you actually call them.
+\item the code run by an \code{exec} statement or \function{execfile} or \function{eval}.
+\end{itemize}
+
+You can always work around the above limitations by creating functions and calling them instead of directly executing a time-consuming source.  For example, instead of writing a short test script like
+%
+\begin{verbatim}
+some_big_list = ...
+for x in some_big_list:
+    do_something()
+\end{verbatim}
+%
+write instead
+%
+\begin{verbatim}
+def process_list(lst):
+    for x in lst:
+        do_something()
+process_list(...)
+\end{verbatim}
+
+As another example, a function like
+%
+\begin{verbatim}
+def f(some_expr):
+    for x in range(100):
+        print eval(some_expr)   # where some_expr can depend on x
+\end{verbatim}
+%
+should instead be written
+%
+\begin{verbatim}
+def f(some_expr):
+    my_func = eval("lambda x: " + some_expr)   # -> a function object
+    for x in range(100):
+        print my_func(x)
+\end{verbatim}
+
+In addition, inside a function, some syntactic constructs are not supported by Psyco.  It does not mean that a function using them will fail; it merely means that the whole function will not be accelerated.  The following table lists the unsupported constructs, along with the corresponding bytecode instruction name and number.  Log files only report the bytecode instruction number, which you need to look up here.
+
+\begin{tableiii}{cl|l}{code}{Bytecode}{Instruction name}{Appears in}
+  \lineiii{ 82}{\code{LOAD_LOCALS  }}{(1) class definitions}
+  \lineiii{ 84}{\code{IMPORT_STAR  }}{(5) \code{from xx import *}}
+  \lineiii{ 85}{\code{EXEC_STMT    }}{(2) \code{exec xx}}
+  \lineiii{ 86}{\code{YIELD_VALUE  }}{(3) generators}
+  \lineiii{ 90}{\code{STORE_NAME   }}{(5) outside functions}
+  \lineiii{ 91}{\code{DELETE_NAME  }}{(5) outside functions}
+  \lineiii{101}{\code{LOAD_NAME    }}{(5) outside functions}
+  \lineiii{134}{\code{MAKE_CLOSURE }}{(4) nested scopes}
+  \lineiii{135}{\code{LOAD_CLOSURE }}{(4) nested scopes}
+  \lineiii{136}{\code{LOAD_DEREF   }}{(4) nested scopes}
+  \lineiii{137}{\code{STORE_DEREF  }}{(4) nested scopes}
+\end{tableiii}
+
+\noindent
+Notes:
+%
+\begin{description}
+\item[(1)]
+  Psyco cannot accelerate class definitions, i.e.\ the execution of the body of the class statement -- i.e.\ the creation of the class object itself.  This does not prevent it from accelerating methods in the class.
+\item[(2)]
+  Functions using this construct cannot be accelerated.
+\item[(3)]
+  Generators (i.e.\ any function using the \code{yield} keyword) cannot be accelerated currently.  If there is enough interest I can consider implementing them.  This includes generator expressions (Python 2.4).  Warning!  The function containing a generator expression will be compiled by Psyco, but not the generator expression itself.  If the latter calls other functions compiled by Psyco, then performance will be very bad: calling from Psyco to Python to Psyco comes with a significant overhead.
+\item[(4)]
+  Using nested scopes (i.e.\ variables shared by a function and an inner sub-function) will prevent both the outer and the inner function to be accelerated.  This too could be worked around if there is enough interest, at least for accelerating the unrelated parts of the functions -- the accesses to the shared variables themselves might be difficult to optimize.
+\item[(5)]
+  These constructs can appear in class definitions (see (1)) or at the module top-level.  It is possible to enable support for module top-level code, but not recommended; instead, try to put all the code you want accelerated in function bodies.
+\end{description}
+
+
+\chapter{Performance expectations}
+
+Psyco can compile code that uses arbitrary object types and extension modules.  Operations that it does not know about will be compiled into direct calls to the C code that implements them.  However, some specific operations can be optimized, and sometimes massively so --- this is the core idea around which Psyco is built, and the reason for the sometimes impressive results.
+
+The other reason for the performance improvement is that the machine code does not have to decode the pseudo-code (``bytecode'') over and over again while interpreting it.  Removing this overhead is what compilers classically do.  They also simplify the frame objects, making function calls more efficients.  So does Psyco.  But doing \emph{only} this would be ineffective with Python, because each bytecode instruction still has a lot of run-time decoding to do (typically, looking up the type of the arguments in tables, invoking the corresponding operation and building a resulting Python object).
+
+The type-based look-ups and the successive construction and destruction of objects for all intermediate values is what Psyco can most successfully cancel, but it needs to be taught about a type and its operations before it can do so.
+
+We list below the specifically optimized types and operations.  Possible performance gains are just wild guesses; specialization is known to give often-good-but-hard-to-predict gains.  Remember, all operations not listed below work well --- they just cannot be much accelerated.
+
+A \strong{performance killer} is the usage of the built-in functions \function{map} and \function{filter}.  \strong{Never} use them with Psyco.  Replace them with list comprehensions (see \ref{tutknownbugs}).  The reason is that entering code compiled by Psyco from non-Psyco-accelerated (Python or C) code is quite slow, slower than a normal Python function call.  The \function{map} and \function{filter} functions will typically result in a very large number of calls from C code to a \code{lambda} expression foolishly compiled by Psyco.  An exception to this rule is when using \function{map} or \function{filter} with a built-in function, when they are typically slightly faster than list comprehension because the only difference is then that the loop is performed by C code instead of by Psyco-generated code.  Still, I generally recommend that you forget about \function{map} and \function{filter} and use the "Pythonic" way.
+
+\strong{Virtual-time} objects are objects that, when used as intermediate values, are simply not be built at run-time at all.  The noted performance gains only apply if the object can actually remain virtualized.  Any unsupported operation will force the involved objects to be normally built.
+
+\begin{tableiii}{c|ll}{textrm}{Type}{Operations}{Notes}
+
+  \lineiii{Any built-in type}{reading members and methods}{(1)}
+
+  \lineiii{Built-in function and method}{call}{(1)}
+
+  \lineiii{Integer}{truth testing, unary \code{+} \code{-} \code{\~} \code{abs()}, binary \code{+} \code{-} \code{*} \code{|} \code{\&} \code{<{}<} \code{>{}>} \code{\^}, comparison}{(2)}
+
+  \lineiii{Dictionary}{\code{len()}}{(4)}
+
+  \lineiii{Float}{truth testing, unary \code{+} \code{-} \code{abs()}, binary \code{+} \code{-} \code{*} \code{/}, comparison}{(5)}
+
+  \lineiii{Function}{call}{(6)}
+
+  \lineiii{Sequence iterators}{\code{for}}{(7)}
+
+  \lineiii{List}{\code{len()}, item get and set, concatenation}{(8)}
+
+  \lineiii{Long}{all arithmetic operations}{(9)}
+
+  \lineiii{Instance method}{call}{(1)}
+
+  \lineiii{String}{\code{len()}, item get, slicing, concatenation}{(10)}
+
+  \lineiii{Tuple}{\code{len()}, item get, concatenation}{(11)}
+
+  \lineiii{Type}{call}{}
+
+  \lineiii{array.array}{item get, item set}{(15)}
+
+\end{tableiii}
+
+\begin{tableii}{c|l}{textrm}{Built-in function}{Notes}
+  \lineii{\function{range}}{(8)}
+  \lineii{\function{xrange}}{(13)}
+  \lineii{\function{chr}, \function{ord}}{(10)}
+  \lineii{\function{id}}{}
+  \lineii{\function{type}}{}
+  \lineii{\function{len}, \function{abs}, \function{divmod}}{}
+  \lineii{\function{apply}}{(14)}
+  \lineii{the whole \module{math} module}{(16)}
+  \lineii{\function{map}, \function{filter}}{\strong{not supported}(17)}
+\end{tableii}
+
+\noindent
+Notes:
+%
+\begin{description}
+
+\item[(1)]
+  In the common \samp{object.method(args)} the intermediate bound method object is never built; it is translated into a direct call to the function that implements the method.  For C methods, the underlying \ctype{PyMethodDef} structure is decoded at compile-time.  Algorithms doing repetitive calls to methods of e.g.\ lists or strings can see huge benefits.
+  
+\item[(2)]
+  Virtual-time integers can be 100 times faster than their regular counterpart.
+
+\item[(4)]
+  Complex data structures are not optimized yet, beyond (1).  In a future version it is planned to allow these structures to be re-implemented differently by Psyco, with an implementation that depends on actual run-time usage.
+  
+\item[(5)]
+  Psyco does not know about the Intel FPU instruction set.  It emits calls to C functions that just add or multiply two \ctype{double}s together.  Virtual-time floats are still about 10 times faster than Python.
+  
+\item[(6)]
+  Virtual-time functions occur when defining a function inside another function, with some default arguments.
+  
+\item[(7)]
+  Sequence iterators are virtual-time, making \code{for} loops over sequences as efficient as what you would write in C.
+
+\item[(8)]
+  Short lists and \function{range}s of step 1 are virtualized.  A \code{for} looping over a range is as efficient as the common C \code{for} loop.  For the other cases of lists see (4).
+
+\item[(9)]
+  Minimal support only.  Objects of this type are never virtualized.  The majority of the CPU time is probably spent doing the actual operation anyway, not in the Python glue.
+
+\item[(10)]
+  Virtual-time strings come in many flavors: single characters implemented as a single byte; slices implemented as a pointer to a portion of the full string; concatenated strings implemented as a (possibly virtual) list of the strings this string is the join of.  Text-manipulation algorithms should see massive speed-ups.
+  
+\item[(11)]
+  Programs manipulating small tuples in local variables can see them completely virtualized away.  In general however, the gains with tuples are mostly derived from the various places where Python (and Psyco that mimics it) internally manipulates tuples.
+
+\item[(13)]
+  Psyco can optimize \function{range} well enough to make \function{xrange} useless.  Indeed, with no specific support \function{xrange} would be less efficient than \function{range}! Currently \function{xrange} is almost identical to \function{range}.
+  
+\item[(14)]
+  Without keyword argument dictionary.
+  
+\item[(15)]
+  Type codes \code{'I'} and \code{'L'} are not supported.  Type code \code{'f'} does not support item assignment.  The speed of a complex algorithm using an array as buffer (like manipulating an image pixel-by-pixel) should be very high; closer to C than plain Python.
+
+\item[(16)]
+  Missing: \function{frexp}, \function{ldexp}, \function{log}, \function{log10}, \function{modf}.  See note (5).
+
+\item[(17)]
+  Systematically avoid \function{map} and \function{filter} and replace them with list comprehension (section \ref{tutknownbugs}).
+
+\end{description}
+
+
+\input{psycoguide.ind}                    % Index
+
+\end{document}

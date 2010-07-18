@@ -1,8 +1,10 @@
-# Author: Tom De Smedt <tomdesmedt@organisms.be>
+#=== BEZIER ==========================================================================================
+# Bezier mathematics.
+# Authors: Tom De Smedt
 # License: GPL (see LICENSE.txt for details).
-# Copyright (c) 2008 by Tom De Smedt.
+# Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 
-# Thanks to Prof. F. De Smedt at the Free University of Brussels.
+# Thanks to Prof. F. De Smedt at the Vrije Universiteit Brussel.
 
 from context import BezierPath, PathElement, PathError, Point, MOVETO, LINETO, CURVETO, CLOSE
 from math import sqrt, pow

@@ -1,5 +1,6 @@
+#=== SHADER ==========================================================================================
 # Fragment shaders, filters, Frame Buffer Object (FBO)
-# Authors: Frederik De Bleser, Tom De Smedt
+# Authors: Tom De Smedt, Frederik De Bleser
 # License: GPL (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 

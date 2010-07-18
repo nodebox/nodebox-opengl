@@ -1,5 +1,6 @@
-# Native GUI controle.
-# Authors: Frederik De Bleser, Tom De Smedt
+#=== CONTROLS ========================================================================================
+# Native GUI controls.
+# Authors: Tom De Smedt, Frederik De Bleser
 # License: GPL (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 
@@ -13,7 +14,7 @@ from pyglet.text.caret  import Caret
 from nodebox.graphics.geometry import distance, clamp, Bounds
 from nodebox.graphics import \
     Layer, Color, Image, image, crop, \
-    Text, font, NORMAL, BOLD, CENTER, \
+    Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
     cursor, DEFAULT, HAND, TEXT, \
     LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE
 
@@ -45,11 +46,11 @@ class Theme(dict):
         images = glob(os.path.join(path, "*.png"))
         images = [(os.path.basename(os.path.splitext(f)[0]), f) for f in images]
         fonts  = glob(os.path.join(path, "*.ttf"))
-        fonts  = [(os.path.basename(os.path.splitext(f)[0]), font(file=f)) for f in fonts]
-        fonts  = [f[0] for f in fonts]
+        fonts  = [(os.path.basename(os.path.splitext(f)[0]), install_font(f)) for f in fonts]
+        fonts  = [f[0] for f in fonts if f[1]]
         dict.__init__(self, images)
         self["fonts"]      = fonts
-        self["font"]       = fonts and fonts[-1] or "Arial" # Filename is assumed to be fontname.
+        self["font"]       = fonts and fonts[-1] or DEFAULT_FONT # Filename is assumed to be fontname.
         self["fontsize"]   = 10
         self["fontweight"] = NORMAL
         self["text"]       = Color(1.0)

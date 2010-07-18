@@ -1,0 +1,89 @@
+#define LAST_DEFINED_OPCODE 73
+
+#define INSN_inv() INSN_EMIT_macro_opcode(1)
+#define INSN_abs_o() INSN_EMIT_macro_opcode(2)
+#define INSN_neg_o() INSN_EMIT_macro_opcode(3)
+#define INSN_load1() INSN_EMIT_macro_opcode(4)
+#define INSN_load1u() INSN_EMIT_macro_opcode(5)
+#define INSN_load2() INSN_EMIT_macro_opcode(6)
+#define INSN_load2u() INSN_EMIT_macro_opcode(7)
+#define INSN_load4() INSN_EMIT_macro_opcode(8)
+#define INSN_or() INSN_EMIT_macro_opcode(9)
+#define INSN_and() INSN_EMIT_macro_opcode(10)
+#define INSN_xor() INSN_EMIT_macro_opcode(11)
+#define INSN_add() INSN_EMIT_macro_opcode(12)
+#define INSN_add_o() INSN_EMIT_macro_opcode(13)
+#define INSN_sub_o() INSN_EMIT_macro_opcode(14)
+#define INSN_mul_o() INSN_EMIT_macro_opcode(15)
+#define INSN_lshift() INSN_EMIT_macro_opcode(16)
+#define INSN_rshift() INSN_EMIT_macro_opcode(17)
+#define INSN_urshift() INSN_EMIT_macro_opcode(18)
+#define INSN_cmpeq() INSN_EMIT_macro_opcode(19)
+#define INSN_cmplt() INSN_EMIT_macro_opcode(20)
+#define INSN_cmpltu() INSN_EMIT_macro_opcode(21)
+#define INSN_settos(arg1) (code = psyco_insn_settos(code, arg1))
+EXTERNFN code_t* psyco_insn_settos(code_t* code, int arg1);
+#define INSN_pushn(arg1) (code = psyco_insn_pushn(code, arg1))
+EXTERNFN code_t* psyco_insn_pushn(code_t* code, word_t arg1);
+#define INSN_immed(arg1) (code = psyco_insn_immed(code, arg1))
+EXTERNFN code_t* psyco_insn_immed(code_t* code, word_t arg1);
+#define INSN_s_push(arg1) (code = psyco_insn_s_push(code, arg1))
+EXTERNFN code_t* psyco_insn_s_push(code_t* code, int arg1);
+#define INSN_s_pop(arg1) (code = psyco_insn_s_pop(code, arg1))
+EXTERNFN code_t* psyco_insn_s_pop(code_t* code, int arg1);
+#define INSN_ref_push(arg1) (code = psyco_insn_ref_push(code, arg1))
+EXTERNFN code_t* psyco_insn_ref_push(code_t* code, word_t arg1);
+#define INSN_stackgrow() INSN_EMIT_macro_opcode(39)
+#define INSN_assertdepth(arg1) (code = psyco_insn_assertdepth(code, arg1))
+EXTERNFN code_t* psyco_insn_assertdepth(code_t* code, word_t arg1);
+#define INSN_dynamicfreq(arg1) (code = psyco_insn_dynamicfreq(code, arg1))
+EXTERNFN code_t* psyco_insn_dynamicfreq(code_t* code, word_t** arg1);
+#define INSN_flag_push() INSN_EMIT_macro_opcode(43)
+#define INSN_cmpz() INSN_EMIT_macro_opcode(44)
+#define INSN_flag_forget() (code = psyco_insn_flag_forget(code))
+EXTERNFN code_t* psyco_insn_flag_forget(code_t* code);
+#define INSN_jcondnear(arg1) (code = psyco_insn_jcondnear(code, arg1))
+EXTERNFN code_t* psyco_insn_jcondnear(code_t* code, code_t** arg1);
+#define INSN_jcondfar(arg1) (code = psyco_insn_jcondfar(code, arg1))
+EXTERNFN code_t* psyco_insn_jcondfar(code_t* code, word_t** arg1);
+#define INSN_jumpfar(arg1) (code = psyco_insn_jumpfar(code, arg1))
+EXTERNFN code_t* psyco_insn_jumpfar(code_t* code, word_t** arg1);
+#define INSN_cbuild1(arg1) (code = psyco_insn_cbuild1(code, arg1))
+EXTERNFN code_t* psyco_insn_cbuild1(code_t* code, word_t** arg1);
+#define INSN_cbuild2(arg1) (code = psyco_insn_cbuild2(code, arg1))
+EXTERNFN code_t* psyco_insn_cbuild2(code_t* code, word_t** arg1);
+#define INSN_store1() INSN_EMIT_macro_opcode(50)
+#define INSN_store2() INSN_EMIT_macro_opcode(51)
+#define INSN_store4() INSN_EMIT_macro_opcode(52)
+#define INSN_incref() INSN_EMIT_macro_opcode(53)
+#define INSN_decref() INSN_EMIT_macro_opcode(54)
+#define INSN_decrefnz(arg1) (code = psyco_insn_decrefnz(code, arg1))
+EXTERNFN code_t* psyco_insn_decrefnz(code_t* code, word_t** arg1);
+#define INSN_exitframe() INSN_EMIT_macro_opcode(56)
+#define INSN_ret(arg1) (code = psyco_insn_ret(code, arg1))
+EXTERNFN code_t* psyco_insn_ret(code_t* code, int arg1);
+#define INSN_retval() INSN_EMIT_macro_opcode(60)
+#define INSN_pushretval() INSN_EMIT_macro_opcode(61)
+#define INSN_pyenter(arg1) (code = psyco_insn_pyenter(code, arg1))
+EXTERNFN code_t* psyco_insn_pyenter(code_t* code, word_t** arg1);
+#define INSN_pyleave() INSN_EMIT_macro_opcode(63)
+#define INSN_vmcall(arg1) (code = psyco_insn_vmcall(code, arg1))
+EXTERNFN code_t* psyco_insn_vmcall(code_t* code, word_t** arg1);
+#define INSN_ccall0(arg1) (code = psyco_insn_ccall0(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall0(code_t* code, word_t** arg1);
+#define INSN_ccall1(arg1) (code = psyco_insn_ccall1(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall1(code_t* code, word_t** arg1);
+#define INSN_ccall2(arg1) (code = psyco_insn_ccall2(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall2(code_t* code, word_t** arg1);
+#define INSN_ccall3(arg1) (code = psyco_insn_ccall3(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall3(code_t* code, word_t** arg1);
+#define INSN_ccall4(arg1) (code = psyco_insn_ccall4(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall4(code_t* code, word_t** arg1);
+#define INSN_ccall5(arg1) (code = psyco_insn_ccall5(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall5(code_t* code, word_t** arg1);
+#define INSN_ccall6(arg1) (code = psyco_insn_ccall6(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall6(code_t* code, word_t** arg1);
+#define INSN_ccall7(arg1) (code = psyco_insn_ccall7(code, arg1))
+EXTERNFN code_t* psyco_insn_ccall7(code_t* code, word_t** arg1);
+#define INSN_checkdict(arg1, arg2, arg3, arg4) (code = psyco_insn_checkdict(code, arg1, arg2, arg3, arg4))
+EXTERNFN code_t* psyco_insn_checkdict(code_t* code, word_t** arg1, word_t** arg2, word_t** arg3, word_t** arg4);

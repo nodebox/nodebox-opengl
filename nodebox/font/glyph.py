@@ -9,7 +9,7 @@ characters = range(32, 127)
 
 # Defines which fonts to process.
 # By default, only the standard fonts in NodeBox for OpenGL
-# are converted (Droid Sans, Droid Sans Mono, Droid Serif).
+# are converted (Droid Sans, Droid Sans Mono, Droid Serif, Arial).
 fonts = {
     "Droid Sans": {
          "normal" : "DroidSans", # PostScript-name.
@@ -23,6 +23,10 @@ fonts = {
            "bold" : "DroidSerif-Bold",
          "italic" : "DroidSerif-Italic",
     "bold italic" : "DroidSerif-BoldItalic" 
+    },
+    "Arial": {
+         "normal" : "ArialMT",
+           "bold" : "Arial-BoldMT",  
     }
 }
 

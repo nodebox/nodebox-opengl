@@ -1,14 +1,11 @@
-# NodeBox for OpenGL, 2D painter
-# Authors: Frederik De Bleser, Tom De Smedt
+#=== CONTEXT =========================================================================================
+# 2D NodeBox API in OpenGL.
+# Authors: Tom De Smedt, Frederik De Bleser
 # License: GPL (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 
 # All graphics are drawn directly to the screen.
 # No scenegraph is kept for obvious performance reasons (therefore, no canvas._grobs as in NodeBox).
-
-try: import psyco; psyco.profile()
-except:
-    pass
 
 # Debugging must be switched on or of before other modules are imported.
 import pyglet
@@ -219,17 +216,13 @@ class Color(list):
 color = Color
 
 def background(*args):
-    """ Sets the current window background color.
+    """ Sets the current background color.
     """
     global _background
     if args:
         _background = Color(*args)
         xywh = (GLint*4)(); glGetIntegerv(GL_VIEWPORT, xywh); x,y,w,h = xywh
-        rect(x, y, w, h, fill=_background, stroke=None)
-        #glClearColor(_background[0], _background[1], _background[2], _background[3])
-        #glClear(GL_COLOR_BUFFER_BIT)
-        #glClear(GL_DEPTH_BUFFER_BIT)
-        #glClear(GL_STENCIL_BUFFER_BIT)    
+        rect(x, y, w, h, fill=_background, stroke=None)   
     return _background
 
 def fill(*args):
@@ -1808,10 +1801,25 @@ offscreen = FBO(640, 480)
 
 #--- FONT --------------------------------------------------------------------------------------------
 
+def install_font(ttf):
+    """ Loads the given TrueType font from file, and returns True on success.
+    """
+    try: 
+        pyglet.font.add_file(ttf)
+        return True
+    except:
+        # This might fail with Carbon on 64-bit Mac systems.
+        # Fonts can be installed on the system manually if this is the case.
+        return False
+
 # Load the platform-independent fonts shipped with NodeBox.
 # The default font is Droid (licensed under Apache 2.0).
-for f in glob(path.join(path.dirname(__file__), "..", "font", "*")):
-    pyglet.font.add_file(f)
+try:
+    for f in glob(path.join(path.dirname(__file__), "..", "font", "*")):
+        install_font(f)
+    DEFAULT_FONT = "Droid Sans"
+except:
+    DEFAULT_FONT = "Arial"
 
 # Font weight
 NORMAL = "normal"
@@ -1824,7 +1832,7 @@ RIGHT  = "right"
 CENTER = "center"
 
 _fonts      = []             # Custom fonts loaded from file.
-_fontname   = "Droid Sans"   # Current state font name.
+_fontname   = DEFAULT_FONT   # Current state font name.
 _fontsize   = 12             # Current state font size.
 _fontweight = [False, False] # Current state font weight (bold, italic).
 _lineheight = 1.0            # Current state text lineheight.
@@ -1836,7 +1844,7 @@ def font(fontname=None, fontsize=None, file=None):
     """
     global _fontname, _fontsize
     if file is not None and file not in _fonts:
-        _fonts.append(file); pyglet.font.add_file(file)
+        _fonts.append(file); install_font(file)
     if fontname is not None:
         _fontname = fontname
     if fontsize is not None:
@@ -2208,7 +2216,7 @@ def textpath(string, x=0, y=0, **kwargs):
     """ Returns a BezierPath from the given text string.
         The fontname, fontsize and fontweight can be given as optional parameters,
         width, height, lineheight and align are ignored.
-        Only works with ASCII characters in the default fonts (Droid Sans, Droid Sans Mono, Droid Serif).
+        Only works with ASCII characters in the default fonts (Droid Sans, Droid Sans Mono, Droid Serif, Arial).
         See nodebox/font/glyph.py on how to activate other fonts.
     """
     fontname, fontsize, bold, italic, lineheight, align = font_mixin(**kwargs)
@@ -3504,6 +3512,10 @@ class Canvas(list, Prototype, EventHandler):
         )
         
     buffer = screenshot = render
+    
+    @property
+    def texture(self):
+        return self.render()
 
     def save(self, path):
         """ Exports the current frame as a PNG-file.

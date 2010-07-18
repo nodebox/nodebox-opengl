@@ -1,3 +1,4 @@
+#=== SHADER ==========================================================================================
 # 2D geometry functions.
 # Authors: Tom De Smedt
 # License: GPL (see LICENSE.txt for details).

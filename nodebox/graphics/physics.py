@@ -1,3 +1,4 @@
+#=== PHYSICS =========================================================================================
 # 2D physics functions.
 # Authors: Tom De Smedt, Giorgio Olivero (Vector class)
 # License: GPL (see LICENSE.txt for details).
