@@ -404,6 +404,7 @@ class Bounds:
 
 from sys import platform
 from ctypes import CFUNCTYPE, POINTER, byref, cast
+from ctypes import CFUNCTYPE as _CFUNCTYPE
 from pyglet.gl import \
     GLdouble, GLvoid, GLenum, GLfloat, pointer, \
     gluNewTess, gluTessProperty, gluTessNormal, gluTessCallback, gluTessVertex, \
@@ -461,7 +462,7 @@ def _tessellate_callback(type):
     # Registers a C version of a Python callback function for gluTessCallback().
     def _C(function):
         f = _tessellate_callback_type[type](function)
-        gluTessCallback(_tessellator, type, cast(f, CFUNCTYPE(None)))
+        gluTessCallback(_tessellator, type, cast(f, _CFUNCTYPE(None)))
         return f
     return _C
 
