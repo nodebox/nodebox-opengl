@@ -113,9 +113,8 @@ class Shader(object):
         # If the source fails to compile, retrieve the error message and raise ShaderError.
         # Store the compiled shader so we can delete it later on.
         shader = glCreateShader(type)
-        length = c_int(-1)
         status = c_int(-1)
-        glShaderSource(shader, 1, cast(byref(c_char_p(source)), POINTER(POINTER(c_char))), byref(length))
+        glShaderSource(shader, 1, cast(pointer(c_char_p(source)), POINTER(POINTER(c_char))), None)
         glCompileShader(shader)
         glGetShaderiv(shader, GL_COMPILE_STATUS, byref(status))
         if status.value == 0:
