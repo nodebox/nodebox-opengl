@@ -39,8 +39,8 @@ class DraggableRect(Layer):
         # When the rectangle is dragged, transform it.
         # Its scale increases as the mouse is moved up.
         # Its angle increases as the mouse is moved left or right.
-        self.scale(1 + 0.005 * mouse.vy)
-        self.rotate(mouse.vx)
+        self.scale(1 + 0.005 * mouse.dy)
+        self.rotate(mouse.dx)
 
 # The layer's origin defines the origin point for the layer's placement,
 # its rotation and scale. If it is (0.5, 0.5), this means the layer will transform

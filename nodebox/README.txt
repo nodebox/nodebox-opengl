@@ -21,6 +21,9 @@ NodeBox for OpenGL is built on the excellent Pyglet module. It works on all plat
 - Python 2.5+ : an installer can be downloaded from http://www.python.org/download/
 - Pyglet 1.4+ : an installer can be downloaded from http://www.pyglet.org/
 
+Your video hardware needs support for OpenGL 2.0.
+If this is not the case, try updating to a new driver.
+
 INSTALLATION
 ============
 

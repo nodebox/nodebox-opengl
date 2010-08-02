@@ -11,8 +11,8 @@ from nodebox.graphics import *
 # but we can already play around with the mouse here:
 # - canvas.mouse.x: horizontal postion of the mouse, 0 means left canvas edge,
 # - canvas.mouse.y: vertical postion of the mouse, 0 means bottom canvas edge,
-# - canvas.mouse.vx: horizontal offset from the previous mouse position,
-# - canvas.mouse.vy: vertical offset from the previous mouse position,
+# - canvas.mouse.dx: horizontal offset from the previous mouse position,
+# - canvas.mouse.dy: vertical offset from the previous mouse position,
 # - canvas.mouse.button: mouse button pressed (LEFT | MIDDLE | RIGHT | None),
 # - canvas.mouse.modifiers: a list of keyboard modifiers (CTRL | SHIFT | ALT),
 # - canvas.mouse.pressed: True when a button is pressed,
@@ -38,7 +38,7 @@ def draw(canvas):
         # (i.e. ellipse(m.x, m.y, 2, 2)), because the mouse can move faster
         # than the application can track. 
         # So each frame we draw a little line to the previous mouse position.
-        line(m.x, m.y, m.x - m.vx, m.y - m.vy)
+        line(m.x, m.y, m.x - m.dx, m.y - m.dy)
 
 canvas.size = 500, 500
 canvas.run(draw)

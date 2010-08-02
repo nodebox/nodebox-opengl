@@ -26,12 +26,12 @@ def draw(canvas):
         # outside the clipping path are hidden.
         # Inside we use a colorplane to draw a gradient;
         # comment out beginclip() and endclip() to observe what happens.
-        #beginclip(leaf)
+        beginclip(leaf)
         colorplane(-75, 0, 150, 200,
             color(0.25, 0.15, 0.75, 0.65), # Gradient top color.
             color(0.15, 0.45, 0.95, 0.15)  # Gradient bottom color.
         )
-        #endclip()
+        endclip()
         
         # For a sublte finishing touch,
         # we could also add the leaf stroke back on top:

@@ -63,7 +63,7 @@ class DraggablePolygon(Layer):
         # When inside the transformed path, dragging is enabled.
         # The changes to the layer are also applied to the path.
         if self.over:
-            self.scale(1 + 0.005 * mouse.vy)
+            self.scale(1 + 0.005 * mouse.dy)
             self.rotate(mouse.vx)
             self.area = self.transform.transform_path(self.path)
 

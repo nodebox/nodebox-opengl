@@ -17,8 +17,8 @@ s = System(gravity=(0, 2.5))        # Pull the particles to the bottom edge.
 for i in range(80):
     s.append(
         Spark(
-              x = 350, 
-              y = 500, 
+              x = 300, 
+              y = 400, 
            mass = random(5.0,10.0), # Heavier particles are repulsed harder.
          radius = 5,                # But doesn't mean they appear bigger.
            life = 200               # Particles whither away after 200 frames.
@@ -40,8 +40,7 @@ def draw(canvas):
     
     s.update(limit=20)
     s.draw()
-
-canvas.size = 700, 700
+canvas.size = 600, 600
 canvas.run(draw)
 
 # Running physics in real-time takes a lot of processing power.

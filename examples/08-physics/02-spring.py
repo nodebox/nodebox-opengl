@@ -11,8 +11,8 @@ from nodebox.graphics.physics import Particle, Spring, System
 # In this case,
 # the system is a grid (net/tissue) of particles arranged in rows and columns.
 s = System()
-x = 70 # Horizontal offset.
-y = 70 # Vertical offset.
+x = 65 # Horizontal offset.
+y = 65 # Vertical offset.
 d = 40 # Distance between each particle.
 m = 10 # Number of rows.
 n = 10 # Number of columns.
@@ -45,6 +45,7 @@ dragged = None
 def draw(canvas):
 
     canvas.clear()
+    background(1)
 
     stroke(0, 0.2)
     fill(0)
@@ -56,12 +57,12 @@ def draw(canvas):
     # Particles can be dragged... I hate making the bed.
     global dragged
     if dragged:
-        if random() > 0.995:
-            # Careful! You might break the fabric.
-            # If this happens, find all the springs connected 
-            # to the particle being dragged and snap them.
-            for f in s.dynamics(dragged, type=Spring):
-                f.snap()
+        # Uncomment the code below to make the fabric break on random occasions.
+        # If this happens, find all the springs connected 
+        # to the particle being dragged and snap them:
+        #if random() > 0.995:
+        #    for f in s.dynamics(dragged, type=Spring):
+        #        f.snap()
         dragged.x = canvas.mouse.x
         dragged.y = canvas.mouse.y
     if not canvas.mouse.pressed: 
@@ -72,6 +73,5 @@ def draw(canvas):
                abs(canvas.mouse.y-p.y) < p.radius:
                 dragged = p
 
-    
 canvas.size = 500, 500
 canvas.run(draw)

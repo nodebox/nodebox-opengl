@@ -22,6 +22,7 @@ from sys       import getrefcount
 from StringIO  import StringIO
 from hashlib   import md5
 from types     import FunctionType
+from datetime  import datetime
 
 import geometry
 
@@ -73,10 +74,6 @@ _fill        = None    # Current state fill color.
 _stroke      = None    # Current state stroke color.
 _strokewidth = 1       # Current state strokewidth.
 _strokestyle = "solid" # Current state strokestyle.
-
-SOLID  = "solid"
-DOTTED = "dotted"
-DASHED = "dashed"
 
 class Color(list):
 
@@ -266,7 +263,11 @@ def strokewidth(width=None):
         _strokewidth = width
         glLineWidth(width)
     return _strokewidth
-    
+
+SOLID  = "solid"
+DOTTED = "dotted"
+DASHED = "dashed"
+
 def strokestyle(style=None):
     """ Sets the outline stroke style (SOLID / DOTTED / DASHED).
     """
@@ -1556,7 +1557,7 @@ def image(img, x=None, y=None, width=None, height=None,
     if not isinstance(img, Image):
         # If the given image is not an Image object, create one on the fly.
         # This object is cached for reuse.
-        # The cache has a limited size (100), so the oldest Image objects are deleted.
+        # The cache has a limited size (200), so the oldest Image objects are deleted.
         t = texture(img, data=data)
         if t.id in _image_cache: 
             img = _image_cache[t.id]
@@ -1795,7 +1796,6 @@ animation = Animation
 # This includes switching it on and off and changing its size.
 
 from shader import *
-offscreen = FBO(640, 480)
 
 #=====================================================================================================
 
@@ -2366,10 +2366,12 @@ class Prototype(object):
 class EventHandler:
     
     def __init__(self):
-        self.enabled = True  # Receive events from the canvas?
-        self.focus   = False # True when this object receives the focus.
-        self.pressed = False # True when the mouse is pressed on this object.
-        self.dragged = False # True when the mouse is dragged on this object.
+        # Use __dict__ directly so we can do multiple inheritance in combination with Prototype:
+        self.__dict__["enabled"] = True  # Receive events from the canvas?
+        self.__dict__["focus"]   = False # True when this object receives the focus.
+        self.__dict__["pressed"] = False # True when the mouse is pressed on this object.
+        self.__dict__["dragged"] = False # True when the mouse is dragged on this object.
+        self.__dict__["_queue"]  = []
         
     def on_mouse_enter(self, mouse):
         pass
@@ -2390,6 +2392,17 @@ class EventHandler:
         pass
     def on_key_release(self, key):
         pass
+    
+    # Instead of calling an event directly it could be queued,
+    # e.g. layer.queue_event(layer.on_mouse_press, canvas.mouse).
+    # layer.process_events() can then be called whenever desired,
+    # e.g. after the canvas has been drawn so that events can contain drawing commands.
+    def queue_event(self, event, *args):
+        self._queue.append((event, args))
+    def process_events(self):
+        for event, args in self._queue:
+            event(*args)
+        self._queue = []
     
     # Note: there is no event propagation.
     # Event propagation means that, for example, if a layer is pressed
@@ -2800,7 +2813,7 @@ class Layer(list, Prototype, EventHandler):
         """
         pass
             
-    def layer_at(self, x, y, clipped=False, transformed=True, enabled=False, _covered=False):
+    def layer_at(self, x, y, clipped=False, enabled=False, transformed=True, _covered=False):
         """ Returns the topmost layer containing the mouse position, None otherwise.
             With clipped=True, no parts of child layers outside the parent's bounds are checked.
             With enabled=True, only enabled layers are checked (useful for events).
@@ -2834,7 +2847,7 @@ class Layer(list, Prototype, EventHandler):
             # We keep a recursive covered-state to verify visibility.
             # The covered-state starts as False, but stays True once it switches.
             _covered = _covered or (hit and not child.top)
-            child = child.layer_at(x, y, clipped, transformed, enabled, _covered)
+            child = child.layer_at(x, y, clipped, enabled, transformed, _covered)
             if child is not None:
                 return child
         if hit:
@@ -2926,13 +2939,12 @@ class Layer(list, Prototype, EventHandler):
             and it will report correctly as long as the layer (or parent layer)
             is not rotated or scaled, and has its origin at (0,0).
         """
-        w = self._width.current or geometry.INFINITE
-        h = self._height.current or geometry.INFINITE
+        w = self._width.current; w = w is None and geometry.INFINITE or w
+        h = self._height.current; h = h is None and geometry.INFINITE or h
         if not transformed:
             x0, y0 = self.absolute_position()
-            return x0 <= x and y0 <= y \
-               and (w is None or x <= x0+w) \
-               and (h is None or y <= y0+h)
+            return x0 <= x <= x0+w \
+               and y0 <= y <= y0+h
         # Find the transformed bounds of the layer:
         p = self.transform.map([(0,0), (w,0), (w,h), (0,h)])
         return geometry.point_in_polygon(p, x, y)
@@ -2994,8 +3006,16 @@ class Mouse(Point):
         self.pressed   = False      # True if the mouse button is pressed.
         self.dragged   = False      # True if the mouse is dragged.
         self.scroll    = Point(0,0) # Scroll offset.
-        self.vx        = 0          # Relative offset from previous horizontal position.
-        self.vy        = 0          # Relative offset from previous vertical position.
+        self.dx        = 0          # Relative offset from previous horizontal position.
+        self.dy        = 0          # Relative offset from previous vertical position.
+
+    # Backwards compatibility due to an old typo:
+    @property
+    def vx(self):
+        return self.dx
+    @property
+    def vy(self):
+        return self.vy
 
     @property
     def relative_x(self):
@@ -3091,7 +3111,7 @@ FRAME = 0
 # http://www.pyglet.org/doc/programming_guide/opengl_configuration_options.html
 # The stencil buffer is enabled (we need it to do clipping masks).
 # Multisampling will be enabled (if possible) to do anti-aliasing.
-settings = dict(
+settings = OPTIMAL = dict(
 #      buffer_size = 32, # Let Pyglet decide automatically.
 #         red_size = 8,
 #       green_size = 8,
@@ -3115,13 +3135,13 @@ def _configure(settings):
     except pyglet.window.NoSuchConfigException:
         # Probably the hardwarde doesn't support multisampling.
         # We can still do some anti-aliasing by turning on GL_LINE_SMOOTH.
-        c = gl.Config() 
+        c = pyglet.gl.Config() 
         c = screen.get_best_config(c)
     return c
 
 class Canvas(list, Prototype, EventHandler):
 
-    def __init__(self, width=640, height=480, name="NodeBox for OpenGL", settings=settings, vsync=True):
+    def __init__(self, width=640, height=480, name="NodeBox for OpenGL", settings=OPTIMAL, vsync=True):
         """ The main application window containing the drawing canvas.
             It is opened when Canvas.run() is called.
             It is a collection of drawable Layer objects, and it has its own draw() method.
@@ -3130,15 +3150,17 @@ class Canvas(list, Prototype, EventHandler):
             Events will be passed to layers that have been appended to the canvas.
         """
         Prototype.__init__(self)
+        EventHandler.__init__(self)
         self._window                  = pyglet.window.Window(visible=False, config=_configure(settings), vsync=vsync)
         self._window.set_caption(name)              # Window caption.
         self._fps                     = None        # Frames per second.
         self._frame                   = 0           # The current frame.
         self._active                  = False       # Application is running?
+        self.paused                   = False       # Pause animation?
         self._buffer                  = None        # Rendered screenshot of the canvas.
         self._mouse                   = Mouse(self) # The mouse cursor location. 
         self._key                     = Key(self)   # The key pressed on the keyboard.
-        self._focus                   = None        # The layer being focussed by the mouse.
+        self._focus                   = None        # The layer being focused by the mouse.
         # Mouse and keyboard events:
         self._window.on_mouse_enter   = self._on_mouse_enter
         self._window.on_mouse_leave   = self._on_mouse_leave
@@ -3161,9 +3183,16 @@ class Canvas(list, Prototype, EventHandler):
         
     name = property(_get_name, _set_name)
 
+    def _get_vsync(self):
+        return self._window.vsync
+    def _set_vsync(self, bool):
+        self._window.set_vsync(bool)
+        
+    vsync = property(_get_vsync, _set_vsync)
+
     @property
     def layers(self):
-        return self.__iter__()
+        return self
 
     def insert(self, index, layer):
         list.insert(self, index, layer)
@@ -3219,6 +3248,7 @@ class Canvas(list, Prototype, EventHandler):
         return self._focus
         
     #--- Event dispatchers ------------------------------
+    # First events are dispatched, then update() and draw() are called.
     
     def layer_at(self, x, y, **kwargs):
         """ Find the topmost layer at the specified coordinates.
@@ -3250,9 +3280,9 @@ class Canvas(list, Prototype, EventHandler):
     def _on_mouse_motion(self, x, y, dx, dy):
         self._mouse.x  = x
         self._mouse.y  = y
-        self._mouse.vx = dx
-        self._mouse.vy = dy
-        self.on_mouse_motion(self._mouse)        
+        self._mouse.dx = int(dx)
+        self._mouse.dy = int(dy)
+        self.on_mouse_motion(self._mouse)
         # Get the topmost layer over which the mouse is hovering.
         layer = self.layer_at(x, y, enabled=True)
         # If the layer differs from the layer which currently has the focus,
@@ -3311,8 +3341,8 @@ class Canvas(list, Prototype, EventHandler):
         self._mouse.dragged   = True
         self._mouse.x         = x
         self._mouse.y         = y
-        self._mouse.vx        = dx
-        self._mouse.vy        = dy
+        self._mouse.dx        = int(dx)
+        self._mouse.dy        = int(dy)
         self._mouse.modifiers = [a for (a,b) in (
               (CTRL, pyglet.window.key.MOD_CTRL), 
              (SHIFT, pyglet.window.key.MOD_SHIFT), 
@@ -3364,10 +3394,17 @@ class Canvas(list, Prototype, EventHandler):
 
     # Event methods are meant to be overridden or patched with Prototype.set_method().
     def on_key_press(self, key):
-        """ The default behavior is to exit the application when ESC is pressed.
+        """ The default behavior of the canvas:
+            - ESC exits the application,
+            - CTRL-P pauses the animation,
+            - CTRL-S saves a screenshot.
         """
         if key.code == ESCAPE:
             self.stop()
+        if key.code == "p" and CTRL in key.modifiers:
+            self.paused = not self.paused
+        if key.code == "s" and CTRL in key.modifiers:
+            self.save("nodebox-%s.png" % str(datetime.now()).split(".")[0].replace(" ","-").replace(":","-"))
 
     #--- Main loop --------------------------------------
         
@@ -3411,6 +3448,9 @@ class Canvas(list, Prototype, EventHandler):
         """ Draws the canvas and its layers.
             This method gives the same result each time it gets drawn; only _update() advances state.
         """
+        if self.paused: 
+            return
+        self._update()
         glPushMatrix()
         self.draw()
         glPopMatrix()
@@ -3426,14 +3466,18 @@ class Canvas(list, Prototype, EventHandler):
         """ Updates the canvas and its layers.
             This method does not actually draw anything, it only updates the state.
         """
-        global TIME; TIME = time()
-        self._frame += 1
-        self.update()
-        for layer in self:
-            layer._update()
-        # Fire on_key_press() event,
-        # which combines _on_key_press(), _on_text() and _on_text_motion().
+        if not self.paused:
+            # Advance the animation by updating all layers.
+            # This is only done when the canvas is not paused.
+            # Events will still be propagated during pause.
+            global TIME; TIME = time()
+            self._frame += 1
+            self.update()
+            for layer in self:
+                layer._update()
         if self._window.on_key_pressed is True:
+            # Fire on_key_press() event,
+            # which combines _on_key_press(), _on_text() and _on_text_motion().
             self._window.on_key_pressed = False
             self.on_key_press(self._key)
             for layer in self:
@@ -3468,7 +3512,7 @@ class Canvas(list, Prototype, EventHandler):
     def stop(self):
         self._window.close()
         self._active = False
-        exit(0)
+        pyglet.app.exit()
 
     @property
     def active(self):
@@ -3479,13 +3523,15 @@ class Canvas(list, Prototype, EventHandler):
     def _set_fps(self, v):
         # Use pyglet.clock to schedule _update() and _draw() events.
         # The clock will then take care of calling them enough times.
+        # Note: frames per second is related to vsync. 
+        # If the vertical refresh rate is about 30Hz you'll get top speed of around 33fps.
+        # It's probably a good idea to leave vsync=True if you don't want to fry the GPU.
         for f in (self._update, self._draw):
             pyglet.clock.unschedule(f)
             if v is None:
                 pyglet.clock.schedule(f)
             if v > 0:
                 pyglet.clock.schedule_interval(f, 1.0/v)
-                pyglet.clock.set_fps_limit(v)
         self._fps = v
         
     fps = property(_get_fps, _set_fps)

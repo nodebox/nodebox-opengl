@@ -15,7 +15,8 @@ e = Emitter(x=200, y=0, angle=90, strength=10.0, spread=30)
 for i in range(100):
     # Particles have random mass and lifespan to make it more interesting and diverse.
     # The MASS constant means that we want the radius of the visual particle
-    # to be the same as its mass - so we can observe how heavier particles respond.
+    # to be initialized with the same value as its mass (it's a convenience trick). 
+    # This way we can observe how heavier particles respond.
     e.append(Particle(0, 0, mass=random(10,50), radius=MASS, life=random(50,250)))
 
 s.append(e) # Install the emitter in the system.

@@ -6,9 +6,9 @@
 # animation & motion tweening, and simple 2D physics.
 
 __author__    = "Tom De Smedt, Frederik De Bleser"
-__version__   = "1.0"
-__copyright__ = "Copyright (c) 2008 City In A Bottle (cityinabottle.org)"
-__license__   = "GPL"
+__version__   = "1.1"
+__copyright__ = "Copyright (c) 2008-2010 City In A Bottle (cityinabottle.org)"
+__license__   = "BSD"
 
 try: import psyco; psyco.profile()
 except:

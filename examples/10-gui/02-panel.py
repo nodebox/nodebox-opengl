@@ -4,8 +4,6 @@ import os, sys; sys.path.append(os.path.join("..",".."))
 from nodebox.graphics import *
 from nodebox.gui import *
 
-print theme["fonts"]
-
 # A panel is a container for other GUI controls.
 # Controls can be added to the panel, 
 # and organized by setting the controls' x and y properties

@@ -8,7 +8,7 @@
 
 from math   import sqrt, pow
 from math   import sin, cos, atan2, degrees, radians, pi
-from random import random, shuffle
+from random import random
 
 _UID = 0
 def _uid():
@@ -353,7 +353,7 @@ class Boid:
         """ Limits the boid's velocity (the boid can momentarily go very fast).
         """
         v = self.velocity
-        m = max(abs(v.x), abs(v.y), abs(v.z))
+        m = max(abs(v.x), abs(v.y), abs(v.z)) or 1
         if abs(v.x) > speed: v.x = v.x / m * speed
         if abs(v.y) > speed: v.y = v.y / m * speed
         if abs(v.z) > speed: v.z = v.z / m * speed
@@ -606,9 +606,9 @@ class Spring:
         self.particle2.force.x -= fx
         self.particle2.force.y -= fy
         
-    def draw(self):
+    def draw(self, **kwargs):
         line(self.particle1.x, self.particle1.y, 
-             self.particle2.x, self.particle2.y)
+             self.particle2.x, self.particle2.y, **kwargs)
 
     def __repr__(self):
         return "Spring(strength='%.2f', length='%.2f')" % (self.strength, self.length)
@@ -642,9 +642,9 @@ class Particle:
         # Yields the particle's age as a number between 0.0 and 1.0.
         return self.life and min(1.0, float(self._age) / self.life) or 0.0
     
-    def draw(self):
+    def draw(self, **kwargs):
         r = self.radius * (1 - self.age)
-        ellipse(self.x, self.y, r*2, r*2)
+        ellipse(self.x, self.y, r*2, r*2, **kwargs)
         
     def __eq__(self, other):
         return isinstance(other, Particle) and self._id == other._id
@@ -812,18 +812,17 @@ class System(object):
             if not p.dead: return False
         return True
     
-    def draw(self):
+    def draw(self, **kwargs):
         """ Draws the system at the current iteration.
-            With die=False, particles do not reduce in size as they grow older.
         """
         for s in self.springs:
             if not s.particle1.dead and \
                not s.particle2.dead and \
                not s.snapped:
-                s.draw()
+                s.draw(**kwargs)
         for p in self.particles:
             if not p.dead:
-                p.draw()
+                p.draw(**kwargs)
 
     def __repr__(self):
         return "System(particles=%i, forces=%i, springs=%i)" % \
@@ -873,8 +872,8 @@ class Emitter(object):
     def __getitem__(self, i):
         return self.particles[i]
 
-    def extend(self, x):
-        for x in x: self.append(x)
+    def extend(self, x, life=100):
+        for x in x: self.append(x, life)
     def append(self, particle, life=100):
         particle.life = particle.life or life
         particle._age = particle.life

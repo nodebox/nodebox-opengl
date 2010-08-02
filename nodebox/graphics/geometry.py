@@ -29,11 +29,11 @@ def coordinates(x0, y0, distance, angle):
     return (x0 + cos(radians(angle)) * distance,
             y0 + sin(radians(angle)) * distance)
 
-def rotate(x, y, x0, y0, degrees):
+def rotate(x, y, x0, y0, angle):
     """ Returns the coordinates of (x,y) rotated around origin (x0,y0).
     """
     x, y = x-x0, y-y0
-    a, b = cos(radians(degrees)), sin(radians(degrees))
+    a, b = cos(radians(angle)), sin(radians(angle))
     return (x*a-y*b+x0, y*a+x*b+y0)
 
 def reflect(x, y, x0, y0, d=1.0, a=180):
@@ -73,7 +73,7 @@ def clamp(v, a, b):
 
 def line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4, infinite=False):
     """ Determines the intersection point of two lines, or two finite line segments if infinite=False.
-        When the lines do not intersect, returns (None, None).
+        When the lines do not intersect, returns an empty list.
     """
     # Based on: P. Bourke, http://local.wasp.uwa.edu.au/~pbourke/geometry/lineline2d/
     ua = (x4-x3)*(y1-y3) - (y4-y3)*(x1-x3)
@@ -82,16 +82,16 @@ def line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4, infinite=False):
     if d == 0:
         if ua == ub == 0:
             # The lines are coincident
-            return None, None
+            return []
         else:
             # The lines are parallel.
-            return None, None
+            return []
     ua /= float(d)
     ub /= float(d)
     if not infinite and not (0<=ua<=1 and 0<=ub<=1):
         # Intersection point is not within both line segments.
         return None, None
-    return (x1+ua*(x2-x1), y1+ua*(y2-y1))
+    return [(x1+ua*(x2-x1), y1+ua*(y2-y1))]
     
 def circle_line_intersection(cx, cy, radius, x1, y1, x2, y2, infinite=False):
 	""" Returns a list of points where the circle and the line intersect.
@@ -276,7 +276,10 @@ class Point(object):
         self.y = y
         
     xy = property(_get_xy, _set_xy)
-            
+
+    def __iter__(self):
+        return iter((self.x, self.y))
+
     def __repr__(self):
         return "Point(x=%.1f, y=%.1f)" % (self.x, self.y)
         

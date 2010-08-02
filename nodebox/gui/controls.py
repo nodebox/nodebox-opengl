@@ -129,8 +129,8 @@ class Control(Layer):
 
     # With transformed=True, expensive matrix transformations are done.
     # Turn off, controls are not meant to be rotated or scaled.        
-    def layer_at(self, x, y, clipped=False, transformed=True, enabled=False, _covered=False):
-        return Layer.layer_at(self, x, y, clipped, False, enabled, _covered)
+    def layer_at(self, x, y, clipped=False, enabled=False, transformed=True, _covered=False):
+        return Layer.layer_at(self, x, y, clipped, enabled, False, _covered)
 
     def __getattr__(self, k):
         # Retrieves the given attribute.
@@ -543,8 +543,8 @@ class Panel(Control):
 
     def on_mouse_drag(self, mouse):
         if self.dragged and not self.fixed:
-            self.x += mouse.vx
-            self.y += mouse.vy
+            self.x += mouse.dx
+            self.y += mouse.dy
     
     def open(self):
         self.hidden = False

@@ -160,7 +160,7 @@ class Shader(object):
     def set(self, name, value):
         """ Set the value of the variable with the given name in the GLSL source script.
             Supported variable types are: vec2(), vec3(), vec4(), single int/float, list of int/float.
-            Variables will be initialised when Shader.push() is called (i.e. glUseProgram).
+            Variables will be initialized when Shader.push() is called (i.e. glUseProgram).
         """
         self.variables[name] = value
         if self._active:
@@ -221,14 +221,52 @@ class Shader(object):
         return (self._vertex, self._fragment)
     
     def __del__(self):
-        for shader in self._compiled:
-            if self._program:
-                if glDetachShader: 
+        try:
+            for shader in self._compiled:
+                if glDetachShader and self._program:
                     glDetachShader(self._program, shader)
-            if glDeleteShader: 
-                glDeleteShader(shader)
-        if glDeleteProgram: 
-            glDeleteProgram(self._program)
+                if glDeleteShader: 
+                    glDeleteShader(shader)
+            if glDeleteProgram: 
+                glDeleteProgram(self._program)
+        except:
+            pass
+
+class ShaderFacade:
+    def __init__(self, vertex=None, fragment=None):
+        # Acts like a shader but doesn't do anything.
+        pass
+    @property
+    def variables(self):
+        return {}
+    @property
+    def active(self):
+        return None
+    def get(self, name):
+        return None
+    def set(self, name, value):
+        pass
+    def push(self):
+        pass
+    def pop(self):
+        pass
+
+SUPPORTED = True # Graphics hardware supports shaders?
+
+def shader(vertex=DEFAULT_VERTEX_SHADER, fragment=DEFAULT_FRAGMENT_SHADER, silent=True):
+    """ Returns a compiled Shader from the given GLSL source code.
+        With silent=True, never raises an error but instead returns a ShaderFacade.
+        During startup, a number of Shaders are created.
+        This mechanisms ensures that the module doesn't crash while doing this,
+        instead the shader simply won't have any visible effect and SUPPORTED will be False.
+    """
+    if not silent:
+        return Shader(vertex, fragment)
+    try:
+        return Shader(vertex, fragment)
+    except Exception, e:
+        SUPPORTED = False
+        return ShaderFacade()
 
 #=====================================================================================================
 
@@ -265,7 +303,7 @@ class Filter(object):
 
 #--- INVERT -----------------------------------------------------------------------------------------
 
-_invert = Shader(fragment='''
+_invert = shader(fragment='''
 uniform sampler2D src;
 void main() {
     gl_FragColor = texture2D(src, gl_TexCoord[0].xy);
@@ -287,7 +325,7 @@ LINEAR = "linear"
 RADIAL = "radial"
 
 _gradient = {}
-_gradient[LINEAR] = Shader(fragment='''
+_gradient[LINEAR] = shader(fragment='''
 uniform sampler2D src;
 uniform vec4 clr1;
 uniform vec4 clr2;
@@ -295,7 +333,7 @@ void main() {
     vec2 v = gl_TexCoord[0].xy;
     gl_FragColor = clr1 * v.y + clr2 * (1.0 - v.y);
 }''')
-_gradient[RADIAL] = Shader(fragment='''
+_gradient[RADIAL] = shader(fragment='''
 uniform sampler2D src;
 uniform vec4 clr1;
 uniform vec4 clr2;
@@ -333,7 +371,7 @@ class RadialGradient(Filter):
 
 #--- COLORIZE ---------------------------------------------------------------------------------------
 
-_colorize = Shader(fragment='''
+_colorize = shader(fragment='''
 uniform sampler2D src;
 uniform vec4 color;
 uniform vec4 bias;
@@ -405,21 +443,21 @@ SATURATION = "saturation"
 HUE        = "hue"
 
 _adjustment = {}
-_adjustment[BRIGHTNESS] = Shader(fragment='''
+_adjustment[BRIGHTNESS] = shader(fragment='''
 uniform sampler2D src;
 uniform float m;
 void main() {
     vec4 p = texture2D(src, gl_TexCoord[0].xy);
     gl_FragColor = vec4(clamp(p.rgb + m, 0.0, 1.0), p.a);
 }''')
-_adjustment[CONTRAST] = Shader(fragment='''
+_adjustment[CONTRAST] = shader(fragment='''
 uniform sampler2D src;
 uniform float m;
 void main() {
     vec4 p = texture2D(src, gl_TexCoord[0].xy);
     gl_FragColor = vec4(clamp((p.rgb - 0.5) * m + 0.5, 0.0, 1.0), p.a);
 }''')
-_adjustment[SATURATION] = Shader(fragment='''
+_adjustment[SATURATION] = shader(fragment='''
 uniform sampler2D src;
 uniform float m;
 void main() {
@@ -432,7 +470,7 @@ void main() {
         p.a
     );
 }''')
-_adjustment[HUE] = Shader(fragment=_hsb2rgb+_rgb2hsb+'''
+_adjustment[HUE] = shader(fragment=_hsb2rgb+_rgb2hsb+'''
 uniform sampler2D src;
 uniform float m;
 void main() {
@@ -491,7 +529,7 @@ class HueAdjustment(Filter):
 # green contributes the most to luminosity while blue hardly contributes anything.
 # Thus, luminance L = R*0.2125 + G*0.7154 + B+0.0721
 
-_brightpass = Shader(fragment='''
+_brightpass = shader(fragment='''
 uniform sampler2D src;
 uniform float threshold;
 void main() {
@@ -535,8 +573,8 @@ void main() {
     gl_FragColor = p;
 }'''
 _blur = {
-    "horizontal": Shader(fragment=_blur % ("-a","","+a","")), # vary v.x
-    "vertical"  : Shader(fragment=_blur % ("","-a","","+a"))  # vary v.y
+    "horizontal": shader(fragment=_blur % ("-a","","+a","")), # vary v.x
+    "vertical"  : shader(fragment=_blur % ("","-a","","+a"))  # vary v.y
 }
 
 class HorizontalBlur(Filter):
@@ -568,7 +606,7 @@ class VerticalBlur(Filter):
 # It is useful to have a blur in a single pass as well,
 # which we can use as a parameter for the image() command.
 # However, for a simple 3x3 in separate steps => 6 calculations, single pass => 9 calculations.
-_blur["gaussian3x3"] = Shader(fragment='''
+_blur["gaussian3x3"] = shader(fragment='''
 uniform sampler2D src;
 uniform vec2 radius;
 void main(void) {
@@ -668,14 +706,14 @@ class Compositing(Filter):
 #--- ALPHA TRANSPARENCY ------------------------------------------------------------------------------
 
 _alpha = {}
-_alpha["transparency"] = Shader(fragment='''
+_alpha["transparency"] = shader(fragment='''
 uniform sampler2D src;
 uniform float alpha;
 void main() {
     vec4 p = texture2D(src, gl_TexCoord[0].xy);
     gl_FragColor = vec4(p.rgb, p.a * alpha);
 }''')
-_alpha["mask"] = Shader(fragment=_compositing % '''
+_alpha["mask"] = shader(fragment=_compositing % '''
     p = vec4(p1.rgb, p1.a * (p2.r * p2.a * alpha));
 '''.strip())
 
@@ -746,7 +784,7 @@ _blend[HUE] = '''
 for f in _blend.keys():
     src = _blendf % _blend[f].strip()
     src = f==HUE and _rgb2hsb + _hsb2rgb + src or src # Hue blend requires rgb2hsb() function.
-    _blend[f] = Shader(fragment=src)
+    _blend[f] = shader(fragment=src)
 
 class Blend(Compositing):
     
@@ -834,9 +872,9 @@ _distortion[STRETCH] = '''
 '''.strip()
 
 for f in (BUMP, DENT, PINCH, FISHEYE, SPLASH, TWIRL):
-    _distortion[f] = Shader(fragment=_distf % (_polar % _distortion[f], _distx[0]))
+    _distortion[f] = shader(fragment=_distf % (_polar % _distortion[f], _distx[0]))
 for f in (STRETCH, MIRROR):
-    _distortion[f] = Shader(fragment=_distf % (         _distortion[f], _distx[2]))
+    _distortion[f] = shader(fragment=_distf % (         _distortion[f], _distx[2]))
 
 class Distortion(Filter):
     
@@ -908,15 +946,15 @@ def glViewport(x=None, y=None, width=None, height=None):
     return tuple(xywh)
 
 # The FBO stack keeps track of nested FBO's.
-# When FBO.pop() is called, we revert to the previous buffer.
+# When OffscreenBuffer.pop() is called, we revert to the previous buffer.
 # Usually, this is the onscreen canvas, but in a render() function that contains
 # filters or nested render() calls, this is the previous FBO.
 _FBO_STACK = []
 
-class FBOError(Exception):
+class OffscreenBufferError(Exception):
     pass
 
-class FBO:
+class OffscreenBuffer:
     
     def __init__(self, width, height):
         """ "FBO" is an OpenGL extension to do "Render to Texture", drawing in an offscreen buffer.
@@ -924,8 +962,10 @@ class FBO:
             since each shader has its own program and we can only install one program at a time.
         """
         self.id = c_uint(_uid())
-        glGenFramebuffersEXT(1, byref(self.id))
-        self._viewport = (None, None, None, None) # The canvas bounds, set in FBO.push().
+        try: glGenFramebuffersEXT(1, byref(self.id))
+        except:
+            raise OffscreenBufferError, "offscreen buffer not supported."
+        self._viewport = (None, None, None, None) # The canvas bounds, set in OffscreenBuffer.push().
         self._texture  = None
         self._active   = False
         self._init(width, height)
@@ -951,7 +991,7 @@ class FBO:
         return self._active
     
     def push(self):
-        """ Between push() and pop(), all drawing is done offscreen in FBO.texture.
+        """ Between push() and pop(), all drawing is done offscreen in OffscreenBuffer.texture.
             The offscreen buffer has its own transformation state,
             so any translate(), rotate() etc. does not affect the onscreen canvas.
         """
@@ -970,7 +1010,7 @@ class FBO:
         # Check after glBindFramebufferEXT() and glFramebufferTexture2DEXT().
         if glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT:
             msg = self._texture.width == self._texture.height == 0 and "width=0, height=0." or ""
-            raise FBOError, msg            
+            raise OffscreenBufferError, msg            
         # Separate the offscreen from the onscreen transform state.
         # Separate the offscreen from the onscreen canvas size.
         self._viewport = glViewport()
@@ -996,7 +1036,7 @@ class FBO:
     
     def pop(self):
         """ Reverts to the onscreen canvas. 
-            The contents of the offscreen buffer can be retrieved with FBO.texture.
+            The contents of the offscreen buffer can be retrieved with OffscreenBuffer.texture.
         """
         # Switch to onscreen canvas size and transformation state.
         # Switch to onscreen canvas.
@@ -1010,7 +1050,7 @@ class FBO:
         self._active = False
     
     def render(self):
-        """ Executes the drawing commands in FBO.draw() offscreen and returns image.
+        """ Executes the drawing commands in OffscreenBuffer.draw() offscreen and returns image.
             This is useful if you have a class that inherits from FBO with a draw() method.
         """
         self.push()
@@ -1029,17 +1069,17 @@ class FBO:
     def clear(self):
         """ Clears the contents of the offscreen buffer by attaching a new texture to it.
             If you do not explicitly clear the buffer, the content from previous drawing
-            between FBO.push() and FBO.pop() is retained.
+            between OffscreenBuffer.push() and OffscreenBuffer.pop() is retained.
         """
         if self._active:
-            raise FBOError, "can't clear FBO when active."
+            raise OffscreenBufferError, "can't clear offscreen buffer when active"
         self._init(self.width, self.height)
 
     def resize(self, width, height):
         """ Resizes the offscreen buffer by attaching a new texture to it.
         """
         if self._active:
-            raise FBOError, "can't resize FBO when active."
+            raise OffscreenBufferError, "can't resize offscreen buffer when active"
         self._init(width, height) 
 
     def _init_depthbuffer(self):
@@ -1055,21 +1095,27 @@ class FBO:
         )
     
     def __del__(self):
-        if glDeleteFramebuffersEXT:
-            glDeleteFramebuffersEXT(1, self.id)
-        if glDeleteRenderbuffersEXT and hasattr(self, "_depthbuffer"):
-            glDeleteRenderbuffersEXT(1, self._depthbuffer)
+        try:
+            if glDeleteFramebuffersEXT:
+                glDeleteFramebuffersEXT(1, self.id)
+            if glDeleteRenderbuffersEXT and hasattr(self, "_depthbuffer"):
+                glDeleteRenderbuffersEXT(1, self._depthbuffer)
+        except:
+            pass
 
-OffscreenBuffer = FBO
+FBO = OffscreenBuffer
 
 #=====================================================================================================
 
 #--- OFFSCREEN RENDERING -----------------------------------------------------------------------------
 # Uses an offscreen buffer to render filters and drawing commands to images.
 
-_buffer = FBO(640, 480)
+try: 
+    _buffer = OffscreenBuffer(640, 480)
+except OffscreenBufferError:
+    _buffer = None
 
-from context import Image, texture
+from context import Image
 
 def filter(img, filter=None, clear=True):
     """ Returns a new Image object with the given filter applied to it.
@@ -1077,14 +1123,18 @@ def filter(img, filter=None, clear=True):
         - filter: an instance of the Filter class, with parameters set.
         - clear : if True, clears the contents of the offscreen buffer and resizes it to the image.
     """
-    # Reuse main _buffer when possible, otherwise create one on the fly
-    # (this will be necessary when filter() is nested inside render()).
-    buffer = not _buffer.active and _buffer or FBO(640, 480)
     # For file paths, textures and Pixel objects, create an Image first.
     if not isinstance(img, Image):
         img = Image(img)
-    if clear == True:
+    # Reuse main _buffer when possible, otherwise create one on the fly
+    # (this will be necessary when filter() or render() is nested inside render()).
+    if not _buffer or _buffer.active:
+        buffer = OffscreenBuffer(img.texture.width, img.texture.height)
+    elif clear:
+        buffer = _buffer
         buffer.resize(img.texture.width, img.texture.height)
+    else:
+        buffer = _buffer
     buffer.push()
     if filter != None:
         filter.texture = img.texture # Register the current texture with the filter.
@@ -1104,8 +1154,8 @@ class RenderedImage(Image):
     
     def draw(self, *args, **kwargs):
         # Textures rendered in the FBO look slightly washed-out.
-        # The render() command yield RenderedImage object,
-        # whose draw() method use a little blending trick to correct the colors:
+        # The render() command yields a RenderedImage object,
+        # which draw() method uses a blending trick to correct the colors:
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
         Image.draw(self, *args, **kwargs)
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
@@ -1124,9 +1174,13 @@ def render(function, width, height, clear=True, **kwargs):
     """
     # Reuse main _buffer when possible, otherwise create one on the fly
     # (this will be necessary when render() is nested inside another render()).
-    buffer = not _buffer.active and _buffer or FBO(640, 480)
-    if clear == True:
+    if not _buffer or _buffer.active:
+        buffer = OffscreenBuffer(width, height)
+    elif clear:
+        buffer = _buffer
         buffer.resize(width, height)
+    else:
+        buffer = _buffer
     buffer.push()
     function(**kwargs)
     buffer.pop()
@@ -1157,9 +1211,14 @@ def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     f = type==LINEAR and LinearGradient or RadialGradient
     img = Image(_texture(ceil2(width), ceil2(height)))
     img = filter(img, f(img.texture, vec4(*clr1), vec4(*clr2)))
+    # Reuse main _buffer when possible, otherwise create one on the fly
+    # (this will be necessary when filter() or render() is nested inside render()).
+    if not _buffer or _buffer.active:
+        buffer = OffscreenBuffer(img.texture.width, img.texture.height)
+    else:
+        buffer = _buffer
     # If the given dimensions are not power of 2,
     # scale down the gradient to the given dimensions.
-    buffer = not _buffer.active and _buffer or FBO(640, 480)
     if width != img.width or height != img.height:
         buffer.resize(width, height)
         buffer.push()
@@ -1194,6 +1253,7 @@ def desaturate(img):
     """ Returns a grayscale version of the image.
     """
     return filter(img, SaturationAdjustment(img, 0.0))
+    
 grayscale = desaturate
 
 def brightpass(img, threshold=0.3):
