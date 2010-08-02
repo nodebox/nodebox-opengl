@@ -33,7 +33,7 @@ canvas.append(panel)
 def draw(canvas):
     
     canvas.clear()
-    
+
     if panel.flag_visible.value == True:
         font("Droid Serif")
         fontsize(50 * panel.slider_size.value)

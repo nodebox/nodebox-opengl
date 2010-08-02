@@ -17,7 +17,7 @@ from time      import time
 from random    import seed, choice, shuffle, random as rnd
 from new       import instancemethod
 from glob      import glob
-from os        import path
+from os        import path, remove
 from sys       import getrefcount
 from StringIO  import StringIO
 from hashlib   import md5
@@ -3151,6 +3151,7 @@ class Canvas(list, Prototype, EventHandler):
         """
         Prototype.__init__(self)
         EventHandler.__init__(self)
+        self.profiler                 = Profiler(self)
         self._window                  = pyglet.window.Window(visible=False, config=_configure(settings), vsync=vsync)
         self._window.set_caption(name)              # Window caption.
         self._fps                     = None        # Frames per second.
@@ -3594,6 +3595,67 @@ class Canvas(list, Prototype, EventHandler):
     def __repr__(self):
         return "Canvas(name='%s', size='%s', layers=%s)" % (self.name, self.size, repr(list(self)))
 
+#--- PROFILER ----------------------------------------------------------------------------------------
+
+CUMULATIVE = "cumulative"
+SLOWEST    = "slowest"
+
+_profile_canvas = None
+_profile_frames = 100
+def profile_run():
+    for i in range(_profile_frames):
+        _profile_canvas._update()
+        _profile_canvas._draw()
+
+class Profiler:
+    
+    def __init__(self, canvas):
+        self.canvas  = canvas
+    
+    @property
+    def framerate(self):
+        return pyglet.clock.get_fps()
+    
+    def run(self, draw=None, setup=None, update=None, frames=100, sort=CUMULATIVE, top=30):
+        """ Runs cProfile on the canvas for the given number of frames.
+            The performance statistics are returned as a string, sorted by SLOWEST or CUMULATIVE.
+            For example, instead of doing canvas.run(draw):
+            print canvas.profiler.run(draw, frames=100)
+        """
+        # Register the setup, draw, update functions with the canvas (if given).
+        if isinstance(setup, FunctionType):
+            self.canvas.set_method(setup, name="setup")
+        if isinstance(draw, FunctionType):
+            self.canvas.set_method(draw, name="draw")
+        if isinstance(update, FunctionType):
+            self.canvas.set_method(update, name="update")
+        # If enabled, turn Psyco off.
+        psyco_stopped = False
+        try: 
+            psyco.stop()
+            psyco_stopped = True
+        except:
+            pass
+        # Set the current canvas and the number of frames to profile.
+        # The profiler will then repeatedly execute canvas._update() and canvas._draw().
+        # Statistics are redirected from stdout to a temporary file.
+        global _profile_canvas, _profile_frames
+        _profile_canvas = self.canvas
+        _profile_frames = frames
+        import cProfile
+        import pstats
+        cProfile.run("profile_run()", "_profile")
+        p = pstats.Stats("_profile")
+        p.stream = open("_profile", "w")
+        p.sort_stats(sort==SLOWEST and "time" or sort).print_stats(top)
+        p.stream.close()
+        s = open("_profile").read()
+        remove("_profile")
+        # Restart Psyco if we stopped it.
+        if psyco_stopped:
+            psyco.profile()
+        return s
+
 #--- LIBRARIES ---------------------------------------------------------------------------------------
 # Import the library and assign it a _ctx variable containing the current context.
 # This mimics the behavior in NodeBox.
@@ -3615,7 +3677,6 @@ import bezier
 # - WIDTH  => width()
 # - HEIGHT => height()
 # - FRAME  => frame()
-# - MOUSEX, MOUSEY => mouse()
 
 canvas = Canvas()
 
@@ -3647,53 +3708,3 @@ def speed(fps=None):
 
 def frame():
     return canvas.frame
-    
-def screenshot(crop=(0,0,0,0)):
-    return canvas.screenshot(crop)
-
-buffer = screenshot
-
-def mouse():
-    return (canvas.mouse.x, canvas.mouse.y)
-    
-def cursor(mode=None):
-    """ Sets the current mouse cursor (DEFAULT, CROSS, HAND, HIDDEN, TEXT or WAIT).
-    """
-    if mode is not None:
-        canvas.mouse.cursor = mode
-    return canvas.mouse.cursor
-
-def nocursor():
-    """ Hides the mouse cursor.
-    """
-    canvas.mouse.cursor = HIDDEN
-
-#-----------------------------------------------------------------------------------------------------
-# Performance statistics.
-# Psyco should be off.
-
-def profile_run(n):
-    for i in range(n):
-        canvas._update()
-        canvas._draw()
-
-def profile(frames=200, top=30):
-    import cProfile
-    import pstats
-    from os import remove
-    cProfile.run("profile_run("+str(frames)+")", "_profile")
-    p = pstats.Stats("_profile")
-    p.sort_stats("cumulative").print_stats(top)
-    remove("_profile")
-
-_profile_framerate = 0
-_profile_frames = 0
-_profile_time = 0
-def profile_framerate():
-    global _profile_framerate, _profile_frames, _profile_time
-    _profile_frames += 1
-    if time()-_profile_time > 1:
-        _profile_framerate = _profile_frames
-        _profile_frames = 0
-        _profile_time = time()
-    return _profile_framerate

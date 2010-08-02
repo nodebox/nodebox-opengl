@@ -100,6 +100,7 @@ def cell(t):
             "blue-empty2.png"] * 5)
     return Image(os.path.join("cells", img))
 
+circles = []
 def setup(canvas):
     n = 60
     global circles; circles = []

@@ -61,12 +61,12 @@ def clamp(value, a, b):
 #      image("box.png", 0, 0)
 #      shader.pop()
 
+DEFAULT = "default"
 DEFAULT_VERTEX_SHADER = '''
 void main() { 
     gl_TexCoord[0] = gl_MultiTexCoord0; 
     gl_Position = ftransform(); 
 }'''
-
 DEFAULT_FRAGMENT_SHADER = '''
 uniform sampler2D src;
 void main() {
@@ -93,13 +93,17 @@ class ShaderError(Exception):
 
 class Shader(object):
    
-    def __init__(self, vertex=DEFAULT_VERTEX_SHADER, fragment=DEFAULT_FRAGMENT_SHADER):
+    def __init__(self, vertex=DEFAULT, fragment=DEFAULT):
         """ A per-pixel shader effect (blur, fog, glow, ...) executed on the GPU.
             Shader wraps a compiled GLSL program and facilitates passing parameters to it.
             The fragment and vertex parameters contain the GLSL source code to execute.
             Raises a ShaderError if the source fails to compile.
             Once compiled, you can set uniform variables in the GLSL source with Shader.set().
         """
+        if vertex == DEFAULT:
+            vertex = DEFAULT_VERTEX_SHADER
+        if fragment == DEFAULT:
+            fragment = DEFAULT_FRAGMENT_SHADER
         self._vertex   = vertex   # GLSL source for vertex shader.
         self._fragment = fragment # GLSL source for fragment shader.
         self._compiled = []
@@ -284,20 +288,20 @@ class Filter(object):
             Performance note: create the Shader separately, not during initialization.
         """
         # Shader and its variables need to be stored here.
-        self._shader = None
+        self.shader  = None
         self.texture = None
         
     def push(self):
         """ Installs the filter so it will be applied to the next image() call.
         """
         # Shader needs to set its variables here:
-        # self._shader.set(variable, value)
-        self._shader.push()
+        # self.shader.set(variable, value)
+        self.shader.push()
         
     def pop(self):
         """ Removes the filter.
         """
-        self._shader.pop()
+        self.shader.pop()
 
 #=====================================================================================================
 
@@ -313,11 +317,11 @@ void main() {
 class Invert(Filter):
     
     def __init__(self, texture):
-        self._shader = _invert
+        self.shader  = _invert
         self.texture = texture
         
     def push(self):
-        self._shader.push()
+        self.shader.push()
 
 #--- GRADIENT ----------------------------------------------------------------------------------------
 
@@ -346,28 +350,28 @@ void main() {
 class LinearGradient(Filter):
     
     def __init__(self, texture, clr1=vec4(0,0,0,1), clr2=vec4(1,1,1,1)):
-        self._shader = _gradient[LINEAR]
+        self.shader  = _gradient[LINEAR]
         self.texture = texture
-        self.clr1 = clr1
-        self.clr2 = clr2
+        self.clr1    = clr1
+        self.clr2    = clr2
         
     def push(self):
-        self._shader.set("clr1", self.clr1)
-        self._shader.set("clr2", self.clr2)
-        self._shader.push()
+        self.shader.set("clr1", self.clr1)
+        self.shader.set("clr2", self.clr2)
+        self.shader.push()
 
 class RadialGradient(Filter):
     
     def __init__(self, texture, clr1=vec4(0,0,0,1), clr2=vec4(1,1,1,1)):
-        self._shader = _gradient[RADIAL]
+        self.shader  = _gradient[RADIAL]
         self.texture = texture
-        self.clr1 = clr1
-        self.clr2 = clr2
+        self.clr1    = clr1
+        self.clr2    = clr2
         
     def push(self):
-        self._shader.set("clr1", self.clr1)
-        self._shader.set("clr2", self.clr2)
-        self._shader.push()
+        self.shader.set("clr1", self.clr1)
+        self.shader.set("clr2", self.clr2)
+        self.shader.push()
 
 #--- COLORIZE ---------------------------------------------------------------------------------------
 
@@ -383,22 +387,22 @@ void main() {
 class Colorize(Filter):
     
     def __init__(self, texture, color=vec4(1,1,1,1), bias=vec4(0,0,0,0)):
-        self._shader = _colorize
+        self.shader  = _colorize
         self.texture = texture
-        self.color = color
-        self.bias  = bias
+        self.color   = color
+        self.bias    = bias
         
     def push(self):
-        self._shader.set("color", self.color)
-        self._shader.set("bias",  self.bias)
-        self._shader.push()
+        self.shader.set("color", self.color)
+        self.shader.set("bias",  self.bias)
+        self.shader.push()
 
 #--- COLORSPACE -------------------------------------------------------------------------------------
 # Helper functions for conversion between RGB and HSB that we can use in other filters.
 # Based on "Photoshop math with GLSL shaders" (2009), Romain Dura,
 # http://blog.mouaif.org/?p=94
 
-_hsb2rgb = '''
+glsl_hsb2rgb = '''
 float _hue2rgb(float a, float b, float hue) {
     hue = mod(hue, 1.0);
 	if (6.0 * hue < 1.0) return a + (b - a) * 6.0 * hue;
@@ -417,7 +421,7 @@ vec3 hsb2rgb(vec3 hsb) {
 	);
 }'''
 
-_rgb2hsb = '''
+glsl_rgb2hsb = '''
 vec3 rgb2hsb(vec3 rgb) {
 	vec3 hsb = vec3(0.0);
 	float a = min(min(rgb.r, rgb.g), rgb.b);
@@ -470,7 +474,7 @@ void main() {
         p.a
     );
 }''')
-_adjustment[HUE] = shader(fragment=_hsb2rgb+_rgb2hsb+'''
+_adjustment[HUE] = shader(fragment=glsl_hsb2rgb+glsl_rgb2hsb+'''
 uniform sampler2D src;
 uniform float m;
 void main() {
@@ -483,46 +487,46 @@ void main() {
 class BrightnessAdjustment(Filter):
     
     def __init__(self, texture, m=1.0):
-        self._shader = _adjustment[BRIGHTNESS]
+        self.shader  = _adjustment[BRIGHTNESS]
         self.texture = texture
-        self.m = m
+        self.m       = m
         
     def push(self):
-        self._shader.set("m", float(self.m-1))
-        self._shader.push()
+        self.shader.set("m", float(self.m-1))
+        self.shader.push()
 
 class ContrastAdjustment(Filter):
     
     def __init__(self, texture, m=1.0):
-        self._shader = _adjustment[CONTRAST]
+        self.shader  = _adjustment[CONTRAST]
         self.texture = texture
-        self.m = m
+        self.m       = m
         
     def push(self):
-        self._shader.set("m", float(self.m))
-        self._shader.push()
+        self.shader.set("m", float(self.m))
+        self.shader.push()
 
 class SaturationAdjustment(Filter):
     
     def __init__(self, texture, m=1.0):
-        self._shader = _adjustment[SATURATION]
+        self.shader  = _adjustment[SATURATION]
         self.texture = texture
-        self.m = m
+        self.m       = m
         
     def push(self):
-        self._shader.set("m", float(max(self.m, 0)))
-        self._shader.push()
+        self.shader.set("m", float(max(self.m, 0)))
+        self.shader.push()
 
 class HueAdjustment(Filter):
     
     def __init__(self, texture, m=0.0):
-        self._shader = _adjustment[HUE]
+        self.shader  = _adjustment[HUE]
         self.texture = texture
-        self.m = m
+        self.m       = m
         
     def push(self):
-        self._shader.set("m", float(self.m));
-        self._shader.push()
+        self.shader.set("m", float(self.m));
+        self.shader.push()
 
 #--- BRIGHTPASS --------------------------------------------------------------------------------------
 # Note: the magic numbers 0.2125, 0.7154, 0.0721 represent how (in RGB) 
@@ -541,13 +545,13 @@ void main() {
 class BrightPass(Filter):
     
     def __init__(self, texture, threshold=0.5):
-        self._shader = _brightpass
-        self.texture = texture
+        self.shader    = _brightpass
+        self.texture   = texture
         self.threshold = threshold
         
     def push(self):
-        self._shader.set("threshold", float(self.threshold));
-        self._shader.push()
+        self.shader.set("threshold", float(self.threshold));
+        self.shader.push()
 
 #--- BLUR --------------------------------------------------------------------------------------------
 # Based on "Gaussian Blur Filter Shader" (2008), 
@@ -555,7 +559,7 @@ class BrightPass(Filter):
 # Blurring occurs in two steps (requiring an FBO): horizontal blur and vertical blur.
 # Separating these two steps reduces the problem to linear complexity (i.e. it is faster).
 
-_blur = '''
+glsl_blur = '''
 uniform sampler2D src;
 uniform int kernel;
 uniform float radius;
@@ -573,35 +577,35 @@ void main() {
     gl_FragColor = p;
 }'''
 _blur = {
-    "horizontal": shader(fragment=_blur % ("-a","","+a","")), # vary v.x
-    "vertical"  : shader(fragment=_blur % ("","-a","","+a"))  # vary v.y
+    "horizontal": shader(fragment=glsl_blur % ("-a","","+a","")), # vary v.x
+    "vertical"  : shader(fragment=glsl_blur % ("","-a","","+a"))  # vary v.y
 }
 
 class HorizontalBlur(Filter):
     
     def __init__(self, texture, kernel=9, scale=1.0):
-        self._shader = _blur["horizontal"]
+        self.shader  = _blur["horizontal"]
         self.texture = texture
-        self.kernel = kernel
-        self.scale = scale
+        self.kernel  = kernel
+        self.scale   = scale
         
     def push(self):
-        self._shader.set("kernel", int(self.kernel));
-        self._shader.set("radius", float(self.scale) / self.texture.width)
-        self._shader.push()
+        self.shader.set("kernel", int(self.kernel));
+        self.shader.set("radius", float(self.scale) / self.texture.width)
+        self.shader.push()
 
 class VerticalBlur(Filter):
     
     def __init__(self, texture, kernel=9, scale=1.0):
-        self._shader = _blur["vertical"]
+        self.shader  = _blur["vertical"]
         self.texture = texture
-        self.kernel = kernel
-        self.scale = scale
+        self.kernel  = kernel
+        self.scale   = scale
         
     def push(self):
-        self._shader.set("kernel", int(self.kernel));
-        self._shader.set("radius", float(self.scale) / self.texture.height)
-        self._shader.push()
+        self.shader.set("kernel", int(self.kernel));
+        self.shader.set("radius", float(self.scale) / self.texture.height)
+        self.shader.push()
 
 # It is useful to have a blur in a single pass as well,
 # which we can use as a parameter for the image() command.
@@ -629,22 +633,22 @@ void main(void) {
 class Gaussian3x3Blur(Filter):
     
     def __init__(self, texture, scale=1.0):
-        self._shader = _blur["gaussian3x3"]
+        self.shader = _blur["gaussian3x3"]
         self.texture = texture
         self.scale = scale
         
     def push(self):
         x = float(self.scale) / self.texture.width
         y = float(self.scale) / self.texture.height
-        self._shader.set("radius", vec2(x, y))
-        self._shader.push()
+        self.shader.set("radius", vec2(x, y))
+        self.shader.push()
 
 #--- COMPOSITING -------------------------------------------------------------------------------------
 
 # Compositing function.
 # It will be reused in alpha compositing and blending filters below.
 # It prepares pixels p1 and p2, which need to be mixed into vec4 p.
-_compositing = '''
+glsl_compositing = '''
 uniform sampler2D src1;
 uniform sampler2D src2;
 uniform vec2 extent;
@@ -676,12 +680,12 @@ class Compositing(Filter):
             - dx: the horizontal offset (in pixels) of the blend layer.
             - dy: the vertical offset (in pixels) of the blend layer.
         """
-        self._shader = shader
+        self.shader  = shader
         self.texture = texture
-        self.blend = blend
-        self.alpha = alpha   
-        self.dx = dx
-        self.dy = dy 
+        self.blend   = blend
+        self.alpha   = alpha   
+        self.dx      = dx
+        self.dy      = dy 
 
     def push(self):
         w  = float(self.blend.width)
@@ -695,13 +699,13 @@ class Compositing(Filter):
         glActiveTexture(GL_TEXTURE1)
         glBindTexture(self.blend.target, self.blend.id)
         glActiveTexture(GL_TEXTURE0)
-        self._shader.set("src1", 0)
-        self._shader.set("src2", 1)
-        self._shader.set("extent", vec2(w/w2, h/h2)) # Blend extent.
-        self._shader.set("offset", vec2(dx, dy))     # Blend offset.
-        self._shader.set("ratio", vec2(*ratio2(self.texture, self.blend))) # Image-blend proportion.
-        self._shader.set("alpha", self.alpha)
-        self._shader.push()
+        self.shader.set("src1", 0)
+        self.shader.set("src2", 1)
+        self.shader.set("extent", vec2(w/w2, h/h2)) # Blend extent.
+        self.shader.set("offset", vec2(dx, dy))     # Blend offset.
+        self.shader.set("ratio", vec2(*ratio2(self.texture, self.blend))) # Image-blend proportion.
+        self.shader.set("alpha", self.alpha)
+        self.shader.push()
 
 #--- ALPHA TRANSPARENCY ------------------------------------------------------------------------------
 
@@ -713,26 +717,26 @@ void main() {
     vec4 p = texture2D(src, gl_TexCoord[0].xy);
     gl_FragColor = vec4(p.rgb, p.a * alpha);
 }''')
-_alpha["mask"] = shader(fragment=_compositing % '''
+_alpha["mask"] = shader(fragment=glsl_compositing % '''
     p = vec4(p1.rgb, p1.a * (p2.r * p2.a * alpha));
 '''.strip())
 
 class AlphaTransparency(Filter):
 
     def __init__(self, texture, alpha=1.0):
-        self._shader = _alpha["transparency"]
+        self.shader  = _alpha["transparency"]
         self.texture = texture
-        self.alpha = alpha
+        self.alpha   = alpha
         
     def push(self):
-        self._shader.set("alpha", float(max(0, min(1, self.alpha))))
-        self._shader.push()
+        self.shader.set("alpha", float(max(0, min(1, self.alpha))))
+        self.shader.push()
 
 class AlphaMask(Compositing):
 
     def __init__(self, texture, blend, alpha=1.0, dx=0, dy=0):
         Compositing.__init__(self, _alpha["mask"], texture, blend, alpha, dx, dy)
-        self._shader = _alpha["mask"]
+        self.shader = _alpha["mask"]
 
 #--- BLEND MODES -------------------------------------------------------------------------------------
 # Based on "Photoshop math with GLSL shaders" (2009), Romain Dura,
@@ -755,7 +759,7 @@ _blendx = '''if (p2.a == 1.0) { vec4 p3=p1; p1=p2; p2=p3; }
 # Where both images are transparent, their transparency is blended.
 # Where the base image is fully transparent, the blend image appears source over.
 # There is a subtle transition at transparent edges, which makes the edges less jagged.
-_blendf = _compositing % '''
+glsl_blend = glsl_compositing % '''
     vec3 w  = vec3(1.0); // white
     %s
     p = mix(p1, clamp(p, 0.0, 1.0), p2.a * alpha);
@@ -782,8 +786,8 @@ _blend[HUE] = '''
 '''
 
 for f in _blend.keys():
-    src = _blendf % _blend[f].strip()
-    src = f==HUE and _rgb2hsb + _hsb2rgb + src or src # Hue blend requires rgb2hsb() function.
+    src = glsl_blend % _blend[f].strip()
+    src = f==HUE and glsl_rgb2hsb + glsl_hsb2rgb + src or src # Hue blend requires rgb2hsb() function.
     _blend[f] = shader(fragment=src)
 
 class Blend(Compositing):
@@ -813,7 +817,7 @@ MIRROR  = "mirror"
 # - float m: the magnitude of the effect (e.g. radius, ...) 
 # - float i: the intensity of the effect (e.g. number of rotations, ...) 
 # - vec2 n: a normalized texture space between -1.0 and 1.0 (instead of 0.0-1.0).
-_distf = '''
+glsl_distortion = '''
 uniform sampler2D src;
 uniform vec2 offset;
 uniform vec2 extent;
@@ -831,10 +835,19 @@ void main() {
     %s
     gl_FragColor = p; 
 }'''
+# Polar coordinates.
+# Most of the effects are based on simple angle and radius transformations.
+# After the transformations, convert back to cartesian coordinates n.
+glsl_polar = '''
+    float r = length(n);
+    float phi = atan(n.y, n.x);
+    %s
+    n = vec2(r*cos(phi), r*sin(phi));
+'''.strip()
 # For most effects, pixels are not wrapped around the edges.
 # The second version wraps, with respect to the extent of the actual image in its power-of-2 texture.
 # The third version wraps with a flipped image (transition).
-_distx = (
+glsl_wrap = (
     '''vec4 p = (v.x < 0.0 || v.y < 0.0 || v.x > 0.999 || v.y > 0.999)? vec4(0.0) : texture2D(src, v);''',
     '''
     v.x = (v.x >= extent.x - 0.001)? mod(v.x, extent.x) - 0.002 : max(v.x, 0.001);
@@ -844,15 +857,7 @@ _distx = (
     v.x = (v.x >= extent.x - 0.001)? (extent.x - (v.x-extent.x)) - 0.002 : max(v.x, 0.001);
     v.y = (v.y >= extent.y - 0.001)? (extent.y - (v.y-extent.y)) - 0.002 : max(v.y, 0.001);
     vec4 p = texture2D(src, v);'''.strip())
-# Polar coordinates.
-# Most of the effects are based on simple angle and radius transformations.
-# After the transformations, convert back to cartesian coordinates n.
-_polar = '''
-    float r = length(n);
-    float phi = atan(n.y, n.x);
-    %s
-    n = vec2(r*cos(phi), r*sin(phi));
-'''.strip()
+
 _distortion = {}
 _distortion[BUMP]    = 'r = r * smoothstep(i, m, r);'
 _distortion[DENT]    = 'r = 2.0 * r - r * smoothstep(0.0, m, r/i);'
@@ -872,9 +877,9 @@ _distortion[STRETCH] = '''
 '''.strip()
 
 for f in (BUMP, DENT, PINCH, FISHEYE, SPLASH, TWIRL):
-    _distortion[f] = shader(fragment=_distf % (_polar % _distortion[f], _distx[0]))
+    _distortion[f] = shader(fragment=glsl_distortion % (glsl_polar % _distortion[f], glsl_wrap[0]))
 for f in (STRETCH, MIRROR):
-    _distortion[f] = shader(fragment=_distf % (         _distortion[f], _distx[2]))
+    _distortion[f] = shader(fragment=glsl_distortion % (             _distortion[f], glsl_wrap[2]))
 
 class Distortion(Filter):
     
@@ -882,12 +887,12 @@ class Distortion(Filter):
         """ Distortion filter with dx, dy offset from the center (between -0.5 and 0.5),
             magnitude m as the radius of effect, intensity i as the depth of the effect.
         """
-        self._shader = _distortion[effect]
+        self.shader  = _distortion[effect]
         self.texture = texture
-        self.dx = dx
-        self.dy = dy
-        self.m = m
-        self.i = i
+        self.dx      = dx
+        self.dy      = dy
+        self.m       = m
+        self.i       = i
     
     # Center offset can also be set in absolute coordinates (e.g. pixels):
     def _get_abs_dx(self): 
@@ -907,12 +912,12 @@ class Distortion(Filter):
         h  = float(self.texture.height)
         w2 = float(ceil2(w))
         h2 = float(ceil2(h))
-        self._shader.set("extent", vec2(w/w2, h/h2))
-        self._shader.set("offset", vec2(float(2*self.dx), float(2*self.dy)))
-        self._shader.set("ratio", w2/h2)
-        self._shader.set("m", float(self.m))
-        self._shader.set("i", float(self.i))
-        self._shader.push()
+        self.shader.set("extent", vec2(w/w2, h/h2))
+        self.shader.set("offset", vec2(float(2*self.dx), float(2*self.dy)))
+        self.shader.set("ratio", w2/h2)
+        self.shader.set("m", float(self.m))
+        self.shader.set("i", float(self.i))
+        self.shader.push()
 
 #=====================================================================================================
 

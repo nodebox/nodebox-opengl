@@ -15,7 +15,7 @@ from nodebox.graphics.geometry import distance, clamp, Bounds
 from nodebox.graphics import \
     Layer, Color, Image, image, crop, \
     Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
-    cursor, DEFAULT, HAND, TEXT, \
+    DEFAULT, HAND, TEXT, \
     LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE
 
 def popdefault(dict, key, default=None):
