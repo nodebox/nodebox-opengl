@@ -3015,7 +3015,7 @@ class Mouse(Point):
         return self.dx
     @property
     def vy(self):
-        return self.vy
+        return self.dy
 
     @property
     def relative_x(self):
