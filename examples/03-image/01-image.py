@@ -28,6 +28,5 @@ def draw(canvas):
     # so it appears to be rotating from its center.
     image(img, x=-img.width/2, y=-img.height/2)
     
-    
 canvas.size = 500, 500
 canvas.run(draw)

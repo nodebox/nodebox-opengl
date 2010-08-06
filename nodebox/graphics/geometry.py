@@ -316,7 +316,7 @@ class Bounds:
     def __iter__(self):
         """ You can conveniently unpack bounds: x,y,w,h = Bounds(0,0,100,100)
         """
-        return (self.x, self.y, self.width, self.height).__iter__()
+        return iter(self.x, self.y, self.width, self.height)
 
     def intersects(self, b):
         """ Return True if a part of the two bounds overlaps.

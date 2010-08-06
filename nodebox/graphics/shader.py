@@ -1199,10 +1199,10 @@ def invert(img):
     """
     return filter(img, Invert(img.texture))
 
-def solid(width, height, clr=(0,0,0,0)):
+def solid(width, height, fill=(0,0,0,0)):
     """ Generates an image filled with a solid color.
     """
-    clr = tuple([int(v*255) for v in clr])
+    clr = tuple([int(v*255) for v in fill])
     return Image(pyglet.image.SolidColorImagePattern(clr).create_image(width, height).get_texture())
 
 def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
@@ -1266,7 +1266,7 @@ def brightpass(img, threshold=0.3):
     """
     return filter(img, BrightPass(img.texture, threshold))
 
-def blur(img, kernel=9, scale=1.0, amount=1, cumulative=False):
+def blur(img, kernel=5, scale=1.0, amount=1, cumulative=False):
     """ Applies a blur filter to the image and returns the blurred image.
         - kernel: the size of the convolution matrix (e.g. 9 = 9x9 convolution kernel).
         - scale : the radius of the effect, a higher scale will create a rougher but faster blur.
@@ -1468,12 +1468,22 @@ def inverted():
 
 def colorized(color=(1,1,1,1), bias=(0,0,0,0)):
     return Colorize(None, vec4(*color), vec4(*bias))
-    
-def blurred(scale=1.0):
-    return Gaussian3x3Blur(None, scale)
+        
+def adjusted(mode, v):
+    if mode == BRIGHTNESS: 
+        return BrightnessAdjustment(None, v)
+    if mode == CONTRAST:
+        return ContrastAdjustment(None, v)
+    if mode == SATURATION:
+        return SaturationAdjustment(None, v)
+    if mode == HUE:
+        return HueAdjustment(None, v)
     
 def desaturated():
     return SaturationAdjustment(None, 0.0)
+    
+def blurred(scale=1.0):
+    return Gaussian3x3Blur(None, scale)
 
 def masked(img, alpha=1.0, dx=0, dy=0):
     return AlphaMask(None, _q(img).texture, alpha, dx, dy)

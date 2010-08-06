@@ -11,18 +11,19 @@
 import pyglet
 pyglet.options['debug_gl'] = False
 
-from pyglet.gl import *
-from math      import cos, sin, radians, pi, floor
-from time      import time
-from random    import seed, choice, shuffle, random as rnd
-from new       import instancemethod
-from glob      import glob
-from os        import path, remove
-from sys       import getrefcount
-from StringIO  import StringIO
-from hashlib   import md5
-from types     import FunctionType
-from datetime  import datetime
+from pyglet.gl    import *
+from pyglet.image import Texture
+from math         import cos, sin, radians, pi, floor
+from time         import time
+from random       import seed, choice, shuffle, random as rnd
+from new          import instancemethod
+from glob         import glob
+from os           import path, remove
+from sys          import getrefcount
+from StringIO     import StringIO
+from hashlib      import md5
+from types        import FunctionType
+from datetime     import datetime
 
 import geometry
 
@@ -74,6 +75,7 @@ _fill        = None    # Current state fill color.
 _stroke      = None    # Current state stroke color.
 _strokewidth = 1       # Current state strokewidth.
 _strokestyle = "solid" # Current state strokestyle.
+_alpha       = 1       # Current state alpha transparency.
 
 class Color(list):
 
@@ -160,7 +162,7 @@ class Color(list):
         return Color(self)
 
     def _apply(self):
-        glColor4f(self[0], self[1], self[2], self[3])
+        glColor4f(self[0], self[1], self[2], self[3] * _alpha)
 
     def __repr__(self):
         return "Color(%.3f, %.3f, %.3f, %.3f)" % \
@@ -200,7 +202,7 @@ class Color(list):
         """
         ch = zip(self.map(1, colorspace)[:3], clr.map(1, colorspace)[:3])
         r, g, b = [geometry.lerp(a, b, t) for a, b in ch]
-        a = geometry.lerp(self.a, _alpha(clr), t)
+        a = geometry.lerp(self.a, len(clr)==4 and clr[3] or 1, t)
         return Color(r, g, b, a, colorspace=colorspace)
         
     def rotate(self, angle):
@@ -374,17 +376,13 @@ def darker(clr, step=0.2):
     """ Returns a copy of the color with a darker brightness.
     """
     h, s, b = rgb_to_hsb(clr.r, clr.g, clr.b)
-    return Color(*hsb_to_rgb(h, s, max(0, b-step), _alpha(clr)))
+    return Color(*hsb_to_rgb(h, s, max(0, b-step), len(clr)==4 and clr[3] or 1))
 
 def lighter(clr, step=0.2):
     """ Returns a copy of the color with a lighter brightness.
     """
     h, s, b = rgb_to_hsb(clr.r, clr.g, clr.b)
-    return Color(*hsb_to_rgb(h, s, min(1, b+step), _alpha(clr)))
-    
-def _alpha(clr): 
-    # Safe when clr is a tuple instead of a Color object.
-    return len(clr)==4 and clr[3] or 1
+    return Color(*hsb_to_rgb(h, s, min(1, b+step), len(clr)==4 and clr[3] or 1))
 
 #--- COLOR ROTATION ----------------------------------------------------------------------------------
 
@@ -436,7 +434,7 @@ def analog(clr, angle=20, d=0.1):
     h, s, b = rotate_ryb(h, s, b, angle=random(-1.0,1.0))
     s *= 1 - random(-d,d)
     b *= 1 - random(-d,d)
-    return Color(h, s, b, _alpha(clr), colorspace=HSB)
+    return Color(h, s, b, len(clr)==4 and clr[3] or 1, colorspace=HSB)
 
 #--- COLOR MIXIN -------------------------------------------------------------------------------------
 # Drawing commands like rect() have optional parameters fill and stroke to set the color directly.
@@ -476,10 +474,10 @@ def colorplane(x, y, width, height, *a):
     glTranslatef(x, y, 0)
     glScalef(width, height, 1)
     glBegin(GL_QUADS)
-    glColor4f(*clr1); glVertex2f(-0.0,  1.0)
-    glColor4f(*clr2); glVertex2f( 1.0,  1.0)
-    glColor4f(*clr3); glVertex2f( 1.0, -0.0)
-    glColor4f(*clr4); glVertex2f(-0.0, -0.0)
+    glColor4f(clr1[0], clr1[1], clr1[2], clr1[3] * _alpha); glVertex2f(-0.0,  1.0)
+    glColor4f(clr2[0], clr2[1], clr2[2], clr2[3] * _alpha); glVertex2f( 1.0,  1.0)
+    glColor4f(clr3[0], clr3[1], clr3[2], clr3[3] * _alpha); glVertex2f( 1.0, -0.0)
+    glColor4f(clr4[0], clr4[1], clr4[2], clr4[3] * _alpha); glVertex2f(-0.0, -0.0)
     glEnd()
     glPopMatrix()
 
@@ -557,7 +555,7 @@ def line(x0, y0, x1, y1, **kwargs):
     """
     fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
     if stroke is not None and strokewidth > 0:
-        glColor4f(*stroke)
+        glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
         glLineWidth(strokewidth)
         glLineDash(strokestyle)
         glBegin(GL_LINE_LOOP)
@@ -575,7 +573,7 @@ def rect(x, y, width, height, **kwargs):
             if i == 1: 
                 glLineWidth(strokewidth)
                 glLineDash(strokestyle)
-            glColor4f(*clr)
+            glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
             glVertex2f(x, y)
@@ -594,7 +592,7 @@ def triangle(x1, y1, x2, y2, x3, y3, **kwargs):
             if i == 1: 
                 glLineWidth(strokewidth)
                 glLineDash(strokestyle)
-            glColor4f(*clr)
+            glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
             glVertex2f(x1, y1)
@@ -625,7 +623,7 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
             if i == 1: 
                 glLineWidth(strokewidth)
                 glLineDash(strokestyle)
-            glColor4f(*clr)
+            glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             glPushMatrix()
             glTranslatef(x, y, 0)
             glScalef(width, height, 1)
@@ -646,7 +644,7 @@ def arrow(x, y, width, **kwargs):
             if i == 1: 
                 glLineWidth(strokewidth)
                 glLineDash(strokestyle)
-            glColor4f(*clr)
+            glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             # Note: this performs equally well as when using precompile().
             glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
             glVertex2f(x, y)
@@ -1025,10 +1023,10 @@ class BezierPath(list):
             if fill   : self._cache[0] = precompile(_draw_fill, contours)
             if stroke : self._cache[1] = precompile(_draw_stroke, contours)
         if fill is not None:
-            glColor4f(*fill)
+            glColor4f(fill[0], fill[1], fill[2], fill[3] * _alpha)
             glCallList(self._cache[0])
         if stroke is not None and strokewidth > 0:
-            glColor4f(*stroke)
+            glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
             glLineWidth(strokewidth)
             glLineDash(strokestyle)
             glCallList(self._cache[1])
@@ -1253,8 +1251,12 @@ def directed(points):
 
 #--- CLIPPING PATH -----------------------------------------------------------------------------------
 
+class ClippingMask:
+    def draw(self, fill=(0,0,0,1), stroke=None):
+        pass
+
 def beginclip(path):
-    """ Enables the given BezierPath as a clipping mask.
+    """ Enables the given BezierPath (or ClippingMask) as a clipping mask.
         Drawing commands between beginclip() and endclip() are constrained to the shape of the path.
     """
     # Enable the stencil buffer to limit the area of rendering (stenciling).
@@ -1524,7 +1526,7 @@ class Image:
         glPushMatrix()
         glTranslatef(x, y, 0)
         glScalef(w, h, 0)
-        glColor4f(*color)
+        glColor4f(color[0], color[1], color[2], color[3] * _alpha)
         glCallList(self._cache)
         glPopMatrix() 
         if filter:
@@ -1578,19 +1580,6 @@ def imagesize(img):
     """
     t = texture(img)
     return (t.width, t.height)
-
-def adjust(r=0, g=0, b=0):
-    """ Returns a tuple with increased (>0) or decreased (<0) R,G,B intensities.
-        Use this to set the image() color parameter.
-    """
-    m = max(r, g, b)
-    return r+1-m, g+1-m, b+1-m
-    
-def distort(dx1=0, dy1=0, dx2=0, dy2=0, dx3=0, dy3=0, dx4=0, dy4=0):
-    """ Returns a tuple with corner offsets.
-        Use this to set the image() quad parameter.
-    """
-    return (dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4)
 
 def crop(img, x=0, y=0, width=None, height=None):
     """ Returns the given (x, y, width, height)-region from the image.
@@ -1707,6 +1696,9 @@ class Pixels(list):
         if self._texture is None:
             self.update()
         return self._texture
+        
+    def copy(self):
+        return Pixels(self.texture)
 
 pixels = Pixels
 
@@ -1838,7 +1830,7 @@ _fontweight = [False, False] # Current state font weight (bold, italic).
 _lineheight = 1.0            # Current state text lineheight.
 _align      = LEFT           # Current state text alignment (LEFT/RIGHT/CENTER).
 
-def font(fontname=None, fontsize=None, file=None):
+def font(fontname=None, fontsize=None, fontweight=None, file=None):
     """ Sets the current font and/or fontsize.
         If a filename is also given, loads the fontname from the given font file.
     """
@@ -1849,23 +1841,29 @@ def font(fontname=None, fontsize=None, file=None):
         _fontname = fontname
     if fontsize is not None:
         _fontsize = fontsize
+    if fontweight is not None:
+        _fontweight_(fontweight) # _fontweight_() is just an alias for fontweight().
     return _fontname
 
 def fontname(name=None):
     """ Sets the current font used when drawing text.
     """
-    font(name, None)
+    global _fontname
+    if name is not None:
+        _fontname = name
     return _fontname
 
 def fontsize(size=None):
     """ Sets the current fontsize in points.
     """
-    font(None, size)
+    global _fontsize
+    if size is not None:
+        _fontsize = size
     return _fontsize
     
 def fontweight(*args, **kwargs):
     """ Sets the current font weight.
-        You can supply BOLD and/or ITALIC or set named parameters bold=True and/or italic=True.
+        You can supply NORMAL, BOLD and/or ITALIC or set named parameters bold=True and/or italic=True.
     """
     global _fontweight
     if len(args) == 1 and isinstance(args, (list, tuple)):
@@ -1877,6 +1875,8 @@ def fontweight(*args, **kwargs):
     if ITALIC in args or kwargs.get(ITALIC):
         _fontweight[1] = True
     return _fontweight
+    
+_fontweight_ = fontweight
 
 def lineheight(size=None):
     """ Sets the vertical spacing between lines of text.
@@ -2492,8 +2492,18 @@ _UID = 0
 def _uid():
     global _UID; _UID+=1; return _UID
 
-RELATIVE = "relative"
-ABSOLUTE = "absolute"
+RELATIVE = "relative" # Origin point is stored as float, e.g. (0.5, 0.5).
+ABSOLUTE = "absolute" # Origin point is stored as int, e.g. (100, 100).
+
+# When Layer.clipped=True, children are clipped to the bounds of the layer.
+# The layer clipping masks lazily changes size with the layer.
+class LayerClippingMask(ClippingMask):
+    def __init__(self, layer):
+        self.layer = layer
+    def draw(self, fill=(0,0,0,1), stroke=None):
+        w = not self.layer.width  and geometry.INFINITE or self.layer.width
+        h = not self.layer.height and geometry.INFINITE or self.layer.height
+        rect(0, 0, w, h, fill=fill, stroke=stroke)
 
 class Layer(list, Prototype, EventHandler):
 
@@ -2516,6 +2526,7 @@ class Layer(list, Prototype, EventHandler):
         EventHandler.__init__(self)
         self._id       = _uid()
         self.name      = name                  # Layer name. Layers are accessible as ParentLayer.[name]
+        self.canvas    = None                  # The canvas this layer is drawn to.
         self.parent    = parent                # The layer this layer is a child of.
         self.group     = None                  # The group this layer belongs to.
         self._x        = Transition(x)         # Layer horizontal position in pixels, from the left.
@@ -2527,14 +2538,16 @@ class Layer(list, Prototype, EventHandler):
         self._origin   = origin_mode           # Origin point as RELATIVE or ABSOLUTE coordinates?
         self._scale    = Transition(scale)     # Layer width and height scale.
         self._rotation = Transition(rotation)  # Layer rotation.
-        self._opacity  = Transition(opacity, interpolation=LINEAR) # Layer opacity.
+        self._opacity  = Transition(opacity)   # Layer opacity.
         self.duration  = duration              # The time it takes to animate transformations.
         self.top       = True                  # Draw on top of or beneath parent?
         self.flipped   = False                 # Flip the layer horizontally?
+        self.clipped   = False                 # Clip child layers to bounds?
         self.hidden    = False                 # Hide the layer?
         self._transform_state = 0              # Transformation matrix version ID.
         self._transform_cache = None           # Cache of the local transformation matrix.
         self._transform_stack = None           # Cache of the cumulative transformation matrix.
+        self._clipping_mask   = LayerClippingMask(self)
     
     @classmethod
     def from_image(self, img, *args, **kwargs):
@@ -2545,43 +2558,46 @@ class Layer(list, Prototype, EventHandler):
         kwargs.setdefault("width", img.width)
         kwargs.setdefault("height", img.height)
         def draw(layer):
-            image(layer.image, alpha=layer.image.alpha * layer.opacity)
+            image(layer.image)
         layer = Layer(*args, **kwargs)
         layer.set_method(draw)
         layer.set_property("image", img)
         return layer
         
-    @property
+    @classmethod
     def from_function(self, function, *args, **kwargs):
         """ Returns a new layer that renders the drawing commands in the given function.
             The layer has a draw() method.
         """
         def draw(layer):
-            function()
+            function(layer)
         layer = Layer(*args, **kwargs)
         layer.set_method(draw)
         return layer
         
     def copy(self, parent=None):
         """ Returns a copy of the layer.
-            All properties will be copied, except for the new parent which you need to define.
+            All Layer properties will be copied, except for the new parent which you need to define.
         """
-        layer = Layer(origin=self.origin(relative=self._origin==RELATIVE))
-        layer.duration = 0 # Copy all transitions instantly.
-        layer.parent   = parent
-        layer.name     = self.name
-        layer.x        = self.x
-        layer.y        = self.y
-        layer.width    = self.width
-        layer.height   = self.height
-        layer.scaling  = self.scaling
-        layer.rotation = self.rotation
-        layer.opacity  = self.opacity
-        layer.duration = self.duration
-        layer.top      = self.top
-        layer.flipped  = self.flipped
-        layer.hidden   = self.hidden
-        layer.enabled  = self.enabled
+        layer = self.__class__() # Create instance of the derived class, not Layer.
+        layer.duration  = 0      # Copy all transitions instantly.
+        layer.parent    = parent
+        layer.name      = self.name
+        layer._x        = self._x.copy()
+        layer._y        = self._y.copy()
+        layer._width    = self._width.copy()
+        layer._height   = self._height.copy()
+        layer._origin   = self._origin
+        layer._dx       = self._dx.copy()
+        layer._dy       = self._dy.copy()
+        layer._scale    = self._scale.copy()
+        layer._rotation = self._rotation.copy()
+        layer._opacity  = self._opacity.copy()
+        layer.duration  = self.duration
+        layer.top       = self.top
+        layer.flipped   = self.flipped
+        layer.hidden    = self.hidden
+        layer.enabled   = self.enabled
         layer.extend([child.copy() for child in self])
         # Inherit all the dynamic properties and methods.
         Prototype.inherit(layer, self)
@@ -2598,7 +2614,7 @@ class Layer(list, Prototype, EventHandler):
 
     @property
     def layers(self):
-        return self.__iter__()
+        return self
 
     def insert(self, index, layer):
         list.insert(self, index, layer)
@@ -2666,7 +2682,7 @@ class Layer(list, Prototype, EventHandler):
     
     def _get_origin(self, relative=False):
         """ Returns the point (x,y) from which all layer transformations originate.
-            When relative=True, x and y are defined percentually (0.0-1.0) in terms of with and height.
+            When relative=True, x and y are defined percentually (0.0-1.0) in terms of width and height.
             In some cases x=0 or y=0 is returned:
             - For an infinite layer (width=None or height=None), we can't deduct the absolute origin
               from coordinates stored relatively (e.g. what is infinity*0.5?).
@@ -2792,19 +2808,27 @@ class Layer(list, Prototype, EventHandler):
             glScalef(-1, 1, 1)
         glRotatef(self._rotation.current, 0, 0, 1)
         glScalef(self._scale.current, self._scale.current, 1)
-        # Draw contents: 
-        # layers on top first, then my own contents, then layers below.
+        # Enable clipping mask if Layer.clipped=True.
+        if self.clipped:
+            beginclip(self._clipping_mask)
+        # Draw child layers below.
         for layer in self:
             if layer.top is False:
                 layer._draw()
+        # Draw layer.
+        global _alpha
+        _alpha = self._opacity.current # XXX should also affect child layers?
         glPushMatrix()
         glTranslatef(-round(dx), -round(dy), 0) # Layers are drawn relative from parent origin.
         self.draw()
         glPopMatrix()
+        _alpha = 1
+        # Draw child layers on top.
         for layer in self:
             if layer.top is True:
                 layer._draw()
-                
+        if self.clipped:
+            endclip()
         glPopMatrix()
         
     def draw(self):
@@ -3118,7 +3142,7 @@ settings = OPTIMAL = dict(
 #        blue_size = 8,
         depth_size = 24,
       stencil_size = 1,
-        alpha_size = 8,
+        alpha_size = 8, 
      double_buffer = 1,
     sample_buffers = 1, 
            samples = 4
@@ -3141,7 +3165,7 @@ def _configure(settings):
 
 class Canvas(list, Prototype, EventHandler):
 
-    def __init__(self, width=640, height=480, name="NodeBox for OpenGL", settings=OPTIMAL, vsync=True):
+    def __init__(self, width=640, height=480, name="NodeBox for OpenGL", resizable=False, settings=OPTIMAL, vsync=True):
         """ The main application window containing the drawing canvas.
             It is opened when Canvas.run() is called.
             It is a collection of drawable Layer objects, and it has its own draw() method.
@@ -3149,11 +3173,19 @@ class Canvas(list, Prototype, EventHandler):
             Event handlers for keyboard and mouse interaction can also be overriden.
             Events will be passed to layers that have been appended to the canvas.
         """
+        window = dict(
+              caption = name,
+              visible = False,
+                width = width,
+               height = height,
+            resizable = resizable,
+               config = _configure(settings), 
+                vsync = vsync
+        )
         Prototype.__init__(self)
         EventHandler.__init__(self)
         self.profiler                 = Profiler(self)
-        self._window                  = pyglet.window.Window(visible=False, config=_configure(settings), vsync=vsync)
-        self._window.set_caption(name)              # Window caption.
+        self._window                  = pyglet.window.Window(**window)
         self._fps                     = None        # Frames per second.
         self._frame                   = 0           # The current frame.
         self._active                  = False       # Application is running?
@@ -3175,6 +3207,8 @@ class Canvas(list, Prototype, EventHandler):
         self._window.on_key_release   = self._on_key_release
         self._window.on_text          = self._on_text
         self._window.on_text_motion   = self._on_text_motion
+        self._window.on_move          = self._on_move
+        self._window.on_resize        = self._on_resize
         self._window.on_close         = self.stop
 
     def _get_name(self):
@@ -3197,16 +3231,38 @@ class Canvas(list, Prototype, EventHandler):
 
     def insert(self, index, layer):
         list.insert(self, index, layer)
+        layer.canvas = self
     def append(self, layer):
         list.append(self, layer)
+        layer.canvas = self
     def extend(self, layers):
         for layer in layers:
             self.append(layer)
+    def remove(self, layer):
+        list.remove(self, layer)
+        layer.canvas = None
+    def pop(self, index):
+        layer = list.pop(index)
+        layer.canvas = None
+        return layer
         
+    def _get_x(self):
+        return self._window.get_location()[0]
+    def _set_x(self, v):
+        self._window.set_location(v, self.y)
+    def _get_y(self):
+        return self._window.get_location()[1]
+    def _set_y(self, v):
+        self._window.set_location(self.x, v)
+    def _get_xy(self):
+        return (self.x, self.y)
+    def _set_xy(self, (x,y)):
+        self.x = x
+        self.y = y
     def _get_width(self):
-        return float(self._window.width)
+        return self._window.width
     def _get_height(self):
-        return float(self._window.height)
+        return self._window.height
     def _get_size(self):
         return (self.width, self.height)
     def _set_width(self, v):
@@ -3217,6 +3273,9 @@ class Canvas(list, Prototype, EventHandler):
         self.width  = w
         self.height = h
     
+    x      = property(_get_x, _set_x)
+    y      = property(_get_y, _set_y)
+    xy     = property(_get_xy, _set_xy)
     width  = property(_get_width, _set_width)
     height = property(_get_height, _set_height)
     size   = property(_get_size, _set_size)
@@ -3392,6 +3451,13 @@ class Canvas(list, Prototype, EventHandler):
         self._key.code = keycode
         # The event is delegated in _update():
         self._window.on_key_pressed = True
+        
+    def _on_move(self, x, y):
+        self.on_move()
+    
+    def _on_resize(self, width, height):
+        pyglet.window.Window.on_resize(self._window, width, height)
+        self.on_resize()
 
     # Event methods are meant to be overridden or patched with Prototype.set_method().
     def on_key_press(self, key):
@@ -3406,6 +3472,12 @@ class Canvas(list, Prototype, EventHandler):
             self.paused = not self.paused
         if key.code == "s" and CTRL in key.modifiers:
             self.save("nodebox-%s.png" % str(datetime.now()).split(".")[0].replace(" ","-").replace(":","-"))
+    
+    def on_move(self):
+        pass
+
+    def on_resize(self):
+        pass
 
     #--- Main loop --------------------------------------
         
@@ -3587,7 +3659,9 @@ class Canvas(list, Prototype, EventHandler):
             "on_mouse_drag",
             "on_mouse_scroll",
             "on_key_press",
-            "on_key_release")):
+            "on_key_release",
+            "on_move",
+            "on_resize")):
             self.set_method(v, name=k)
         else:
             object.__setattr__(self, k, v)

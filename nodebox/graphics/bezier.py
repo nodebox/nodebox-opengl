@@ -212,7 +212,7 @@ def points(path, amount=100, start=0.0, end=1.0, segments=None):
         # If we don't use amount-1, we fall one point short of the end.
         # If amount=4, we want the point at t 0.0, 0.33, 0.66 and 1.0.
         # If amount=2, we want the point at t 0.0 and 1.0.
-        d = n / (amount-1)
+        d = float(n) / (amount-1)
     for i in xrange(amount):
         yield point(path, start+d*i, segments)
 

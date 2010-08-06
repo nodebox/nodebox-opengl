@@ -37,7 +37,7 @@ def find(match=lambda item: False, list=[]):
 
 class Theme(dict):
     
-    def __init__(self, path):
+    def __init__(self, path, **kwargs):
         """ A theme defines the source images for controls and font settings for labels.
             A theme is loaded from a given folder path (containing PNG images and TTF font files).
             The default theme is in nodebox/graphics/gui/theme/
@@ -47,13 +47,13 @@ class Theme(dict):
         images = [(os.path.basename(os.path.splitext(f)[0]), f) for f in images]
         fonts  = glob(os.path.join(path, "*.ttf"))
         fonts  = [(os.path.basename(os.path.splitext(f)[0]), install_font(f)) for f in fonts]
-        fonts  = [f[0] for f in fonts if f[1]]
+        fonts  = [f[0] for f in fonts if f[1]] # Filename is assumed to be fontname.
         dict.__init__(self, images)
         self["fonts"]      = fonts
-        self["font"]       = fonts and fonts[-1] or DEFAULT_FONT # Filename is assumed to be fontname.
-        self["fontsize"]   = 10
-        self["fontweight"] = NORMAL
-        self["text"]       = Color(1.0)
+        self["fontname"]   = kwargs.get("fontname", fonts and fonts[-1] or DEFAULT_FONT)
+        self["fontsize"]   = kwargs.get("fontsize", 10)
+        self["fontweight"] = kwargs.get("fontweight", NORMAL)
+        self["text"]       = kwargs.get("text", Color(1.0))
 
 theme = Theme(os.path.join(os.path.dirname(__file__), "theme")) 
 
@@ -63,14 +63,14 @@ theme = Theme(os.path.join(os.path.dirname(__file__), "theme"))
 
 class Control(Layer):
     
-    def __init__(self, id=None, **kwargs):
+    def __init__(self, x=0, y=0, id=None, **kwargs):
         """ Base class for GUI controls.
             The Control class inherits from Layer so it must be appended to the canvas (or a container)
             to receive events and get drawn.
             An id can be given to uniquely identify the control.
             If the control is part of a Panel, it can be retrieved with Panel.control_id.
         """
-        Layer.__init__(self, **kwargs)
+        Layer.__init__(self, x=x, y=y, **kwargs)
         self.id        = id
         self.src       = {}    # Collection of source images.
         self.enabled   = True  # Enable event listener.
@@ -132,6 +132,13 @@ class Control(Layer):
     def layer_at(self, x, y, clipped=False, enabled=False, transformed=True, _covered=False):
         return Layer.layer_at(self, x, y, clipped, enabled, False, _covered)
 
+    def origin(self, x=None, y=None, relative=False): 
+        return Layer.origin(self, x, y, relative)       
+    def rotate(self, angle): 
+        pass
+    def scale(self, f): 
+        pass
+
     def __getattr__(self, k):
         # Retrieves the given attribute.
         # Retrieves the child control with the given id.
@@ -156,14 +163,14 @@ class Control(Layer):
 
 class Label(Control):
     
-    def __init__(self, caption, **kwargs):
+    def __init__(self, caption, x=0, y=0, width=None, height=None, id=None, **kwargs):
         """ A label displaying the given caption, centered in the label's (width, height)-box.
             The label does not receive any events.
             Optional parameters can include fill, font, fontsize, fontweight.
         """
         txt = Text(caption, **{
                "fill" : popdefault(kwargs, "fill", theme["text"]),
-               "font" : popdefault(kwargs, "font", theme["font"]),
+               "font" : popdefault(kwargs, "font", theme["fontname"]),
            "fontsize" : popdefault(kwargs, "fontsize", theme["fontsize"]),
          "fontweight" : popdefault(kwargs, "fontweight", theme["fontweight"]),
          "lineheight" : 1,
@@ -171,7 +178,7 @@ class Label(Control):
         })
         kwargs.setdefault("width", txt.metrics[0])
         kwargs.setdefault("height", txt.metrics[1])
-        Control.__init__(self, **kwargs)
+        Control.__init__(self, x=x, y=y, id=id, **kwargs)
         self.enabled = False # Pass on events to the layers underneath.
         self._text   = txt
         self._pack()      
@@ -208,11 +215,11 @@ class Label(Control):
 
 class Button(Control):
     
-    def __init__(self, caption="", action=None, width=125, **kwargs):
+    def __init__(self, caption="", action=None, x=0, y=0, width=125, id=None, **kwargs):
         """ A clickable button that will fire Button.on_action() when clicked.
             The action handler can be defined in a subclass, or given as a function.
         """
-        Control.__init__(self, width=width, **kwargs)
+        Control.__init__(self, x=x, y=y, width=width, id=id, **kwargs)
         img, w = Image(theme["button"]), 20
         self.src = {
             "face" : crop(img, w, 0, 1, img.height),
@@ -264,13 +271,13 @@ class Button(Control):
 
 class Action(Control):
     
-    def __init__(self, action=None, **kwargs):
+    def __init__(self, action=None, x=0, y=0, id=None, **kwargs):
         """ A clickable button that will fire Action.on_action() when clicked.
             Actions display an icon instead of a text caption.
             Actions are meant to be used for interface management:
             e.g. closing or minimizing a panel, navigating to the next page, ...
         """
-        Control.__init__(self, **kwargs)
+        Control.__init__(self, x=x, y=y, id=id, **kwargs)
         self.src = {"face": Image(theme["action"])}
         self._pack()
         if action:
@@ -293,10 +300,10 @@ class Action(Control):
         
 class Close(Action):
     
-    def __init__(self, action=None, **kwargs):
+    def __init__(self, action=None, x=0, y=0, id=None, **kwargs):
         """ An action that hides the parent control (e.g. a Panel) when pressed.
         """
-        Action.__init__(self, action, **kwargs)
+        Action.__init__(self, action, x=x, y=y, id=id, **kwargs)
         self.src["face"] = Image(theme["action-close"])
         
     def on_action(self):
@@ -329,11 +336,11 @@ class Handle(Control):
 
 class Slider(Control):
     
-    def __init__(self, default=0.5, min=0.0, max=1.0, steps=100, width=125, **kwargs):
+    def __init__(self, default=0.5, min=0.0, max=1.0, steps=100, x=0, y=0, width=125, id=None, **kwargs):
         """ A draggable slider that will fire Slider.on_action() when dragged.
             The slider's value can be retrieved with Slider.value.
         """
-        Control.__init__(self, width=width, **kwargs)
+        Control.__init__(self, x=x, y=y, width=width, id=id, **kwargs)
         self.min     = min     # Slider minimum value.
         self.max     = max     # Slider maximum value.
         self.default = default # Slider default value.
@@ -406,11 +413,11 @@ class Slider(Control):
 
 class Flag(Control):
     
-    def __init__(self, default=False, **kwargs):
+    def __init__(self, default=False, x=0, y=0, id=None, **kwargs):
         """ A checkbox control that fires Flag.on_action() when checked.
             The checkbox value can be retrieved with Flag.value.
         """
-        Control.__init__(self, **kwargs)
+        Control.__init__(self, x=x, y=y, id=id, **kwargs)
         self.default = bool(default) # Flag default value.
         self.value   = bool(default) # Flag current value.
         self.src = {
@@ -444,11 +451,11 @@ Checkbox = CheckBox = Flag
 
 class Panel(Control):
     
-    def __init__(self, caption="", fixed=False, modal=True, width=175, height=250, **kwargs):
+    def __init__(self, caption="", fixed=False, modal=True, x=0, y=0, width=175, height=250, **kwargs):
         """ A panel containing other controls that can be dragged when Panel.fixed=False.
             Controls or (Layout groups) can be added with Panel.append().
         """
-        Control.__init__(self, width=max(width,60), height=max(height,60), **kwargs)
+        Control.__init__(self, x=0, y=0, width=max(width,60), height=max(height,60), **kwargs)
         img, w = Image(theme["panel"]), 30
         self.src = {
            "cap1" : crop(img, 0, img.height-w, w, w),
@@ -469,12 +476,13 @@ class Panel(Control):
         self.modal = modal # Closeable?
         self._pack()
 
-    @property
     def _get_caption(self):
         return self._caption.text
     def _set_caption(self, str):
         self._caption.text = str
         self._pack()
+        
+    caption = property(_get_caption, _set_caption)
 
     @property
     def controls(self):
@@ -557,7 +565,7 @@ class Panel(Control):
 
 class Editable(Control):
     
-    def __init__(self, value="", width=125, height=30, padding=(0,0), wrap=True, **kwargs):
+    def __init__(self, value="", x=0, y=0, width=125, height=30, padding=(0,0), wrap=True, id=None, **kwargs):
         """ An editable text box.
             When clicked, it has the focus and can receive keyboard events.
             With wrap=True, several lines of text will wrap around the width.
@@ -565,7 +573,7 @@ class Editable(Control):
         """
         txt = Text(value or " ", **{
                "fill" : popdefault(kwargs, "fill", Color(0,0.9)),
-               "font" : popdefault(kwargs, "font", theme["font"]),
+               "font" : popdefault(kwargs, "font", theme["fontname"]),
            "fontsize" : popdefault(kwargs, "fontsize", theme["fontsize"]),
          "fontweight" : popdefault(kwargs, "fontweight", theme["fontweight"]),
          "lineheight" : 1,
@@ -573,7 +581,7 @@ class Editable(Control):
         })
         kwargs["width"]  = width
         kwargs["height"] = height
-        Control.__init__(self, **kwargs)
+        Control.__init__(self, x=x, y=y, id=id, **kwargs)
         self.active   = False # User has clicked in the control, cursor is blinking.
         self._padding = padding
         self._empty   = value == "" and True or False
@@ -720,11 +728,11 @@ class Editable(Control):
 
 class Field(Editable):
     
-    def __init__(self, value="", hint="", action=None, width=125, padding=5, **kwargs):
+    def __init__(self, value="", hint="", action=None, x=0, y=0, width=125, padding=5, id=None, **kwargs):
         """ A single-line text input field.
             The string value can be retrieved with Field.value.
         """
-        Editable.__init__(self, value, width, padding=(padding,0), wrap=False, **kwargs)
+        Editable.__init__(self, value, x=x, y=y, width=width, padding=(padding,0), wrap=False, id=id, **kwargs)
         img, w = Image(theme["field"]), 10
         self.src = {
             "face" : crop(img, w, 0, 1, img.height),
@@ -742,6 +750,8 @@ class Field(Editable):
         return self[0].caption
     def _set_hint(self, string):
         self[0].caption = string
+        
+    hint = property(_get_hint, _set_hint)
 
     def reset(self):
         self.value = self.default

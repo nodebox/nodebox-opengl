@@ -29,6 +29,7 @@ def whirl(layer, mouse):
     layer.y += random(-100, 100)
     layer.scaling += random(-0.2, 0.2)
     layer.rotation += random(-360, 360)
+    layer.opacity = random(0.5, 1.0)
     
 creature.set_method(whirl, "on_mouse_press")
 
