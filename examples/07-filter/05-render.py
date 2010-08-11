@@ -3,8 +3,6 @@ import os, sys; sys.path.append(os.path.join("..",".."))
 
 from nodebox.graphics import *
 
-blrred = blur(Image("creature.png"))
-
 # The render() command executes a function with drawing commands 
 # in an offscreen (i.e. hidden) canvas and returns an Image object.
 # This is useful if you want to apply filters to text, ellipses, etc.

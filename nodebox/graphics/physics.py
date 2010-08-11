@@ -257,6 +257,8 @@ class Boid:
         self.target   = None  # A target Vector towards which the boid will steer.
         self.sight    = sight # The radius of cohesion and alignment, and visible obstacles.
         self.space    = space # The radius of separation.
+        self.dodge    = False # Avoiding an obstacle?
+        self.crowd    = 0     # Percentage (0.0-1.0) of flockmates within sight.
     
     def __eq__(self, other):
         # Comparing boids by id makes it significantly faster.
@@ -323,6 +325,8 @@ class Boid:
                 vx += b.x
                 vy += b.y 
                 vz += b.z; n += 1
+        # Calculate percentage of flockmates within sight.
+        self.crowd = float(n) / (len(self.flock) or 1)
         if n: 
             return (vx/n-self.x), (vy/n-self.y), (vz/n-self.z)
         return vx, vy, vz
@@ -332,12 +336,14 @@ class Boid:
             The boid is not guaranteed to avoid collision.
         """
         vx = vy = 0.0
+        self.dodge = False
         for o in self.flock.obstacles:
             dx = o.x - self.x
             dy = o.y - self.y
             d = sqrt(dx**2 + dy**2)     # Distance to obstacle.
             s = (self.sight + o.radius) # Visibility range.
             if d < s:
+                self.dodge = True
                 # Force grows exponentially from 0.0 to 1.0, 
                 # where 1.0 means the boid touches the obstacle circumference.
                 f = (d-o.radius) / (s-o.radius)

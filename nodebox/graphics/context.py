@@ -1000,7 +1000,7 @@ class BezierPath(list):
             glBegin(GL_TRIANGLES),
             for x, y in v:
                 glVertex3f(x, y, 0)
-            glEnd()
+            glEnd()            
         def _draw_stroke(contours):
             # Drawing commands for the path stroke.
             for path in contours:

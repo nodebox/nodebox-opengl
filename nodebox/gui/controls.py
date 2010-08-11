@@ -13,7 +13,7 @@ from pyglet.text.caret  import Caret
 
 from nodebox.graphics.geometry import distance, clamp, Bounds
 from nodebox.graphics import \
-    Layer, Color, Image, image, crop, \
+    Layer, Color, Image, image, crop, line, \
     Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
     DEFAULT, HAND, TEXT, \
     LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE
@@ -778,6 +778,81 @@ class Field(Editable):
         image(im2, x=self.width-im2.width, height=self.height)
         image(im3, x=im1.width, width=self.width-im1.width-im2.width, height=self.height)
         Editable.draw(self)
+
+#=====================================================================================================
+
+#--- Rulers ------------------------------------------------------------------------------------------
+
+class Rulers(Control):
+    
+    def __init__(self, step=10, interval=5, crosshair=False):
+        """ A horizontal and vertical ruler displaying the width/height of the parent at intervals.
+            A measurement line is drawn at each step(e.g. at 10 20 30...)
+            A label with the value is drawn at each interval (e.g. 50 | | | | 100 | | | | 150).
+        """
+        Control.__init__(self, x=0, y=0, id=None)
+        self.enabled   = False
+        self.step      = step
+        self.interval  = interval
+        self.crosshair = crosshair
+        self._dirty    = False
+        self._markers  = {}
+        self._pack()
+    
+    def _get_step(self):
+        return self._step
+    def _set_step(self, v):
+        self._step = round(v)
+        self._dirty = True
+        
+    step = property(_get_step, _set_step)
+    
+    def _get_interval(self):
+        return self._interval
+    def _set_interval(self, v):
+        self._interval = round(v)
+        self._dirty = True
+        
+    interval = property(_get_interval, _set_interval)
+    
+    def _pack(self):
+        # Cache Text objects for the measurement markers.
+        # This happens whenever the canvas resizes, or the step or interval changes.
+        # This will raise an error if the parent's width or height is None (infinite).
+        p = self.parent or self.canvas
+        if p and (self._dirty or self.width != p.width or self.height != p.height):
+            self._dirty = False
+            self._set_width(p.width)
+            self._set_height(p.height)
+            print max(self.width, self.height) / self._step
+            for i in range(int(round(max(self.width, self.height) / self._step))):
+                if i % self._interval == 0:
+                    self._markers.setdefault(i*self._step,
+                        Text(str(int(round(i*self._step))), 
+                            fontname=theme["fontname"],
+                            fontsize=theme["fontsize"] * 0.6))
+                            
+    def update(self):
+        self._pack()
+    
+    def draw(self):
+        length = 5
+        # Draw the horizontal ruler.
+        for i in range(1, int(round(self.height / self._step))):
+            v, mark = i*self._step, i%self.interval==0
+            line(0, v, mark and length*3 or length, v)
+            if mark:
+                self._markers[v].draw(length*3-self._markers[v].metrics[0], v+2)
+        # Draw the vertical ruler.
+        for i in range(1, int(round(self.width / self._step))):
+            v, mark = i*self._step, i%self.interval==0
+            line(v, 0, v, mark and length*3 or length)
+            if mark:
+                self._markers[v].draw(v+2, length*3-self._markers[v].fontsize)
+        # Draw the crosshair.
+        if self.crosshair:
+            line(0, self.canvas.mouse.y, self.width, self.canvas.mouse.y, strokestyle=DASHED)
+            line(self.canvas.mouse.x, 0, self.canvas.mouse.x, self.height, strokestyle=DASHED)
 
 #=====================================================================================================
 

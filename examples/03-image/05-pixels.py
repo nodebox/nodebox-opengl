@@ -15,7 +15,7 @@ from nodebox.graphics import *
 # - Pixels.update() commits all the changes. You can then pass Pixels to the image() command.
 
 img = Image("creature.png")
-p = pixels(img)
+p = Pixels(img)
 
 def draw(canvas):
     
