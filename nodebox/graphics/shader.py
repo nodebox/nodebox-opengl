@@ -959,7 +959,7 @@ _FBO_STACK = []
 class OffscreenBufferError(Exception):
     pass
 
-class OffscreenBuffer:
+class OffscreenBuffer(object):
     
     def __init__(self, width, height):
         """ "FBO" is an OpenGL extension to do "Render to Texture", drawing in an offscreen buffer.
@@ -970,26 +970,22 @@ class OffscreenBuffer:
         try: glGenFramebuffersEXT(1, byref(self.id))
         except:
             raise OffscreenBufferError, "offscreen buffer not supported."
+        self.texture   = None
         self._viewport = (None, None, None, None) # The canvas bounds, set in OffscreenBuffer.push().
-        self._texture  = None
         self._active   = False
         self._init(width, height)
         #self._init_depthbuffer()
         
     def _init(self, width, height):
-        self._texture = _texture(width, height)  
+        self.texture = _texture(int(width), int(height))  
 
     @property
     def width(self):
-        return self._texture.width
+        return self.texture.width
     
     @property
     def height(self):
-        return self._texture.height
-
-    @property
-    def texture(self):
-        return self._texture
+        return self.texture.height
     
     @property
     def active(self):
@@ -1001,27 +997,27 @@ class OffscreenBuffer:
             so any translate(), rotate() etc. does not affect the onscreen canvas.
         """
         _FBO_STACK.append(self)
-        glBindTexture(self._texture.target, self._texture.id)
+        glBindTexture(self.texture.target, self.texture.id)
         glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, self.id.value)      
         glFramebufferTexture2DEXT(
             GL_FRAMEBUFFER_EXT, 
             GL_COLOR_ATTACHMENT0_EXT, 
-            self._texture.target, 
-            self._texture.id, 
-            self._texture.level
+            self.texture.target, 
+            self.texture.id, 
+            self.texture.level
         )
         # FBO's can fail when not supported by the graphics hardware,
         # or when supplied an image of size 0 or unequal width/height.
         # Check after glBindFramebufferEXT() and glFramebufferTexture2DEXT().
         if glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT:
-            msg = self._texture.width == self._texture.height == 0 and "width=0, height=0." or ""
+            msg = self.texture.width == self.texture.height == 0 and "width=0, height=0." or ""
             raise OffscreenBufferError, msg            
         # Separate the offscreen from the onscreen transform state.
         # Separate the offscreen from the onscreen canvas size.
         self._viewport = glViewport()
         glPushMatrix()
         glLoadIdentity()
-        glViewport(0, 0, self._texture.width, self._texture.height)
+        glViewport(0, 0, self.texture.width, self.texture.height)
         glColor4f(1.0,1.0,1.0,1.0)
         # FBO's work with a simple GL_LINE_SMOOTH anti-aliasing.
         # The instructions on how to enable framebuffer multisampling are pretty clear:
@@ -1069,7 +1065,7 @@ class OffscreenBuffer:
     def slice(self, x, y, width, height):
         """ Returns a portion of the offscreen buffer as an image.
         """
-        return self._texture.get_region(x, y, width, height) 
+        return self.texture.get_region(x, y, width, height) 
     
     def clear(self):
         """ Clears the contents of the offscreen buffer by attaching a new texture to it.
@@ -1120,7 +1116,7 @@ try:
 except OffscreenBufferError:
     _buffer = None
 
-from context import Image
+from context import Image, texture
 
 def filter(img, filter=None, clear=True):
     """ Returns a new Image object with the given filter applied to it.
@@ -1458,7 +1454,19 @@ def mirror(img, dx=0.5, dy=0.5, **kwargs):
     """
     dx, dy, m, i = distortion_mixin(MIRROR, dx, dy, **kwargs)
     return filter(img, filter=Distortion(MIRROR, img, dx-0.5, dy-0.5, m, i))
-    
+
+def dropshadow(img, alpha=0.5, amount=2):
+    """ Returns a blurred and grayscale version of the image.
+        If filters are not supported, returns a grayscale version without blur (using Image.color).
+    """
+    if not SUPPORTED:
+        t = texture(img)
+    else:
+        t = blur(img, kernel=5, amount=amount).texture
+    img = isinstance(img, Image) and img.copy(t) or Image(t)
+    img.color.rgba = (0,0,0, alpha)
+    return img
+
 #--- ONSCREEN FILTERS --------------------------------------------------------------------------------
 # These can be used directly as filter parameter for the image() command.
 # This may be faster because no offscreen buffer is used to render the effect.

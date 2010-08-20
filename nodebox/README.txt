@@ -6,7 +6,7 @@ NodeBox for OpenGL is a Python module for creating 2D interactive visuals using 
 VERSION
 =======
 
-1.0
+1.2
 
 LICENSE
 =======
@@ -18,8 +18,8 @@ REQUIREMENTS
 
 NodeBox for OpenGL is built on the excellent Pyglet module. It works on all platforms if you have Python and Pyglet installed. Note: on Mac OS 10.5, Python is already installed. On Mac OS X 10.6+ (Snow Leopard), you need to install a 32-bit version of Python (Pyglet won't work as expected with the preinstalled 64-bit version).
 
-- Python 2.5+ : an installer can be downloaded from http://www.python.org/download/
-- Pyglet 1.4+ : an installer can be downloaded from http://www.pyglet.org/
+- Python 2.5-6 : an installer can be downloaded from http://www.python.org/download/
+- Pyglet 1.4+  : an installer can be downloaded from http://www.pyglet.org/
 
 Your video hardware needs support for OpenGL 2.0.
 If this is not the case, try updating to a new driver.

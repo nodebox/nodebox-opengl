@@ -13,8 +13,9 @@ from pyglet.text.caret  import Caret
 
 from nodebox.graphics.geometry import distance, clamp, Bounds
 from nodebox.graphics import \
-    Layer, Color, Image, image, crop, line, \
+    Layer, Color, Image, image, crop, \
     Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
+    line, DASHED, DOTTED, \
     DEFAULT, HAND, TEXT, \
     LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE
 
@@ -156,6 +157,13 @@ class Control(Layer):
         if k in self._controls:
             return self._controls[k]
         raise AttributeError, "'%s' object has no attribute '%s'" % (self.__class__.__name__, k)
+        
+    def __repr__(self):
+        return "%s(id=%s%s)" % (
+            self.__class__.__name__,
+            repr(self.id),
+            hasattr(self, "value") and ", value="+repr(self.value) or ""
+        )
 
 #=====================================================================================================
 
@@ -785,16 +793,17 @@ class Field(Editable):
 
 class Rulers(Control):
     
-    def __init__(self, step=10, interval=5, crosshair=False):
+    def __init__(self, step=10, interval=5, crosshair=False, fill=(0,0,0,1)):
         """ A horizontal and vertical ruler displaying the width/height of the parent at intervals.
             A measurement line is drawn at each step(e.g. at 10 20 30...)
             A label with the value is drawn at each interval (e.g. 50 | | | | 100 | | | | 150).
         """
-        Control.__init__(self, x=0, y=0, id=None)
+        Control.__init__(self, x=0, y=0)
         self.enabled   = False
         self.step      = step
         self.interval  = interval
         self.crosshair = crosshair
+        self._fill     = fill
         self._dirty    = False
         self._markers  = {}
         self._pack()
@@ -824,13 +833,13 @@ class Rulers(Control):
             self._dirty = False
             self._set_width(p.width)
             self._set_height(p.height)
-            print max(self.width, self.height) / self._step
             for i in range(int(round(max(self.width, self.height) / self._step))):
                 if i % self._interval == 0:
                     self._markers.setdefault(i*self._step,
                         Text(str(int(round(i*self._step))), 
-                            fontname=theme["fontname"],
-                            fontsize=theme["fontsize"] * 0.6))
+                            fontname = theme["fontname"],
+                            fontsize = theme["fontsize"] * 0.6,
+                                fill = self._fill))
                             
     def update(self):
         self._pack()
@@ -840,19 +849,29 @@ class Rulers(Control):
         # Draw the horizontal ruler.
         for i in range(1, int(round(self.height / self._step))):
             v, mark = i*self._step, i%self.interval==0
-            line(0, v, mark and length*3 or length, v)
+            line(0, v, mark and length*3 or length, v, 
+                     stroke = self._fill, 
+                strokewidth = 0.5)
             if mark:
                 self._markers[v].draw(length*3-self._markers[v].metrics[0], v+2)
         # Draw the vertical ruler.
         for i in range(1, int(round(self.width / self._step))):
             v, mark = i*self._step, i%self.interval==0
-            line(v, 0, v, mark and length*3 or length)
+            line(v, 0, v, mark and length*3 or length, 
+                     stroke = self._fill, 
+                strokewidth = 0.5)
             if mark:
                 self._markers[v].draw(v+2, length*3-self._markers[v].fontsize)
         # Draw the crosshair.
         if self.crosshair:
-            line(0, self.canvas.mouse.y, self.width, self.canvas.mouse.y, strokestyle=DASHED)
-            line(self.canvas.mouse.x, 0, self.canvas.mouse.x, self.height, strokestyle=DASHED)
+            line(0, self.canvas.mouse.y, self.width, self.canvas.mouse.y, 
+                     stroke = self._fill, 
+                strokewidth = 0.5, 
+                strokestyle = DOTTED)
+            line(self.canvas.mouse.x, 0, self.canvas.mouse.x, self.height, 
+                     stroke = self._fill, 
+                strokewidth = 0.5, 
+                strokestyle = DOTTED)
 
 #=====================================================================================================
 
@@ -878,6 +897,9 @@ class Layout(Layer):
         """ Adjusts the position and size of the controls to match the layout.
         """
         pass
+        
+    def __repr__(self):
+        return "Layout(type=%s)" % repr(self.__class__.__name__.lower())
 
 #--- Layout: Rows ------------------------------------------------------------------------------------
 

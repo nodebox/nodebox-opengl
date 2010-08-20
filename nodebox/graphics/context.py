@@ -33,6 +33,11 @@ import geometry
 #import shader
 # Do this when we have defined texture() and image(), which are needed in the shader module.
 
+def find(match=lambda item: False, list=[]):
+    for item in list:
+        if match(item): return item
+    return None
+
 #=====================================================================================================
 
 #--- CACHING -----------------------------------------------------------------------------------------
@@ -376,13 +381,17 @@ def darker(clr, step=0.2):
     """ Returns a copy of the color with a darker brightness.
     """
     h, s, b = rgb_to_hsb(clr.r, clr.g, clr.b)
-    return Color(*hsb_to_rgb(h, s, max(0, b-step), len(clr)==4 and clr[3] or 1))
+    r, g, b = hsb_to_rgb(h, s, max(0, b-step))
+    return Color(r, g, b, len(clr)==4 and clr[3] or 1)
 
 def lighter(clr, step=0.2):
     """ Returns a copy of the color with a lighter brightness.
     """
     h, s, b = rgb_to_hsb(clr.r, clr.g, clr.b)
-    return Color(*hsb_to_rgb(h, s, min(1, b+step), len(clr)==4 and clr[3] or 1))
+    r, g, b = hsb_to_rgb(h, s, min(1, b+step))
+    return Color(r, g, b, len(clr)==4 and clr[3] or 1)
+    
+darken, lighten = darker, lighter
 
 #--- COLOR ROTATION ----------------------------------------------------------------------------------
 
@@ -1299,7 +1308,7 @@ _texture_cache  = {} # pyglet.Texture referenced by filename.
 _texture_cached = {} # pyglet.Texture.id is in keys once the image has been cached.
 def texture(img, data=None):
     """ Returns a (cached) texture from the given image filename or byte data.
-        When a Image or Pixels object is given, return the associated texture.
+        When a Image or Pixels object is given, returns the associated texture.
     """
     # Image texture stored in cache, referenced by file path (or a custom id defined with cache()).
     if isinstance(img, (str, int)) and img in _texture_cache:
@@ -1324,21 +1333,29 @@ def texture(img, data=None):
     if isinstance(data, str):
         return pyglet.image.load(None, file=StringIO(data)).get_texture()
     # Don't know how to handle this image.
-    raise ImageError, "unknown image type: %s" % str(img.__class__)
+    raise ImageError, "unknown image type: %s" % repr(img.__class__)
 
 def cache(id, texture):
-    """ Store the given image in cache, referenced by id (which can then be passed to image()).
+    """ Store the given texture in cache, referenced by id (which can then be passed to image()).
         This is useful for procedurally rendered images (which are not stored in cache by default).
     """
+    if isinstance(texture, (Image, Pixels)):
+        texture = texture.texture
     if not isinstance(texture, pyglet.image.Texture):
-        raise ValueError, "can only cache texture, not %s" % texture.__class__.__name__
+        raise ValueError, "can only cache texture, not %s" % repr(texture.__class__.__name__)
     _texture_cache[id] = texture
-    _texture_cached[_texture_cache[id].id] = True
+    _texture_cached[_texture_cache[id].id] = id
     
 def cached(texture):
-    """ Returns True if the texture has been cached.
+    """ Returns the cache id if the texture has been cached (None otherwise).
     """
-    return texture.id in _texture_cached
+    if isinstance(texture, (Image, Pixels)):
+        texture = texture.texture
+    if isinstance(texture, pyglet.image.Texture):
+        return _texture_cached.get(texture.texture.id)
+    if isinstance(texture, (str, int)):
+        return texture in _texture_cache and texture or None
+    return None
     
 def _render(texture, quad=(0,0,0,0,0,0,0,0)):
     """ Renders the texture on the canvas inside a quadtriliteral (i.e. rectangle).
@@ -1406,9 +1423,9 @@ class Quad(list):
     dx4 = property(_get_dx4, _set_dx4)
     dy4 = property(_get_dy4, _set_dy4)
 
-class Image:
+class Image(object):
     
-    def __init__(self, path, x=0, y=0, width=None, height=None, data=None):
+    def __init__(self, path, x=0, y=0, width=None, height=None, alpha=1.0, data=None):
         """ A texture that can be drawn at a given position.
             The quadrilateral in which the texture is drawn can be distorted (slow, image cache is flushed).
             The image can be resized, colorized and its opacity can be set.
@@ -1421,7 +1438,7 @@ class Image:
         self.width    = width  or self._texture.width  # Scaled width, Image.texture.width yields original width.
         self.height   = height or self._texture.height # Scaled height, Image.texture.height yields original height.
         self.quad     = Quad()
-        self.color    = Color(1.0, 1.0, 1.0, 1.0)
+        self.color    = Color(1.0, 1.0, 1.0, alpha)
     
     def copy(self, texture=None, width=None, height=None):
         img = texture is None \
@@ -1699,6 +1716,10 @@ class Pixels(list):
         
     def copy(self):
         return Pixels(self.texture)
+        
+    def __repr__(self):
+        return "%s(width=%.1f, height=%.1f)" % (
+            self.__class__.__name__, self.width, self.height)
 
 pixels = Pixels
 
@@ -1762,6 +1783,10 @@ class Animation(list):
     def draw(self, *args, **kwargs):
         if not self.done:
             image(self.frame, *args, **kwargs)
+            
+    def __repr__(self):
+        return "%s(frames=%i, duration=%s)" % (
+            self.__class__.__name__, len(self), repr(self.duration))
 
 animation = Animation
 
@@ -2037,7 +2062,7 @@ class Text(object):
         # Called from Text.draw(), Text.copy() and Text.metrics.
         # Ensures that all the color changes have been reflected in Text._label.
         # If necessary, recalculates the label's layout (happens in end_update()).
-        if self._fill and self._fill._dirty:
+        if hasattr(self._fill, "_dirty") and self._fill._dirty:
             self.fill = self._fill
             self._fill._dirty = False
         if self._dirty:
@@ -2306,14 +2331,14 @@ class Prototype(object):
     def _deepcopy(self, value):
         if isinstance(value, FunctionType):
             return instancemethod(value, self)
+        elif hasattr(value, "copy"):
+            return value.copy()
         elif isinstance(value, (list, tuple)):
             return [self._deepcopy(x) for x in value]
         elif isinstance(value, dict):
             return dict([(k, self._deepcopy(v)) for k,v in value.items()])
         elif isinstance(value, (str, unicode, int, long, float, bool)):
             return value
-        elif hasattr(value, "copy"):
-            return value.copy()
         else:
             # Biggest problem here is how to find/relink circular references.
             raise TypeError, "Prototype can't bind %s." % str(value.__class__)
@@ -2423,11 +2448,11 @@ SMOOTH = "smooth"
 class Transition(object):
 
     def __init__(self, value, interpolation=SMOOTH):
-        self._v0 = value # original value
-        self._vi = value # current value
-        self._v1 = value # desired value
-        self._t0 = TIME  # start time
-        self._t1 = TIME  # end time
+        self._v0 = value # Previous value => Transition.start.
+        self._vi = value # Current value  => Transition.current.
+        self._v1 = value # Desired value  => Transition.stop.
+        self._t0 = TIME  # Start time.
+        self._t1 = TIME  # End time.
         self._interpolation = interpolation
     
     def copy(self):
@@ -2441,23 +2466,30 @@ class Transition(object):
         return t
     
     def get(self):
-        return self._v1 # desired value
+        """ Returns the transition stop value.
+        """
+        return self._v1
     def set(self, value, duration=1.0):
+        """ Sets the transition stop value, which will be reached in the given duration (seconds).
+            Calling Transition.update() moves the Transition.current value toward Transition.stop.
+        """
+        if duration == 0:
+            # If no duration is given, Transition.start = Transition.current = Transition.stop.
+            self._vi = value
         self._v1 = value
         self._v0 = self._vi
-        self._t0 = TIME # now
+        self._t0 = TIME # Now.
         self._t1 = TIME + duration
-        
-    value = property(get, set)
 
+    @property
+    def start(self):
+        return self._v0
+    @property
+    def stop(self):
+        return self._v1
     @property 
     def current(self): 
         return self._vi
-    now = current
-    
-    @property
-    def previous(self):
-        return self._v0
     
     @property
     def done(self):
@@ -2473,7 +2505,7 @@ class Transition(object):
             self._vi = self._v1
             return True
         else:
-            # Calculate t, the elapsed time as a number between 0.0 and 1.0.
+            # Calculate t: the elapsed time as a number between 0.0 and 1.0.
             t = (TIME-self._t0) / (self._t1-self._t0)
             if self._interpolation == LINEAR:
                 self._vi = self._v0 + (self._v1-self._v0) * t
@@ -2528,7 +2560,6 @@ class Layer(list, Prototype, EventHandler):
         self.name      = name                  # Layer name. Layers are accessible as ParentLayer.[name]
         self.canvas    = None                  # The canvas this layer is drawn to.
         self.parent    = parent                # The layer this layer is a child of.
-        self.group     = None                  # The group this layer belongs to.
         self._x        = Transition(x)         # Layer horizontal position in pixels, from the left.
         self._y        = Transition(y)         # Layer vertical position in pixels, from the bottom.
         self._width    = Transition(width)     # Layer width in pixels.
@@ -2552,14 +2583,15 @@ class Layer(list, Prototype, EventHandler):
     @classmethod
     def from_image(self, img, *args, **kwargs):
         """ Returns a new layer that renders the given image, and with the same size as the image.
-            The layer has a draw() method and an additional image property.
+            The layer's draw() method and an additional image property are set.
         """
-        img = Image(img, data=kwargs.get("data"))
+        if not isinstance(img, Image):
+            img = Image(img, data=kwargs.get("data"))
         kwargs.setdefault("width", img.width)
         kwargs.setdefault("height", img.height)
         def draw(layer):
             image(layer.image)
-        layer = Layer(*args, **kwargs)
+        layer = self(*args, **kwargs)
         layer.set_method(draw)
         layer.set_property("image", img)
         return layer
@@ -2567,20 +2599,23 @@ class Layer(list, Prototype, EventHandler):
     @classmethod
     def from_function(self, function, *args, **kwargs):
         """ Returns a new layer that renders the drawing commands in the given function.
-            The layer has a draw() method.
+            The layer's draw() method is set.
         """
         def draw(layer):
             function(layer)
-        layer = Layer(*args, **kwargs)
+        layer = self(*args, **kwargs)
         layer.set_method(draw)
         return layer
         
-    def copy(self, parent=None):
+    def copy(self, parent=None, canvas=None):
         """ Returns a copy of the layer.
-            All Layer properties will be copied, except for the new parent which you need to define.
+            All Layer properties will be copied, except for the new parent and canvas,
+            which you need to define as optional parameters.
+            This means that copies are not automatically appended to the parent layer or canvas.
         """
         layer = self.__class__() # Create instance of the derived class, not Layer.
         layer.duration  = 0      # Copy all transitions instantly.
+        layer.canvas    = canvas
         layer.parent    = parent
         layer.name      = self.name
         layer._x        = self._x.copy()
@@ -2596,6 +2631,7 @@ class Layer(list, Prototype, EventHandler):
         layer.duration  = self.duration
         layer.top       = self.top
         layer.flipped   = self.flipped
+        layer.clipped   = self.clipped
         layer.hidden    = self.hidden
         layer.enabled   = self.enabled
         layer.extend([child.copy() for child in self])
@@ -2609,8 +2645,37 @@ class Layer(list, Prototype, EventHandler):
         if key in self.__dict__: 
             return self.__dict__[key]
         for layer in self:
-            if key == layer.name: return layer
-        raise AttributeError, "Layer instance has no attribute '%s'" % key
+            if layer.name == key: 
+                return layer
+        raise AttributeError, "%s instance has no attribute '%s'" % (self.__class__.__name__, key)
+    
+    def _set_container(self, key, value):
+        # If Layer.canvas is set to None, the canvas should no longer contain the layer.
+        # If Layer.canvas is set to Canvas, this canvas should contain the layer.
+        # Remove the layer from the old canvas/parent.
+        # Append the layer to the new container.
+        if self in (self.__dict__.get(key) or ()):
+            self.__dict__[key].remove(self)
+        if isinstance(value, list) and self not in value:
+            list.append(value, self)
+        self.__dict__[key] = value
+        
+    def _get_canvas(self):
+        return self.__dict__.get("canvas")
+    def _get_parent(self):
+        return self.__dict__.get("parent")
+
+    def _set_canvas(self, canvas):
+        self._set_container("canvas", canvas)        
+    def _set_parent(self, layer):
+        self._set_container("parent", layer)
+
+    canvas = property(_get_canvas, _set_canvas)    
+    parent = property(_get_parent, _set_parent)
+
+    @property
+    def root(self):
+        return self.parent and self.parent.root or None
 
     @property
     def layers(self):
@@ -2618,15 +2683,20 @@ class Layer(list, Prototype, EventHandler):
 
     def insert(self, index, layer):
         list.insert(self, index, layer)
-        layer.parent = self
-
+        layer.__dict__["parent"] = self
     def append(self, layer):
         list.append(self, layer)
-        layer.parent = self
-        
+        layer.__dict__["parent"] = self
     def extend(self, layers):
         for layer in layers: 
             self.append(layer)
+    def remove(self, layer):
+        list.remove(self, layer)
+        layer.__dict__["parent"] = None
+    def pop(self, index):
+        layer = list.pop(self, index)
+        layer.__dict__["parent"] = None
+        return layer
         
     def _get_x(self):
         return self._x.get()
@@ -2691,8 +2761,8 @@ class Layer(list, Prototype, EventHandler):
         """
         dx = self._dx.current
         dy = self._dy.current
-        w = self._width.current
-        h = self._height.current
+        w  = self._width.current
+        h  = self._height.current
         # Origin is stored as absolute coordinates and we want it relative.
         if self._origin == ABSOLUTE and relative:
             if w is None: w = 0
@@ -2701,8 +2771,8 @@ class Layer(list, Prototype, EventHandler):
             dy = h!=0 and dy/h or 0
         # Origin is stored as relative coordinates and we want it absolute.
         elif self._origin == RELATIVE and not relative:
-            dx = w!=None and dx*w or 0
-            dy = h!=None and dy*h or 0
+            dx = w is not None and dx*w or 0
+            dy = h is not None and dy*h or 0
         return dx, dy
     
     def _set_origin(self, x, y, relative=False):
@@ -2994,11 +3064,39 @@ class Layer(list, Prototype, EventHandler):
         
     def __eq__(self, other):
         return isinstance(other, Layer) and self._id == other._id
-    
     def __ne__(self, other):
         return not self.__eq__(other)
 
 layer = Layer
+
+#--- GROUP -------------------------------------------------------------------------------------------
+
+class Group(Layer):
+    
+    def __init__(self, *args, **kwargs):
+        """ A layer that serves as a container for other layers.
+            It has no width or height and doesn't draw anything.
+        """
+        Layer.__init__(self, *args, **kwargs)
+        self._set_width(0)
+        self._set_height(0)
+        
+    @classmethod
+    def from_image(*args, **kwargs):
+        raise NotImplementedError
+
+    @classmethod
+    def from_function(*args, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def width(self):
+        return 0
+    @property
+    def height(self):
+        return 0
+
+group = Group
 
 #=====================================================================================================
 
@@ -3043,10 +3141,14 @@ class Mouse(Point):
 
     @property
     def relative_x(self):
-        return float(self.x) / self._canvas.width
+        try: return float(self.x) / self._canvas.width
+        except ZeroDivisionError:
+            return 0
     @property
     def relative_y(self):
-        return float(self.y) / self._canvas.height
+        try: return float(self.y) / self._canvas.height
+        except ZeroDivisionError:
+            return 0
 
     def _get_cursor(self):
         return self._cursor
@@ -3231,19 +3333,19 @@ class Canvas(list, Prototype, EventHandler):
 
     def insert(self, index, layer):
         list.insert(self, index, layer)
-        layer.canvas = self
+        layer.__dict__["canvas"] = self
     def append(self, layer):
         list.append(self, layer)
-        layer.canvas = self
+        layer.__dict__["canvas"] = self
     def extend(self, layers):
         for layer in layers:
             self.append(layer)
     def remove(self, layer):
         list.remove(self, layer)
-        layer.canvas = None
+        layer.__dict__["canvas"] = None
     def pop(self, index):
         layer = list.pop(index)
-        layer.canvas = None
+        layer.__dict__["canvas"] = None
         return layer
         
     def _get_x(self):
@@ -3286,6 +3388,10 @@ class Canvas(list, Prototype, EventHandler):
         self._window.set_fullscreen(mode)
         
     fullscreen = property(_get_fullscreen, _set_fullscreen)
+    
+    @property
+    def screen(self):
+        return pyglet.window.get_platform().get_default_display().get_default_screen()
 
     @property
     def frame(self):
@@ -3521,9 +3627,9 @@ class Canvas(list, Prototype, EventHandler):
         """ Draws the canvas and its layers.
             This method gives the same result each time it gets drawn; only _update() advances state.
         """
+        self._frame += 1
         if self.paused: 
             return
-        self._update()
         glPushMatrix()
         self.draw()
         glPopMatrix()
@@ -3544,7 +3650,6 @@ class Canvas(list, Prototype, EventHandler):
             # This is only done when the canvas is not paused.
             # Events will still be propagated during pause.
             global TIME; TIME = time()
-            self._frame += 1
             self.update()
             for layer in self:
                 layer._update()
@@ -3754,26 +3859,12 @@ import bezier
 
 canvas = Canvas()
 
-def run():
-    canvas.run()
-
 def size(width=None, height=None):
     if width is not None:
         canvas.width = width
     if height is not None:
         canvas.height = height
     return canvas.size
-
-def width():
-    return canvas.width
-
-def height():
-    return canvas.height
-
-def fullscreen(mode=None):
-    if mode is not None:
-        canvas.fullscreen = mode
-    return canvas.fullscreen
 
 def speed(fps=None):
     if fps is not None:
