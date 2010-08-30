@@ -1,8 +1,9 @@
 #=== SHADER ==========================================================================================
 # 2D geometry functions.
 # Authors: Tom De Smedt
-# License: GPL (see LICENSE.txt for details).
+# License: BSD (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# http://cityinabottle.org/nodebox
 
 from math import sqrt, pow
 from math import sin, cos, atan2, degrees, radians, pi

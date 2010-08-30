@@ -1,8 +1,9 @@
 #=== CONTEXT =========================================================================================
 # 2D NodeBox API in OpenGL.
 # Authors: Tom De Smedt, Frederik De Bleser
-# License: GPL (see LICENSE.txt for details).
+# License: BSD (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# http://cityinabottle.org/nodebox
 
 # All graphics are drawn directly to the screen.
 # No scenegraph is kept for obvious performance reasons (therefore, no canvas._grobs as in NodeBox).
@@ -1311,10 +1312,10 @@ def texture(img, data=None):
         When a Image or Pixels object is given, returns the associated texture.
     """
     # Image texture stored in cache, referenced by file path (or a custom id defined with cache()).
-    if isinstance(img, (str, int)) and img in _texture_cache:
+    if isinstance(img, (basestring, int)) and img in _texture_cache:
         return _texture_cache[img]
     # Image file path, load it, cache it, return texture.
-    if isinstance(img, str):
+    if isinstance(img, basestring):
         try: cache(img, pyglet.image.load(img).get_texture())
         except IOError:
             raise ImageError, "can't load image from %s" % repr(img)
@@ -1330,8 +1331,8 @@ def texture(img, data=None):
     if isinstance(img, Pixels):
         return img.texture
     # Image data as byte string, load it, return texture.
-    if isinstance(data, str):
-        return pyglet.image.load(None, file=StringIO(data)).get_texture()
+    if isinstance(data, basestring):
+        return pyglet.image.load("", file=StringIO(data)).get_texture()
     # Don't know how to handle this image.
     raise ImageError, "unknown image type: %s" % repr(img.__class__)
 
@@ -1353,7 +1354,7 @@ def cached(texture):
         texture = texture.texture
     if isinstance(texture, pyglet.image.Texture):
         return _texture_cached.get(texture.texture.id)
-    if isinstance(texture, (str, int)):
+    if isinstance(texture, (basestring, int)):
         return texture in _texture_cache and texture or None
     return None
     
@@ -2634,7 +2635,8 @@ class Layer(list, Prototype, EventHandler):
         layer.clipped   = self.clipped
         layer.hidden    = self.hidden
         layer.enabled   = self.enabled
-        layer.extend([child.copy() for child in self])
+        # Use base Layer.extend(), we don't care about what subclass.extend() does.
+        Layer.extend(layer, [child.copy() for child in self])
         # Inherit all the dynamic properties and methods.
         Prototype.inherit(layer, self)
         return layer
@@ -2688,8 +2690,8 @@ class Layer(list, Prototype, EventHandler):
         list.append(self, layer)
         layer.__dict__["parent"] = self
     def extend(self, layers):
-        for layer in layers: 
-            self.append(layer)
+        for layer in layers:
+            Layer.append(self, layer)
     def remove(self, layer):
         list.remove(self, layer)
         layer.__dict__["parent"] = None
@@ -3660,6 +3662,19 @@ class Canvas(list, Prototype, EventHandler):
             self.on_key_press(self._key)
             for layer in self:
                 layer.on_key_press(self._key)
+                
+    def stop(self):
+        # If you override this method, don't forget to call Canvas.stop() to exit the app.
+        # Any user-defined stop method, added with canvas.set_method() or canvas.run(stop=stop), 
+        # is called first.
+        try: self._user_defined_stop()
+        except:
+            pass
+        for f in (self._update, self._draw):
+            pyglet.clock.unschedule(f)
+        self._window.close()
+        self._active = False
+        pyglet.app.exit()
 
     def clear(self):
         """ Clears the previous frame from the canvas.
@@ -3668,7 +3683,7 @@ class Canvas(list, Prototype, EventHandler):
         glClear(GL_DEPTH_BUFFER_BIT)
         glClear(GL_STENCIL_BUFFER_BIT)
     
-    def run(self, draw=None, setup=None, update=None):
+    def run(self, draw=None, setup=None, update=None, stop=None):
         """ Opens the application windows and starts drawing the canvas.
             Canvas.setup() will be called once during initialization.
             Canvas.draw() and Canvas.update() will be called each frame. 
@@ -3683,14 +3698,11 @@ class Canvas(list, Prototype, EventHandler):
             self.set_method(draw, name="draw")
         if isinstance(update, FunctionType):
             self.set_method(update, name="update")
+        if isinstance(stop, FunctionType):
+            self.set_method(stop, name="stop")
         self._setup()
         self.fps = self._fps # Schedule the _update and _draw events.
         pyglet.app.run()
-
-    def stop(self):
-        self._window.close()
-        self._active = False
-        pyglet.app.exit()
 
     @property
     def active(self):
@@ -3754,7 +3766,7 @@ class Canvas(list, Prototype, EventHandler):
         # Specific methods (setup, draw, mouse and keyboard events) can also be set directly
         # (e.g. canvas.on_mouse_press = my_mouse_handler).
         # This way we don't have to explain set_method() to beginning users..
-        if isinstance(v, FunctionType) and (k in ("setup", "draw", "update") \
+        if isinstance(v, FunctionType) and (k in ("setup", "draw", "update", "stop") \
         or k.startswith("on_") and k in (
             "on_mouse_enter",
             "on_mouse_leave",
@@ -3770,6 +3782,13 @@ class Canvas(list, Prototype, EventHandler):
             self.set_method(v, name=k)
         else:
             object.__setattr__(self, k, v)
+            
+    def set_method(self, function, name=None):
+        if name == "stop" \
+        or name is None and function.__name__ == "stop":
+            Prototype.set_method(self, function, name="_user_defined_stop") # Called from Canvas.stop().
+        else:
+            Prototype.set_method(self, function, name)
             
     def __repr__(self):
         return "Canvas(name='%s', size='%s', layers=%s)" % (self.name, self.size, repr(list(self)))

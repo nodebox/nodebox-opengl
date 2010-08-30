@@ -63,7 +63,7 @@ class Root:
             color=(canvas.mouse.relative_x*0.5+0.5, 1, self.time+0.5, 1))
         pop()
 
-CLR = Color(0.27,0.29,0.16)
+CLR = Color(0.27,0.29,0.36)
 CLR = lighter(CLR, 0.3)
 plant = [Root(200, -50, color=CLR) for i in range(10)]
 
@@ -103,11 +103,11 @@ def draw(canvas):
     
     # It takes some juggling with the contrast of the colors to avoid artefacts.
     colorplane(0, 0, canvas.width, canvas.height, 
-        lighter(color(0.14, 0.13, 0.08)), 
-                color(0.07, 0.06, 0.04), 
-                color(0.14, 0.20, 0.08), 
-                color(0.07, 0.06, 0.04))
-    
+        lighter(color(0.14, 0.13, 0.18)), 
+                color(0.07, 0.06, 0.14), 
+                color(0.14, 0.20, 0.18), 
+                color(0.07, 0.06, 0.14))
+
     global plant
     plant = grow(plant)
     
@@ -141,7 +141,7 @@ def draw(canvas):
         height = canvas.height,
         )#filter = blurred(scale=0.75))
 
-canvas.fps = 30
-#canvas.size = 800, 600
+canvas.fps = 20
+canvas.size = 800, 600
 canvas.fullscreen = True
 canvas.run(draw)

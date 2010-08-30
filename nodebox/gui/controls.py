@@ -1,8 +1,9 @@
 #=== CONTROLS ========================================================================================
 # Native GUI controls.
 # Authors: Tom De Smedt, Frederik De Bleser
-# License: GPL (see LICENSE.txt for details).
+# License: BSD (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# http://cityinabottle.org/nodebox
 
 import os
 from glob import glob

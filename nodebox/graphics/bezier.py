@@ -1,8 +1,9 @@
 #=== BEZIER ==========================================================================================
 # Bezier mathematics.
 # Authors: Tom De Smedt
-# License: GPL (see LICENSE.txt for details).
+# License: BSD (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# http://cityinabottle.org/nodebox
 
 # Thanks to Prof. F. De Smedt at the Vrije Universiteit Brussel.
 

@@ -1,5 +1,6 @@
+#=== CHARACTER GLYPH PATHS ===========================================================================
 # NodeBox for OpenGL has no direct way of accessing glyph path information.
-# This scripts is to be used in the classic NodeBox for Mac OS X.
+# This script is to be used in the classic NodeBox for Mac OS X.
 # It uses the textpath() command to convert characters to paths,
 # and store the paths in a file that can be used by NodeBox for OpenGL as glyph path info.
 

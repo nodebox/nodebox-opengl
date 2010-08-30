@@ -1,8 +1,9 @@
 #=== PHYSICS =========================================================================================
 # 2D physics functions.
 # Authors: Tom De Smedt, Giorgio Olivero (Vector class)
-# License: GPL (see LICENSE.txt for details).
+# License: BSD (see LICENSE.txt for details).
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# http://cityinabottle.org/nodebox
 
 # This module can benefit greatly from loading psyco.
 

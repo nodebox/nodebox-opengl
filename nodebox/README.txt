@@ -69,12 +69,21 @@ Here is a simple NodeBox script:
 
 It imports the nodebox.graphics module with the standard set of drawing commands. It defines a draw() function and attaches it to the canvas, so that it will be drawn each animation frame. It opens the main application window with canvas.run().
 
+DOCUMENTATION
+=============
+
+http://cityinabottle.org/nodebox
+
 ACKNOWLEDGEMENTS
 ================
 
 Authors: 
 - Tom De Smedt (tom@organisms.be)
 - Frederik De Bleser (frederik@burocrazy.com)
+
+Contributing authors:
+- Lieven Menschaert
+- Giorgio Olivero
 
 City In A Bottle:
 - Nicolas Marinus
