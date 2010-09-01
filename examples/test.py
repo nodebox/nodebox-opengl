@@ -4,6 +4,7 @@ import os, sys; sys.path.append(os.path.join(".."))
 from nodebox.graphics import *
 
 def draw(canvas):
+    canvas.clear()
     background(1)
     translate(250, 250)
     rotate(canvas.frame)
