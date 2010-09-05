@@ -1,8 +1,11 @@
 # Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.append(os.path.join("..", ".."))
+import os, sys; sys.path.insert(0, os.path.join("..",".."))
 
 from nodebox.graphics import *
 from nodebox.graphics.physics import Node, Edge, Graph
+
+from random import seed
+seed(2)
 
 # Create a graph with randomly connected nodes.
 # Nodes and edges can be styled with fill, stroke, strokewidth parameters.
@@ -33,9 +36,14 @@ for node in g.nodes:
     if len(node.edges) == 1:
         node.edges[0].length *= 0.1
         
+g.prune(depth=0)          # Remove orphaned nodes with no connections.
 g.distance         = 10   # Overall spacing between nodes.
 g.layout.force     = 0.01 # Strength of the attractive & repulsive force.
 g.layout.repulsion = 15   # Repulsion radius.
+
+print g.nodes[0].id
+for n in g.nodes[0].flatten(10):
+    n.fill = color(1,0,0)
 
 dragged = None
 def draw(canvas):
