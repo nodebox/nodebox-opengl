@@ -4,9 +4,6 @@ import os, sys; sys.path.insert(0, os.path.join("..",".."))
 from nodebox.graphics import *
 from nodebox.graphics.physics import Node, Edge, Graph
 
-from random import seed
-seed(2)
-
 # Create a graph with randomly connected nodes.
 # Nodes and edges can be styled with fill, stroke, strokewidth parameters.
 # Each node displays its id as a text label, stored as a Text object in Node.text.
@@ -16,8 +13,8 @@ g = Graph()
 for i in range(50):
     g.append(Node(id=str(i+1), 
         radius = 5,
-        stroke = color(1,0.5), 
-          text = color(1)))
+        stroke = color(0), 
+          text = color(0)))
 # Random edges.
 for i in range(75):
     node1 = choice(g.nodes)
@@ -25,7 +22,7 @@ for i in range(75):
     g.append(Edge(node1, node2, 
         length = 1.0, 
         weight = random(), 
-        stroke = color(1,0.5)))
+        stroke = color(0)))
 
 # Two handy tricks to prettify the layout:
 # 1) Nodes with a higher weight (i.e. incoming traffic) appear bigger.
@@ -35,20 +32,17 @@ for node in g.nodes:
 for node in g.nodes:
     if len(node.edges) == 1:
         node.edges[0].length *= 0.1
-        
+
 g.prune(depth=0)          # Remove orphaned nodes with no connections.
 g.distance         = 10   # Overall spacing between nodes.
 g.layout.force     = 0.01 # Strength of the attractive & repulsive force.
 g.layout.repulsion = 15   # Repulsion radius.
 
-print g.nodes[0].id
-for n in g.nodes[0].flatten(10):
-    n.fill = color(1,0,0)
-
 dragged = None
 def draw(canvas):
     
-    background(0.26, 0.28, 0.24)
+    canvas.clear()
+    background(1)
     translate(250, 250)
     
     # With weighted=True, Node.centrality is indicated by a shadow under high-traffic nodes.

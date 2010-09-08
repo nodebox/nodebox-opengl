@@ -39,6 +39,9 @@ def find(match=lambda item: False, list=[]):
         if match(item): return item
     return None
 
+# OpenGL version, e.g. "2.0 NVIDIA-1.5.48".
+OPENGL = pyglet.gl.gl_info.get_version()
+
 #=====================================================================================================
 
 #--- CACHING -----------------------------------------------------------------------------------------
@@ -2677,7 +2680,7 @@ class Layer(list, Prototype, EventHandler):
 
     @property
     def root(self):
-        return self.parent and self.parent.root or None
+        return self.parent and self.parent.root or self
 
     @property
     def layers(self):
@@ -3294,7 +3297,6 @@ class Canvas(list, Prototype, EventHandler):
         self._frame                   = 0           # The current frame.
         self._active                  = False       # Application is running?
         self.paused                   = False       # Pause animation?
-        self._buffer                  = None        # Rendered screenshot of the canvas.
         self._mouse                   = Mouse(self) # The mouse cursor location. 
         self._key                     = Key(self)   # The key pressed on the keyboard.
         self._focus                   = None        # The layer being focused by the mouse.
@@ -3339,6 +3341,7 @@ class Canvas(list, Prototype, EventHandler):
     def append(self, layer):
         list.append(self, layer)
         layer.__dict__["canvas"] = self
+        print layer.__class__
     def extend(self, layers):
         for layer in layers:
             self.append(layer)
@@ -3728,30 +3731,17 @@ class Canvas(list, Prototype, EventHandler):
 
     #--- Frame export -----------------------------------
 
-    def render(self, crop=(0,0,0,0)):
+    def render(self):
         """ Returns a screenshot of the current frame as a texture.
             This texture can be passed to the image() command.
         """
-        w = ceil2(self._window.width)
-        h = ceil2(self._window.height)
-        if not self._buffer \
-            or self._buffer.width  < w \
-            or self._buffer.height < h:
-            self._buffer = pyglet.image.Texture.create(w, h)
-        glBindTexture(GL_TEXTURE_2D, self._buffer.id)
-        glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, w, h, 0)
-        return self._buffer.get_region(
-            crop[0], 
-            crop[1], 
-            self._window.width  - crop[0] - crop[2], 
-            self._window.height - crop[1]  -crop[3]
-        )
+        return pyglet.image.get_buffer_manager().get_color_buffer().get_texture()
         
     buffer = screenshot = render
     
     @property
     def texture(self):
-        return self.render()
+        return pyglet.image.get_buffer_manager().get_color_buffer().get_texture()
 
     def save(self, path):
         """ Exports the current frame as a PNG-file.

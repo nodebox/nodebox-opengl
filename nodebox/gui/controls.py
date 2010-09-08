@@ -572,6 +572,9 @@ class Panel(Control):
 
 #--- Editable ----------------------------------------------------------------------------------------
 
+EDITING = None
+editing = lambda: EDITING
+
 class Editable(Control):
     
     def __init__(self, value="", x=0, y=0, width=125, height=30, padding=(0,0), wrap=True, id=None, **kwargs):
@@ -591,13 +594,13 @@ class Editable(Control):
         kwargs["width"]  = width
         kwargs["height"] = height
         Control.__init__(self, x=x, y=y, id=id, **kwargs)
-        self.active   = False # User has clicked in the control, cursor is blinking.
         self._padding = padding
         self._empty   = value == "" and True or False
         self._editor  = IncrementalTextLayout(txt._label.document, width, height, multiline=wrap)
         self._editor.content_valign = wrap and "top" or "center"
         self._editor.caret = Caret(self._editor)
         self._editor.caret.visible = False
+        self._editing = False # When True, cursor is blinking and text can be edited.
         Editable._pack(self) # On init, call Editable._pack(), not the derived Field._pack().
         
     def _pack(self):
@@ -617,6 +620,26 @@ class Editable(Control):
         self._empty = string == "" and True or False
         
     value = property(_get_value, _set_value)
+
+    def _get_editing(self):
+        return self._editing
+    def _set_editing(self, b):
+        self._editing = b
+        self._editor.caret.visible = b
+        global EDITING
+        if b is False and EDITING == self:
+            EDITING = None
+        if b is True:
+            EDITING = self
+            # Cursor is blinking and text can be edited.
+            # Visit all layers on the canvas.
+            # Remove the caret from all other Editable controls.
+            for layer in (self.root.canvas and self.root.canvas.layers or []):
+                layer.traverse(visit=lambda layer: \
+                    isinstance(layer, Editable) and layer != self and \
+                        setattr(layer, "editing", False))
+                        
+    editing = property(_get_editing, _set_editing)
 
     def _get_selection(self):
         # Yields a (start, stop)-tuple with the indices of the current selected text.
@@ -656,9 +679,8 @@ class Editable(Control):
     def on_mouse_press(self, mouse):
         i = self.index(mouse.x, mouse.y)
         self.selection = (i, i)
-        self._editor.caret.visible = True
+        self.editing = True
         self._editor.caret.position = i
-        self.active = True
         Control.on_mouse_press(self, mouse)
         
     def on_mouse_release(self, mouse):
@@ -689,7 +711,7 @@ class Editable(Control):
         self.selection = (a, b)
 
     def on_key_press(self, key):
-        if self.active:
+        if self._editing:
             self._editor.caret.visible = True
             i = self._editor.caret.position
             if   key.code == LEFT:
@@ -710,11 +732,11 @@ class Editable(Control):
             elif key.code == TAB:
                 # The tab key navigates away from the control.
                 self._editor.caret.position = 0
-                self._editor.caret.visible = self.active = False
+                self.editing = False
             elif key.code == ENTER:
                 # The enter key executes on_action() and navigates away from the control.
                 self._editor.caret.position = 0
-                self._editor.caret.visible = self.active = False
+                self.editing = False
                 self.on_action()
             elif key.code == BACKSPACE and self.selected:
                 # The backspace key removes the character at the text cursor.
@@ -779,7 +801,7 @@ class Field(Editable):
         pass
         
     def update(self):
-        self[0].hidden = self.active or self.value != ""
+        self[0].hidden = self.editing or self.value != ""
     
     def draw(self):
         im1, im2, im3 = self.src["cap1"], self.src["cap2"], self.src["face"]

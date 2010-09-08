@@ -14,16 +14,19 @@ from heapq    import heappush, heappop
 from sets     import Set
 from warnings import warn
 
-coordinates = lambda x, y, d, a: (x+cos(radians(a))*d, y+sin(radians(a))*d)
+# float("inf") doesn't work on windows.
+INFINITE = 1e20
 
-# These should be implemented for Vector.draw(), System.draw(), Node.draw() and Edge.draw():
+# These should be implemented for 
+# Vector.draw(), System.draw(), Node.draw() and Edge.draw().
+# We don't import nodebox.graphics so that this module is standalone.
 def line(x1, y1, x2, y2, stroke=(0,0,0,1), strokewidth=1):
     pass
 def ellipse(x, y, width, height, fill=(0,0,0,1), stroke=None, strokewidth=1):
     pass
 def text(str, fontsize=10, fill=(0,0,0,1), draw=True, **kwargs):
     pass
-    
+
 _UID = 0
 def _uid():
     global _UID; _UID+=1; return _UID
@@ -934,6 +937,11 @@ emitter = Emitter
 
 #--- NODE --------------------------------------------------------------------------------------------
 
+def _copy(x):
+    # A color can be represented as a tuple or as a nodebox.graphics.Color object,
+    # in which case it needs to be copied by invoking Color.copy().
+    return hasattr(x, "copy") and x.copy() or x
+
 class Node(object):
     
     def __init__(self, id="", radius=5, **kwargs):
@@ -949,12 +957,13 @@ class Node(object):
         self.force       = Vector(0,0,0)
         self.radius      = radius
         self.fill        = kwargs.get("fill", None)
-        self.stroke      = kwargs.get("stroke", (0,0,0,0.75))
+        self.stroke      = kwargs.get("stroke", (0,0,0,1))
         self.strokewidth = kwargs.get("strokewidth", 1)
         self.text        = kwargs.get("text", True) and \
             text(unicode(id), 
+                   width = 85,
                     fill = kwargs.pop("text", (0,0,0,1)), 
-                fontsize = kwargs.pop("fontsize", 8), draw=False, **kwargs) or None
+                fontsize = kwargs.pop("fontsize", 9), draw=False, **kwargs) or None
         self._weight     = None # Calculated by Graph.eigenvector_centrality().
         self._centrality = None # Calculated by Graph.betweenness_centrality().
     
@@ -990,6 +999,20 @@ class Node(object):
         if self.graph and self._centrality is None:
             self.graph.betweenness_centrality()
         return self._centrality
+        
+    def flatten(self, depth=1, _visited=None):
+        """ Recursively lists the node and nodes linked to it.
+            Depth 0 returns a list with the node.
+            Depth 1 returns a list with the node and all the directly linked nodes.
+            Depth 2 includes the linked nodes' links, and so on.
+        """
+        _visited = _visited or {}
+        _visited[self.id] = (self, depth)
+        if depth >= 1:
+            for n in self.links: 
+                if n.id not in _visited or _visited[n.id][1] < depth-1:
+                    n.flatten(depth-1, _visited)
+        return [n for n,d in _visited.values()] # Fast, but not order-preserving.
     
     def draw(self, weighted=False):
         """ Draws the node as a circle with the given radius, fill, stroke and strokewidth.
@@ -1026,6 +1049,15 @@ class Node(object):
 
     def __eq__(self, node):
         return isinstance(node, Node) and self.id == node.id
+        
+    def copy(self):
+        """ Returns a shallow copy of the node (i.e. linked nodes are not copied).
+        """
+        n = Node(self.id, self.radius, strokewidth=self.strokewidth, text=None,
+              fill = _copy(self.fill),
+            stroke = _copy(self.stroke))
+        if self.text: n.text = self.text.copy()
+        return n
 
 class Links(list):
     
@@ -1041,16 +1073,18 @@ class Links(list):
 
     def remove(self, node):
         list.remove(self, node)
-        self.edges.pop(node.id)
+        self.edges.pop(node.id, None)
 
     def edge(self, node): 
         return self.edges.get(isinstance(node, Node) and node.id or node)
 
 #--- EDGE --------------------------------------------------------------------------------------------
 
+coordinates = lambda x, y, d, a: (x + d*cos(radians(a)), y + d*sin(radians(a)))
+
 class Edge(object):
 
-    def __init__(self, node1, node2, weight=0.0, length=1.0, stroke=(0,0,0,0.75), strokewidth=0.5):
+    def __init__(self, node1, node2, weight=0.0, length=1.0, stroke=(0,0,0,1), strokewidth=1):
         """ A connection between two nodes.
             Its weight indicates the importance (not the cost) of the connection.
         """
@@ -1061,7 +1095,7 @@ class Edge(object):
         self.stroke      = stroke
         self.strokewidth = strokewidth
 
-    def __new__(self, node1, node2, weight=0.0, length=1.0, stroke=(0,0,0,0.75), strokewidth=0.5):
+    def __new__(self, node1, node2, weight=0.0, length=1.0, stroke=(0,0,0,1), strokewidth=1):
         # Creates an Edge instance.
         # If an edge (in the same direction) already exists, yields that edge instead.
         # Synchronizes Node.links:
@@ -1106,14 +1140,25 @@ class Edge(object):
         line(x01, y01, dx1, dy1, **kwargs)
         line(x01, y01, dx2, dy2, **kwargs)
         line(dx1, dy1, dx2, dy2, **kwargs)
+        
+    def copy(self, node1, node2):
+        return Edge(node1, node2, self.weight, self.length, _copy(self.stroke), self.strokewidth)
 
 #--- GRAPH -------------------------------------------------------------------------------------------
+
+def unique(list):
+    u, b = [], {}
+    for item in list: 
+        if item not in b: u.append(item); b[item]=1
+    return u
 
 # Graph layouts:
 SPRING = "spring"
 
 # Graph node sort order:
 WEIGHT, CENTRALITY = "weight", "centrality"
+
+ALL = "all"
 
 class Graph(dict):
     
@@ -1140,6 +1185,22 @@ class Graph(dict):
             if x.node1.id not in self: self.append(x.node1)
             if x.node2.id not in self: self.append(x.node2)
             self.edges.append(x)
+            
+    def remove(self, x):
+        """ Removes the given Node (and all its edges) or Edge from the graph.
+            Note: removing Edge a->b does not remove Edge b->a.
+        """
+        if isinstance(x, Node) and x.id in self:
+            self.pop(x.id)
+            self.nodes.remove(x); x.graph = None
+            # Remove all edges involving the given node.
+            for e in list(self.edges):
+                if x in (e.node1, e.node2):
+                    if x in e.node1.links: e.node1.links.remove(x)
+                    if x in e.node2.links: e.node2.links.remove(x)
+                    self.edges.remove(e)
+        if isinstance(x, Edge):
+            self.edges.remove(x)
     
     def node(self, id):
         """ Returns the node in the graph with the given id.
@@ -1151,32 +1212,36 @@ class Graph(dict):
         """
         return id1 in self and id2 in self and self[id1].links.edge(id2) or None
     
-    def shortest_path(self, id1, id2, heuristic=None, directed=False):
-        """ Returns a list of node id's connecting the two nodes.
+    def shortest_path(self, node1, node2, heuristic=None, directed=False):
+        """ Returns a list of nodes connecting the two nodes.
         """
         try: 
-            return dijkstra_shortest_path(self, id1, id2, heuristic, directed)
+            p = dijkstra_shortest_path(self, node1.id, node2.id, heuristic, directed)
+            p = [self[id] for id in p]
+            return p
         except IndexError:
             return None
 
     def eigenvector_centrality(self, normalized=True, reversed=True, rating={}, iterations=100, tolerance=0.0001):
-        """ Calculates eigenvector centrality and returns an node id => weight dictionary.
+        """ Calculates eigenvector centrality and returns a node => weight dictionary.
             Node.weight is updated in the process.
             Node.weight is higher for nodes with a lot of (indirect) incoming traffic.
         """
         ec = eigenvector_centrality(self, normalized, reversed, rating, iterations, tolerance)
-        for id, w in ec.iteritems(): 
-            self[id]._weight = w
+        ec = dict([(self[id], w) for id, w in ec.items()])
+        for n, w in ec.items(): 
+            n._weight = w
         return ec
             
     def betweenness_centrality(self, normalized=True, directed=False):
-        """ Calculates betweenness centrality and returns a node id => weight dictionary.
+        """ Calculates betweenness centrality and returns a node => weight dictionary.
             Node.centrality is updated in the process.
             Node.centrality is higher for nodes with a lot of passing traffic.
         """
         bc = brandes_betweenness_centrality(self, normalized, directed)
-        for id, w in bc.iteritems(): 
-            self[id]._centrality = w
+        bc = dict([(self[id], w) for id, w in bc.items()])
+        for n, w in bc.items(): 
+            n._centrality = w
         return bc
         
     def sorted(self, order=WEIGHT, threshold=0.0):
@@ -1187,22 +1252,67 @@ class Graph(dict):
         nodes = [(o(n), n) for n in self.nodes if o(n) > threshold]
         nodes = reversed(sorted(nodes))
         return [n for w, n in nodes]
+        
+    def prune(self, depth=0):
+        """ Removes all nodes with less or equal links than depth.
+        """
+        for n in [n for n in self.nodes if len(n.links) <= depth]:
+            self.remove(n)
+            
+    def fringe(self, depth=0):
+        """ For depth=0, returns the list of leaf nodes (nodes with only one connection).
+            For depth=1, returns the list of leaf nodes and their connected nodes, and so on.
+        """
+        u = []; [u.extend(n.flatten(depth) ) for n in self.nodes if len(n.links) == 1]
+        return unique(u)
+        
+    @property
+    def density(self):
+        # Number of edges vs. maximum number of possible edges.
+        # E.g. <0.35 => sparse, >0.65 => dense, 1.0 => complete.
+        return 2.0*len(self.edges) / (len(self.nodes) * (len(self.nodes)-1))
+        
+    def split(self):
+        return partition(self)
     
-    def update(self, iterations=10):
+    def update(self, iterations=10, **kwargs):
+        """ Graph.layout.update() is called the given number of iterations.
+        """
         for i in range(iterations):
-            self.layout.update()
+            self.layout.update(**kwargs)
         
     def draw(self, weighted=False, directed=False):
+        """ Draws all nodes and edges.
+        """
         for e in self.edges: 
             e.draw(weighted, directed)
         for n in self.nodes: 
             n.draw(weighted)
             
     def node_at(self, x, y):
+        """ Returns the node at (x,y) or None.
+        """
         for n in self.nodes:
             if n.contains(x, y): return n
+            
+    def copy(self, nodes=ALL):
+        """ Returns a copy of the graph with the given list of nodes (and connecting edges).
+            The layout will be reset.
+        """
+        g = self.__class__(layout=None, distance=self.distance)
+        g.layout = self.layout.copy(graph=g)
+        for n in (nodes==ALL and self.nodes or nodes):
+            g.append(n.copy(), root=self.root==n)
+        for e in self.edges: 
+            if e.node1.id in g and e.node2.id in g:
+                g.append(e.copy(
+                    node1=g[e.node1.id], 
+                    node2=g[e.node2.id]))
+        return g
 
 #--- GRAPH LAYOUT ------------------------------------------------------------------------------------
+# Graph drawing or graph layout, as a branch of graph theory, 
+# applies topology and geometry to derive two-dimensional representations of graphs.
 
 class GraphLayout:
     
@@ -1216,20 +1326,37 @@ class GraphLayout:
         self.iterations += 1
 
     def reset(self):
+        self.iterations = 0
         for n in self.graph.nodes:
             n._x = 0
             n._y = 0
             n.force = Vector(0,0,0)
+            
+    @property
+    def bounds(self):
+        """ Returns a (x, y, width, height)-tuple of the approximate layout dimensions.
+        """
+        x0, y0 = +INFINITE, +INFINITE
+        x1, y1 = -INFINITE, -INFINITE
+        for n in self.graph.nodes:
+            if (n.x < x0): x0 = n.x
+            if (n.y < y0): y0 = n.y
+            if (n.x > x1): x1 = n.x
+            if (n.y > y1): y1 = n.y
+        return (x0, y0, x1-x0, y1-y0)
+
+    def copy(self, graph):
+        return self.__class__(graph)
 
 class GraphSpringLayout(GraphLayout):
     
     def __init__(self, graph):
         """ A force-based layout in which edges are regarded as springs.
-            The forces are applied to the nodes, pulling them closer together or pushing them further apart.
+            The forces are applied to the nodes, pulling them closer or pushing them apart.
         """
         # Based on: http://snipplr.com/view/1950/graph-javascript-framework-version-001/
         GraphLayout.__init__(self, graph)
-        self.k         = 4    # Force constant.
+        self.k         = 4.0  # Force constant.
         self.force     = 0.01 # Force multiplier.
         self.repulsion = 15   # Maximum repulsive force radius.
 
@@ -1289,8 +1416,27 @@ class GraphSpringLayout(GraphLayout):
 
 #--- GRAPH THEORY ------------------------------------------------------------------------------------
 
+def depth_first_search(node, visit=lambda node: False, traversable=lambda node, edge: True, _visited=None):
+    """ Visits all the nodes connected to the given root node, depth-first.
+        The visit function is called on each node.
+        Recursion will stop if it returns True, and subsequently dfs() will return True.
+        The traversable function takes the current node and edge,
+        and returns True if we are allowed to follow this connection to the next node.
+        For example, the traversable for directed edges is follows:
+         lambda node, edge: node == edge.node1
+    """
+    stop = visit(node)
+    _visited = _visited or {}
+    _visited[node.id] = True
+    for n in node.links:
+        if stop: return True
+        if not traversable(node, node.links.edge(n)): continue
+        if not n.id in _visited:
+            stop = depth_first_search(n, visit, traversable, _visited)
+    return stop
+
 def adjacency(graph, directed=False, reversed=False, stochastic=False, heuristic=None):
-    """ Return a dictionary indexed by node id1's,
+    """ Returns a dictionary indexed by node id1's,
         in which each value is a dictionary of connected node id2's linking to the edge weight.
         If directed=True, edges go from id1 to id2, but not the other way.
         If stochastic=True, all the weights for the neighbors of a given node sum to 1.
@@ -1316,16 +1462,16 @@ def adjacency(graph, directed=False, reversed=False, stochastic=False, heuristic
 
 def dijkstra_shortest_path(graph, id1, id2, heuristic=None, directed=False):
     """ Dijkstra algorithm for finding shortest paths.
-        Connelly Barnes, http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/119466
         Raises an IndexError between nodes on unconnected graphs.
     """
+    # Based on: Connelly Barnes, http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/119466
     def flatten(list):
         # Flattens a linked list of the form [0,[1,[2,[]]]]
         while len(list) > 0:
             yield list[0]; list=list[1]
     G = adjacency(graph, directed=directed, heuristic=heuristic)
-    q = [(0, id1, ())]  # Heap of (cost, path_head, path_rest).
-    visited = Set()     # Visited nodes.
+    q = [(0, id1, ())] # Heap of (cost, path_head, path_rest).
+    visited = Set()    # Visited nodes.
     while True:
         (cost1, n1, path) = heappop(q)
         if n1 not in visited:
@@ -1341,14 +1487,13 @@ def brandes_betweenness_centrality(graph, normalized=True, directed=False):
     """ Betweenness centrality for nodes in the graph.
         Betweenness centrality is a measure of the number of shortests paths that pass through a node.
         Nodes in high-density areas will get a good score.
-        The algorithm is from Ulrik Brandes,
-        A Faster Algorithm for Betweenness Centrality.
-        Journal of Mathematical Sociology 25(2):163-177, 2001.
-        http://www.inf.uni-konstanz.de/algo/publications/b-fabc-01.pdf
-        Based on: NetworkX 1.0.1: Aric Hagberg, Dan Schult and Pieter Swart.
-        Based on: Dijkstra's algorithm for shortest paths modified from Eppstein.
-        http://python-networkx.sourcearchive.com/documentation/1.0.1/centrality_8py-source.html
     """
+    # Ulrik Brandes, A Faster Algorithm for Betweenness Centrality,
+    # Journal of Mathematical Sociology 25(2):163-177, 2001,
+    # http://www.inf.uni-konstanz.de/algo/publications/b-fabc-01.pdf
+    # Based on: Dijkstra's algorithm for shortest paths modified from Eppstein.
+    # Based on: NetworkX 1.0.1: Aric Hagberg, Dan Schult and Pieter Swart.
+    # http://python-networkx.sourcearchive.com/documentation/1.0.1/centrality_8py-source.html
     G = graph.keys()
     W = adjacency(graph, directed=directed)
     betweenness = dict.fromkeys(G, 0.0) # b[v]=0 for v in G
@@ -1400,36 +1545,60 @@ def eigenvector_centrality(graph, normalized=True, reversed=True, rating={}, ite
         Eigenvector centrality is a measure of the importance of a node in a directed network. 
         It rewards nodes with a high potential of (indirectly) connecting to high-scoring nodes.
         Nodes with no incoming connections have a score of zero.
-        If you want to measure outgoing connections, reversed should be False.
-        The eigenvector calculation is done by the power iteration method.
-        It has no guarantee of convergence.
-        You can adjust the importance of a node with the rating dictionary, which links node id's to a score.
-        The algorithm is adapted from NetworkX, Aric Hagberg (hagberg@lanl.gov):
-        http://python-networkx.sourcearchive.com/documentation/1.0.1/centrality_8py-source.html
+        If you want to measure outgoing connections, reversed should be False.        
     """
-    def normalize(x):
-        s = 1.0 / (sum(x.values()) or 1)
-        for k in x: 
-            x[k] *= s
-    G = graph.keys()     
-    W = adjacency (graph, directed=True, reversed=reversed)
-    # Choose a random starting vector.
-    x = dict([(n, random()) for n in G])
-    normalize(x)    
-    # Power method: y = Ax multiplication.
+    # Based on: NetworkX, Aric Hagberg (hagberg@lanl.gov)
+    # http://python-networkx.sourcearchive.com/documentation/1.0.1/centrality_8py-source.html
+    def normalize(vector):
+        w = 1.0 / (sum(vector.values()) or 1)
+        for node in vector: 
+            vector[node] *= w
+        return vector
+    G = adjacency(graph, directed=True, reversed=reversed)
+    v = normalize(dict([(n, random()) for n in graph])) # Node ID => weight vector.
+    # Eigenvector calculation using the power iteration method: y = Ax.
+    # It has no guarantee of convergence.
     for i in range(iterations):
-        x0 = x
-        x = dict.fromkeys(x0.keys(), 0)
-        for n in x:
-            for nbr in W[n]:
-                x[n] += 0.01 + x0[nbr] * W[n][nbr] * rating.get(n, 1)
-        normalize(x)
-        # Check for convergence.
-        err = sum([abs(x[n]-x0[n]) for n in x])
-        if err < len(graph.nodes) * tolerance:
+        v0 = v
+        v  = dict.fromkeys(v0.keys(), 0)
+        for n1 in v:
+            for n2 in G[n1]:
+                v[n1] += 0.01 + v0[n2] * G[n1][n2] * rating.get(n1, 1)
+        normalize(v)
+        e = sum([abs(v[n]-v0[n]) for n in v]) # Check for convergence.
+        if e < len(G) * tolerance:
             if normalized:
                 # Normalize between 0.0 and 1.0.
-                x = dict([(id, w / (max(x.values()) or 1)) for id, w in x.iteritems()])
-            return x
+                m = max(v.values()) or 1
+                v = dict([(id, w/m) for id, w in v.items()])
+            return v
     warn("node weight is 0 because eigenvector_centrality() did not converge.", Warning)
     return dict([(n, 0) for n in G])
+
+# a & b => elements that appear in a as well as in b.
+# a | b => all elements from a and all the elements from b. 
+# a - b => elements that appear in a but not in b.
+def intersection(a, b):
+    return [x for x in a if x in b]
+def union(a, b):
+    return [x for x in a] + [x for x in b if x not in a]
+def difference(a, b):
+    return [x for x in a if x not in b]
+
+def partition(graph):
+    """ Returns a list of unconnected subgraphs.
+    """
+    # Creates clusters of nodes and directly connected nodes.
+    # Iteratively merges two clusters if they overlap.
+    # Optimized: about 2x faster than original implementation.
+    g = []
+    for n in graph.nodes:
+        g.append(dict.fromkeys([n.id for n in n.flatten()], True))
+    for i in reversed(range(len(g))):
+        for j in reversed(range(i+1, len(g))):
+            if g[i] and g[j] and len(intersection(g[i], g[j])) > 0:
+                g[i] = union(g[i], g[j])
+                g[j] = []
+    g = [graph.copy(nodes=[graph[id] for id in g]) for g in g]
+    g.sort(lambda a, b: len(b) - len(a))
+    return g
