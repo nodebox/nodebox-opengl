@@ -3341,7 +3341,6 @@ class Canvas(list, Prototype, EventHandler):
     def append(self, layer):
         list.append(self, layer)
         layer.__dict__["canvas"] = self
-        print layer.__class__
     def extend(self, layers):
         for layer in layers:
             self.append(layer)
