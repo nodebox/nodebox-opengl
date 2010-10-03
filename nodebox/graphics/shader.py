@@ -5,9 +5,10 @@
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 # http://cityinabottle.org/nodebox
 
-from pyglet.gl import *
-from geometry  import lerp
-from math      import radians
+from pyglet.image import Texture, SolidColorImagePattern
+from pyglet.gl    import *
+from geometry     import lerp
+from math         import radians
 
 #=====================================================================================================
 
@@ -933,9 +934,9 @@ def _uid():
     
 def _texture(width, height):
     # Returns an empty texture of the given width and height.
-    return pyglet.image.Texture.create(width, height)
+    return Texture.create(width, height)
 
-def glViewport(x=None, y=None, width=None, height=None):
+def glCurrentViewport(x=None, y=None, width=None, height=None):
     """ Returns a (x, y, width, height)-tuple with the current viewport bounds.
         If x, y, width and height are given, set the viewport bounds.
     """
@@ -943,7 +944,7 @@ def glViewport(x=None, y=None, width=None, height=None):
     # The canvas could be 256x256 while an offscreen buffer could be 1024x1024.
     # Without switching the viewport, information from the buffer would be lost.
     if x is not None and y is not None and width is not None and height is not None:
-        gl.glViewport(x, y, width, height)
+        glViewport(x, y, width, height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(x, width, y, height, -1, 1)
@@ -1015,10 +1016,10 @@ class OffscreenBuffer(object):
             raise OffscreenBufferError, msg            
         # Separate the offscreen from the onscreen transform state.
         # Separate the offscreen from the onscreen canvas size.
-        self._viewport = glViewport()
+        self._viewport = glCurrentViewport()
         glPushMatrix()
         glLoadIdentity()
-        glViewport(0, 0, self.texture.width, self.texture.height)
+        glCurrentViewport(0, 0, self.texture.width, self.texture.height)
         glColor4f(1.0,1.0,1.0,1.0)
         # FBO's work with a simple GL_LINE_SMOOTH anti-aliasing.
         # The instructions on how to enable framebuffer multisampling are pretty clear:
@@ -1044,7 +1045,7 @@ class OffscreenBuffer(object):
         # Switch to onscreen canvas.
         # Reset to the normal blending mode.
         _FBO_STACK.pop(-1)
-        glViewport(*self._viewport)
+        glCurrentViewport(*self._viewport)
         glPopMatrix()
         glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, _FBO_STACK and _FBO_STACK[-1].id or 0)
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
@@ -1203,7 +1204,7 @@ def solid(width, height, fill=(0,0,0,0)):
     """ Generates an image filled with a solid color.
     """
     clr = tuple([int(v*255) for v in fill])
-    return Image(pyglet.image.SolidColorImagePattern(clr).create_image(width, height).get_texture())
+    return Image(SolidColorImagePattern(clr).create_image(width, height).get_texture())
 
 def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     """ Generates a gradient image and returns it.
