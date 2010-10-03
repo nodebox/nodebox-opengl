@@ -128,14 +128,14 @@ static PyMethodDef geometry_methods[]={
     { NULL, NULL }
 };
 
-PyMODINIT_FUNC initgeometry_math(void){
+PyMODINIT_FUNC initgeometry(void){
     PyObject *m;
-    m = Py_InitModule("geometry_math", geometry_methods);
+    m = Py_InitModule("geometry", geometry_methods);
 }
 
 int main(int argc, char *argv[]) {
     Py_SetProgramName(argv[0]);
     Py_Initialize();
-    initgeometry_math();
+    initgeometry();
     return 0;
 }

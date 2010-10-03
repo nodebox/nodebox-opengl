@@ -88,7 +88,7 @@ def curvelength(x0, y0, x1, y1, x2, y2, x3, y3, n=20):
     return length
 
 # Fast C implementations:
-try: from nodebox.ext.bezier_math import linepoint, linelength, curvepoint, curvelength
+try: from nodebox.ext.bezier import linepoint, linelength, curvepoint, curvelength
 except:
     pass
 

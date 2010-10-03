@@ -2813,7 +2813,14 @@ class Layer(list, Prototype, EventHandler):
         self._set_origin(xy[0], xy[1], relative=False)
         
     absolute_origin = property(_get_absolute_origin, _set_absolute_origin)
-    
+
+    def _get_visible(self):
+        return not self.hidden
+    def _set_visible(self, b):
+        self.hidden = not b
+        
+    visible = property(_get_visible, _set_visible)
+
     @property
     def bounds(self):
         return geometry.Bounds(self.x, self.y, self.width, self.height)
@@ -3881,3 +3888,6 @@ def speed(fps=None):
 
 def frame():
     return canvas.frame
+    
+def clear():
+    canvas.clear()

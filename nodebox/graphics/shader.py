@@ -1067,22 +1067,25 @@ class OffscreenBuffer(object):
         """ Returns a portion of the offscreen buffer as an image.
         """
         return self.texture.get_region(x, y, width, height) 
-    
-    def clear(self):
-        """ Clears the contents of the offscreen buffer by attaching a new texture to it.
-            If you do not explicitly clear the buffer, the content from previous drawing
+
+    def reset(self, width=None, height=None):
+        """ Resizes the offscreen buffer by attaching a new texture to it.
+            This will destroy the contents of the previous buffer.
+            If you do not explicitly reset the buffer, the contents from previous drawing
             between OffscreenBuffer.push() and OffscreenBuffer.pop() is retained.
         """
         if self._active:
-            raise OffscreenBufferError, "can't clear offscreen buffer when active"
-        self._init(self.width, self.height)
-
-    def resize(self, width, height):
-        """ Resizes the offscreen buffer by attaching a new texture to it.
-        """
-        if self._active:
-            raise OffscreenBufferError, "can't resize offscreen buffer when active"
-        self._init(width, height) 
+            raise OffscreenBufferError, "can't reset offscreen buffer when active"
+        if width is None:
+            width = self.width
+        if height is None:
+            height = self.height
+        self._init(width, height)
+        
+    def clear(self):
+        glClear(GL_COLOR_BUFFER_BIT)
+        glClear(GL_DEPTH_BUFFER_BIT)
+        glClear(GL_STENCIL_BUFFER_BIT)
 
     def _init_depthbuffer(self):
         self._depthbuffer = c_uint(_uid())
@@ -1134,7 +1137,7 @@ def filter(img, filter=None, clear=True):
         buffer = OffscreenBuffer(img.texture.width, img.texture.height)
     elif clear:
         buffer = _buffer
-        buffer.resize(img.texture.width, img.texture.height)
+        buffer.reset(img.texture.width, img.texture.height)
     else:
         buffer = _buffer
     buffer.push()
@@ -1180,7 +1183,7 @@ def render(function, width, height, clear=True, **kwargs):
         buffer = OffscreenBuffer(width, height)
     elif clear:
         buffer = _buffer
-        buffer.resize(width, height)
+        buffer.reset(width, height)
     else:
         buffer = _buffer
     buffer.push()
@@ -1222,7 +1225,7 @@ def gradient(width, height, clr1=(0,0,0,1), clr2=(1,1,1,1), type=LINEAR):
     # If the given dimensions are not power of 2,
     # scale down the gradient to the given dimensions.
     if width != img.width or height != img.height:
-        buffer.resize(width, height)
+        buffer.reset(width, height)
         buffer.push()
         img.width  = width
         img.height = height

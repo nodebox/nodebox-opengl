@@ -151,10 +151,10 @@ static PyMethodDef bezier_methods[] = {
 };
 
 PyMODINIT_FUNC
-initbezier_math(void) {
+initbezier(void) {
     PyObject *m;
-    m = Py_InitModule("bezier_math", bezier_methods);
-    BezierMathError = PyErr_NewException("bezier_math.error", NULL, NULL);
+    m = Py_InitModule("bezier", bezier_methods);
+    BezierMathError = PyErr_NewException("bezier.error", NULL, NULL);
     Py_INCREF(BezierMathError);
     PyModule_AddObject(m, "error", BezierMathError);
 }
@@ -162,6 +162,6 @@ initbezier_math(void) {
 int main(int argc, char *argv[]) {
     Py_SetProgramName(argv[0]);
     Py_Initialize();
-    initbezier_math();
+    initbezier();
     return 0;
 }
