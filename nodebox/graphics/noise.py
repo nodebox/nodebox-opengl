@@ -28,7 +28,7 @@ class PerlinNoise:
         return u + v
     
     def generate(self, x, y=0, z=0):
-        """ Returns a smooth value between 0.0 and 1.0.
+        """ Returns a smooth value between -1.0 and 1.0.
             The x, y, z parameters determine the coordinates in the noise landscape. 
             Since the landscape is infinite, the actual value of a coordinate doesn't matter, 
             only the distance between successive steps. 
