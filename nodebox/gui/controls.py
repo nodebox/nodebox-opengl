@@ -595,13 +595,14 @@ class Editable(Control):
         kwargs["height"] = height
         Control.__init__(self, x=x, y=y, id=id, **kwargs)
         self._padding = padding
+        self._i       = 0     # Index of character on which the mouse is pressed.
         self._empty   = value == "" and True or False
         self._editor  = IncrementalTextLayout(txt._label.document, width, height, multiline=wrap)
         self._editor.content_valign = wrap and "top" or "center"
         self._editor.caret = Caret(self._editor)
         self._editor.caret.visible = False
         self._editing = False # When True, cursor is blinking and text can be edited.
-        Editable._pack(self) # On init, call Editable._pack(), not the derived Field._pack().
+        Editable._pack(self)  # On init, call Editable._pack(), not the derived Field._pack().
         
     def _pack(self):
         self._editor.x = self._padding[0]
@@ -641,16 +642,11 @@ class Editable(Control):
                         
     editing = property(_get_editing, _set_editing)
 
-    def _get_selection(self):
+    @property
+    def selection(self):
         # Yields a (start, stop)-tuple with the indices of the current selected text.
-        i = self._editor.selection_start
-        j = self._editor.selection_end
-        return min(i,j), max(i,j)
-    def _set_selection(self, (i,j)):
-        self._editor.selection_start = max(min(i, j), 0)
-        self._editor.selection_end   = min(max(i, j), len(self.value))
-        
-    selection = property(_get_selection, _set_selection)
+        return (self._editor.selection_start,
+                self._editor.selection_end)
     
     @property
     def selected(self):
@@ -677,8 +673,8 @@ class Editable(Control):
         mouse.cursor = TEXT
         
     def on_mouse_press(self, mouse):
-        i = self.index(mouse.x, mouse.y)
-        self.selection = (i, i)
+        i = self._i = self.index(mouse.x, mouse.y)
+        self._editor.set_selection(0, 0)
         self.editing = True
         self._editor.caret.position = i
         Control.on_mouse_press(self, mouse)
@@ -690,8 +686,8 @@ class Editable(Control):
         
     def on_mouse_drag(self, mouse):
         i = self.index(mouse.x, mouse.y)
-        s = self.selection
-        self.selection = i > s[0] and (s[0], i) or (i, s[1])
+        self._editor.selection_start = max(min(self._i, i), 0)
+        self._editor.selection_end   = min(max(self._i, i), len(self.value))
         self._editor.caret.visible = False
         Control.on_mouse_drag(self, mouse)
 
@@ -701,14 +697,14 @@ class Editable(Control):
         i = self.index(mouse.x, mouse.y)
         delimiter = lambda ch: not (ch.isalpha() or ch.isdigit())
         if i  < len(self.value) and delimiter(self.value[i]):
-            self.selection = (i, i+1); return
+            self._editor.set_selection(i, i+1)
         if i == len(self.value) and self.value != "" and delimiter(self.value[i-1]):
-            self.selection = (i-1, i); return
+            self._editor.set_selection(i-1, i)
         a = find(lambda (i,ch): delimiter(ch), enumerate(reversed(self.value[:i])))
         b = find(lambda (i,ch): delimiter(ch), enumerate(self.value[i:]))
         a = a and i-a[0] or 0
         b = b and i+b[0] or len(self.value)
-        self.selection = (a, b)
+        self._editor.set_selection(a, b)
 
     def on_key_press(self, key):
         if self._editing:
@@ -747,10 +743,14 @@ class Editable(Control):
                 self.value = self.value[:i-1] + self.value[i:]
                 self._editor.caret.position = max(i-1, 0)
             elif key.char:
+                if self.selected:
+                    # Typing replaces any text currently selected.
+                    self.value = self.value[:self.selection[0]] + self.value[self.selection[1]:]
+                    self._editor.caret.position = i = max(self.selection[0], 0)
                 # Character input is inserted at the text cursor.
                 self.value = self.value[:i] + key.char + self.value[i:]
                 self._editor.caret.position = min(i+1, len(self.value))
-            self.selection = (0,0)
+            self._editor.set_selection(0, 0)
     
     def draw(self):
         self._editor.draw()

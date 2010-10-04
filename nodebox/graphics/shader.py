@@ -744,14 +744,15 @@ class AlphaMask(Compositing):
 # Based on "Photoshop math with GLSL shaders" (2009), Romain Dura,
 # http://blog.mouaif.org/?p=94
 
-ADD      = "add"      # Pixels are added.
-SUBTRACT = "subtract" # Pixels are subtracted.
-LIGHTEN  = "lighten"  # Lightest value for each pixel.
-DARKEN   = "darken"   # Darkest value for each pixel.
-MULTIPLY = "multiply" # Pixels are multiplied, resulting in a darker image.
-SCREEN   = "screen"   # Pixels are inverted/multiplied/inverted, resulting in a brighter picture.
-OVERLAY  = "overlay"  # Combines multiply and screen: light parts become ligher, dark parts darker.
-HUE      = "hue"      # Hue from the blend image, brightness and saturation from the base image.
+ADD       = "add"       # Pixels are added.
+SUBTRACT  = "subtract"  # Pixels are subtracted.
+LIGHTEN   = "lighten"   # Lightest value for each pixel.
+DARKEN    = "darken"    # Darkest value for each pixel.
+MULTIPLY  = "multiply"  # Pixels are multiplied, resulting in a darker image.
+SCREEN    = "screen"    # Pixels are inverted/multiplied/inverted, resulting in a brighter picture.
+OVERLAY   = "overlay"   # Combines multiply and screen: light parts become ligher, dark parts darker.
+HARDLIGHT = "hardlight" # Same as overlay, but uses the blend instead of base image for luminance.
+HUE       = "hue"       # Hue from the blend image, brightness and saturation from the base image.
 
 # If the blend is opaque (alpha=1.0), swap base and blend.
 # This way lighten, darken, multiply and screen appear the same as in Photoshop and Core Image.
@@ -781,6 +782,7 @@ _blend[OVERLAY]  = '''
     vec4 b = vec4(w - 2.0 * (w - p1.rgb) * (w - p2.rgb), 1.0);
     p = (L < 0.45)? a : (L > 0.55)? b : vec4(mix(a.rgb, b.rgb, (L - 0.45) * 10.0), 1.0);
 '''
+_blend[HARDLIGHT] = _blend[OVERLAY].replace("dot(p1", "dot(p2")
 _blend[HUE] = '''
     vec3 h1 = rgb2hsb(p1.rgb);
     vec3 h2 = rgb2hsb(p2.rgb);
@@ -1159,7 +1161,7 @@ def filter(img, filter=None, clear=True):
 class RenderedImage(Image):
     
     def draw(self, *args, **kwargs):
-        # Textures rendered in the FBO look slightly washed-out.
+        # Textures rendered in the FBO look slightly washed out.
         # The render() command yields a RenderedImage object,
         # which draw() method uses a blending trick to correct the colors:
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
@@ -1309,7 +1311,7 @@ def blend(img1, img2, mode=OVERLAY, alpha=1.0, dx=0, dy=0):
         - dx: horizontal offset (in pixels) of the blend layer.
         - dy: vertical offset (in pixels) of the blend layer.
     """
-    return filter(img1, Blend(OVERLAY, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(mode, img1, _q(img2).texture, alpha, dx, dy))
 
 def add(img1, img2, alpha=1.0, dx=0, dy=0):
     return filter(img1, Blend(ADD, img1, _q(img2).texture, alpha, dx, dy))
@@ -1331,6 +1333,9 @@ def screen(img1, img2, alpha=1.0, dx=0, dy=0):
     
 def overlay(img1, img2, alpha=1.0, dx=0, dy=0):
     return filter(img1, Blend(OVERLAY, img1, _q(img2).texture, alpha, dx, dy))
+
+def hardlight(img1, img2, alpha=1.0, dx=0, dy=0):
+    return filter(img1, Blend(HARDLIGHT, img1, _q(img2).texture, alpha, dx, dy))
     
 def hue(img1, img2, alpha=1.0, dx=0, dy=0):
     return filter(img1, Blend(HUE, img1, _q(img2).texture, alpha, dx, dy))
