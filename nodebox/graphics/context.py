@@ -2473,6 +2473,7 @@ class Transition(object):
         """ Returns the transition stop value.
         """
         return self._v1
+        
     def set(self, value, duration=1.0):
         """ Sets the transition stop value, which will be reached in the given duration (seconds).
             Calling Transition.update() moves the Transition.current value toward Transition.stop.
@@ -2531,6 +2532,9 @@ def _uid():
 RELATIVE = "relative" # Origin point is stored as float, e.g. (0.5, 0.5).
 ABSOLUTE = "absolute" # Origin point is stored as int, e.g. (100, 100).
 
+class LayerRenderError(Exception):
+    pass
+
 # When Layer.clipped=True, children are clipped to the bounds of the layer.
 # The layer clipping masks lazily changes size with the layer.
 class LayerClippingMask(ClippingMask):
@@ -2579,7 +2583,6 @@ class Layer(list, Prototype, EventHandler):
         self.flipped   = False                 # Flip the layer horizontally?
         self.clipped   = False                 # Clip child layers to bounds?
         self.hidden    = False                 # Hide the layer?
-        self._transform_state = 0              # Transformation matrix version ID.
         self._transform_cache = None           # Cache of the local transformation matrix.
         self._transform_stack = None           # Cache of the cumulative transformation matrix.
         self._clipping_mask   = LayerClippingMask(self)
@@ -2617,8 +2620,8 @@ class Layer(list, Prototype, EventHandler):
             which you need to define as optional parameters.
             This means that copies are not automatically appended to the parent layer or canvas.
         """
-        layer = self.__class__() # Create instance of the derived class, not Layer.
-        layer.duration  = 0      # Copy all transitions instantly.
+        layer           = self.__class__() # Create instance of the derived class, not Layer.
+        layer.duration  = 0                # Copy all transitions instantly.
         layer.canvas    = canvas
         layer.parent    = parent
         layer.name      = self.name
@@ -2820,10 +2823,6 @@ class Layer(list, Prototype, EventHandler):
         self.hidden = not b
         
     visible = property(_get_visible, _set_visible)
-
-    @property
-    def bounds(self):
-        return geometry.Bounds(self.x, self.y, self.width, self.height)
     
     def translate(self, x, y):
         self.x += x
@@ -2918,6 +2917,15 @@ class Layer(list, Prototype, EventHandler):
             At this point, the layer is correctly transformed.
         """
         pass
+        
+    def render(self):
+        """ Returns the layer as a flattened image.
+            The layer and all of its children need to have width and height set.
+        """
+        b = self.bounds
+        if geometry.INFINITE in (b.x, b.y, b.width, b.height):
+            raise LayerRenderError, "can't render layer of infinite size"
+        return render(lambda: (translate(-b.x,-b.y), self._draw()), b.width, b.height)
             
     def layer_at(self, x, y, clipped=False, enabled=False, transformed=True, _covered=False):
         """ Returns the topmost layer containing the mouse position, None otherwise.
@@ -2940,7 +2948,8 @@ class Layer(list, Prototype, EventHandler):
             # we only need to look at children on top of the layer.
             # Each child is drawn on top of the previous child,
             # so we hit test them in reverse order (highest-first).
-            if not hit: return None
+            if not hit: 
+                return None
             children = [layer for layer in reversed(self) if layer.top is True]
         else:
             # Otherwise, traverse all children in on-top-first order to avoid
@@ -2955,27 +2964,13 @@ class Layer(list, Prototype, EventHandler):
             _covered = _covered or (hit and not child.top)
             child = child.layer_at(x, y, clipped, enabled, transformed, _covered)
             if child is not None:
+                # Note: "if child:" won't work because it can be an empty list (no children). 
+                # Should be improved by not having Layer inherit from list.
                 return child
         if hit:
             return self
         else:
             return None
-
-    def _transform_is_outdated(self):
-        """ Returns True when the cumulative transformation matrix needs to be recalculated.
-            This happens when the local transform state changes, or when the transform state
-            of any parent layer changes.
-        """
-        dated = False
-        state = self._transform_state # integer version ID
-        layer = self.parent
-        while layer is not None:
-            dated = layer._transform_state > state
-            state = layer._transform_state
-            layer = layer.parent
-            if dated:
-                break
-        return dated
         
     def _transform(self, local=True):
         """ Returns the transformation matrix of the layer:
@@ -2995,52 +2990,58 @@ class Layer(list, Prototype, EventHandler):
             tf.rotate(self._rotation.current)
             tf.scale(self._scale.current, self._scale.current)
             tf.translate(-round(dx), -round(dy))
-            self._transform_state += 1            
             self._transform_cache = tf
-            self._transform_stack = None
-        if local:
-            # Return the local transformation matrix.
-            # If it didn't exist we have just cached it.
-            return self._transform_cache
-        else:
+            # Flush the cumulative transformation cache of all children.
+            def _flush(layer):
+                layer._transform_stack = None
+            self.traverse(_flush)
+        if not local:
             # Return the cumulative transformation matrix.
-            # All of the parents' transformation states need to be up to date.
-            # If not, we have to recalculate the whole chain.
-            if self._transform_stack is None \
-            or self._transform_is_outdated():
-                self._transform_stack = self._transform_cache.copy()
-                if self.parent is not None:
+            # All of the parent transformation states need to be up to date.
+            # If not, we need to recalculate the whole chain.
+            if self._transform_stack is None:
+                if self.parent is None:
+                    self._transform_stack = self._transform_cache.copy()
+                else:
                     # Accumulate all the parent layer transformations.
                     # In the process, we update the transformation state of any outdated parent.
                     dx, dy = self.parent.origin(relative=False)
+                    # Layers are drawn relative from parent origin.
                     tf = self.parent._transform(local=False).copy()
-                    tf.translate(round(dx), round(dy)) # Layers are drawn relative from parent origin.
-                    self._transform_stack.prepend(tf)  # Prepend all parent transformations.
-                    self._transform_state += 1
-                    layer = self.parent
-                    while layer is not None:
-                        layer._transform_state = self._transform_state
-                        layer = layer.parent                 
+                    tf.translate(round(dx), round(dy))
+                    self._transform_stack = self._transform_cache.copy()
+                    self._transform_stack.prepend(tf)          
             return self._transform_stack
-    
+        return self._transform_cache
+
     @property
     def transform(self):
         return self._transform(local=False)
-    
-    def absolute_position(self, root=None):
-        """ Returns the absolute (x,y) position (i.e. cumulative with parent position).
+
+    def _bounds(self, local=True):
+        """ Returns the rectangle that encompasses the transformed layer and its children.
+            If one of the children has width=None or height=None, bounds will be infinite.
         """
-        x = 0
-        y = 0
-        layer = self
-        while layer is not None and layer != root:
-            x += layer.x
-            y += layer.y
-            layer = layer.parent
-        return x, y
-    
+        w = self._width.current; w = w is None and geometry.INFINITE or w
+        h = self._height.current; h = h is None and geometry.INFINITE or h
+        # Find the transformed bounds of the layer:
+        p = self.transform.map([(0,0), (w,0), (w,h), (0,h)])
+        x = min(p[0][0], p[1][0], p[2][0], p[3][0])
+        y = min(p[0][1], p[1][1], p[2][1], p[3][1])
+        w = max(p[0][0], p[1][0], p[2][0], p[3][0]) - x
+        h = max(p[0][1], p[1][1], p[2][1], p[3][1]) - y
+        b = geometry.Bounds(x, y, w, h)
+        if not local:
+            for child in self: 
+                b = b.union(child.bounds)
+        return b
+
+    @property
+    def bounds(self):
+        return self._bounds(local=False)
+
     def contains(self, x, y, transformed=True):
-        """ Returns True if (x,y) falls within the bounds of the layer.
+        """ Returns True if (x,y) falls within the layer's rectangular area.
             Useful for GUI elements: with transformed=False the calculations are much faster;
             and it will report correctly as long as the layer (or parent layer)
             is not rotated or scaled, and has its origin at (0,0).
@@ -3057,6 +3058,18 @@ class Layer(list, Prototype, EventHandler):
         
     hit_test = contains
 
+    def absolute_position(self, root=None):
+        """ Returns the absolute (x,y) position (i.e. cumulative with parent position).
+        """
+        x = 0
+        y = 0
+        layer = self
+        while layer is not None and layer != root:
+            x += layer.x
+            y += layer.y
+            layer = layer.parent
+        return x, y
+    
     def traverse(self, visit=lambda layer: None):
         """ Recurses the layer structure and calls visit() on each child layer.
         """
@@ -3107,6 +3120,13 @@ class Group(Layer):
     @property
     def height(self):
         return 0
+        
+    def layer_at(self, x, y, clipped=False, enabled=False, transformed=True, _covered=False):
+        # Ignores clipped=True for Group (since it has no width or height).
+        for child in reversed(self):
+            layer = child.layer_at(x, y, clipped, enabled, transformed, _covered)
+            if layer:
+                return layer
 
 group = Group
 

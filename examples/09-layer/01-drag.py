@@ -67,6 +67,11 @@ r4 = DraggableRect(x=100, y=100, width=100, height=100, origin=(0.5,0.5), name="
 r4.clr = color(0.25, 0.15, 0.75, 0.5)
 r3.append(r4)
 
+# Even more nested child layers:
+#r5 = DraggableRect(x=50, y=50, width=50, height=50, origin=(0.5,0.5), name="pink1")
+#r5.clr = color(1.00, 0.15, 0.75, 0.5)
+#r4.append(r5)
+
 # The canvas is essentially a list of layers, just as an image in Photoshop is a list of layers.
 # Appending a layer to the canvas ensures that it gets drawn each frame,
 # that it receives mouse and keyboard events, and that its motion tweening is updated.
