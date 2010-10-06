@@ -3136,9 +3136,9 @@ group = Group
 
 # Mouse cursors:
 DEFAULT = "default"
+HIDDEN  = "hidden"
 CROSS   = pyglet.window.Window.CURSOR_CROSSHAIR
 HAND    = pyglet.window.Window.CURSOR_HAND
-HIDDEN  = pyglet.window.Window.CURSOR_NO
 TEXT    = pyglet.window.Window.CURSOR_TEXT
 WAIT    = pyglet.window.Window.CURSOR_WAIT
 
@@ -3185,10 +3185,12 @@ class Mouse(Point):
     def _get_cursor(self):
         return self._cursor
     def _set_cursor(self, mode):
-        if mode == DEFAULT:
-            mode = None
-        self._cursor = mode
-        self._canvas._window.set_mouse_cursor(self._canvas._window.get_system_mouse_cursor(mode))
+        self._cursor = mode != DEFAULT and mode or None
+        if mode == HIDDEN:
+            self._canvas._window.set_mouse_visible(False); return
+        self._canvas._window.set_mouse_cursor(
+            self._canvas._window.get_system_mouse_cursor(
+                self._cursor))
         
     cursor = property(_get_cursor, _set_cursor)
     
