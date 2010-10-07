@@ -12,7 +12,8 @@ from random import seed
 # OR a different blend mode, but you cannot combine both.
 # This is a limitation in OpenGL.
 # You could use image filters (e.g. multiply(), render()) but this can be slow / a lot of work:
-# You'd first need to transform (rotate, scale) an image into another image,
+# If you also want your image to appear rotated on the canvas,
+# you'd first need to transform (rotate, scale) the image into another image,
 # and then use this rendered image with multiply() or screen().
 
 # Here is an example of additive and subtractive blending, directly to the canvas.
