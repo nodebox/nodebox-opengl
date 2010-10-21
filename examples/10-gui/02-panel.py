@@ -21,7 +21,7 @@ layout.extend([
     Field(value="hello world", hint="text", id="text"),
     ("size",  Slider(default=1.0, min=0.0, max=2.0, steps=100, id="size")),
     ("alpha", Slider(default=1.0, min=0.0, max=1.0, steps=100, id="alpha")),
-    ("visible", Flag(default=True, id="visible"))
+    ("show?", Flag(default=True, id="show"))
 ])
 
 # The panel will automatically call Layout.apply() when the layout is added.
@@ -43,11 +43,11 @@ def draw(canvas):
     # Controls with an id are available as properties of the panel
     # (e.g. a control with id "slider" can be retrieved as Panel.slider).
     # Most controls have a Control.value property that retrieves the current value:
-    if panel.visible.value == True:
+    if panel.show.value == True:
         font("Droid Serif")
         fontsize(50 * panel.size.value)
         fill(0, panel.alpha.value)
-        text(panel.text.value, 20, 200)
+        text(panel.text.value, 50, 250)
 
 canvas.size = 500, 500
 canvas.run(draw)

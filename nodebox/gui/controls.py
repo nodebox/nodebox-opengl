@@ -12,13 +12,14 @@ from time import time
 from pyglet.text.layout import IncrementalTextLayout
 from pyglet.text.caret  import Caret
 
-from nodebox.graphics.geometry import distance, clamp, Bounds
+from nodebox.graphics.geometry import angle, distance, clamp, Bounds
 from nodebox.graphics import \
-    Layer, Color, Image, image, crop, \
+    Layer, Color, Image, image, crop, rect, \
     Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
+    translate, rotate, \
     line, DASHED, DOTTED, \
     DEFAULT, HAND, TEXT, \
-    LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE
+    LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE, CTRL, SHIFT, ALT
 
 def popdefault(dict, key, default=None):
     """ Pops the given key from the dictionary and returns its value (or default).
@@ -77,7 +78,7 @@ class Control(Layer):
         self.src       = {}    # Collection of source images.
         self.enabled   = True  # Enable event listener.
         self.duration  = 0     # Disable tweening.
-        self._controls = {}    # Lazy dictionary of child controls indexed by id.
+        self._controls = {}    # Lazy index of (id, control) children, see nested().
         self._press    = None
 
     # Control width and height can't be modified after creation.
@@ -95,6 +96,8 @@ class Control(Layer):
         mouse.cursor = DEFAULT
         
     def on_mouse_press(self, mouse):
+        # Fire Control.on_mouse_doubleclick() when mouse is pressed twice in same location.
+        # Subclasses need to call this method in their overridden on_mouse_press().
         if  self._press and \
         abs(self._press[0] - mouse.x) < 2 and \
         abs(self._press[1] - mouse.y) < 2 and \
@@ -109,9 +112,11 @@ class Control(Layer):
         pass
         
     def on_key_press(self, key):
-        for control in self: control.on_key_press(key)
+        for control in self: 
+            control.on_key_press(key)
     def on_key_release(self, key):
-        for control in self: control.on_key_release(key)
+        for control in self: 
+            control.on_key_release(key)
     
     def on_action(self):
         """ Override this method with a custom action.
@@ -140,23 +145,15 @@ class Control(Layer):
         pass
     def scale(self, f): 
         pass
-
+    
     def __getattr__(self, k):
-        # Retrieves the given attribute.
-        # Retrieves the child control with the given id.
-        if k in self.__dict__:
+        # Yields the property with the given name, or
+        # yields the child control with the given id.
+        if k in self.__dict__: 
             return self.__dict__[k]
-        if k in self._controls:
-            return self._controls[k]
-        # Nested controls' id might have changed (however unlikely).
-        # Recreate the cache and search again.
-        for ctrl in self:
-            if isinstance(ctrl, Control) and ctrl.id:
-                self._controls[ctrl.id] = ctrl
-            if isinstance(ctrl, Layout):
-                [self._controls.setdefault(ctrl.id, ctrl) for ctrl in ctrl if ctrl.id]
-        if k in self._controls:
-            return self._controls[k]
+        ctrl = nested(self, k)
+        if ctrl is not None:
+            return ctrl
         raise AttributeError, "'%s' object has no attribute '%s'" % (self.__class__.__name__, k)
         
     def __repr__(self):
@@ -165,6 +162,33 @@ class Control(Layer):
             repr(self.id),
             hasattr(self, "value") and ", value="+repr(self.value) or ""
         )
+        
+def nested(control, id):
+    """ Returns the child Control with the given id, or None.
+        Also searches all child Layout containers.
+    """
+    # First check the Control._controls cache (=> 10x faster).
+    # Also check if the control's id changed after it was cached (however unlikely).
+    # If so, the cached entry is no longer valid.
+    if id in control._controls:
+        ctrl = control._controls[id]
+        if ctrl.id == id:
+            return ctrl
+        del control._controls[id]
+    # Nothing in the cache.
+    # Traverse all child Control and Layout objects.
+    m = None
+    for ctrl in control:
+        if ctrl.__dict__.get("id") == id:
+            m = ctrl; break
+        if isinstance(ctrl, Layout):
+            m = nested(ctrl, id)
+            if m is not None: 
+                break
+    # If a control was found, cache it.
+    if m is not None:
+        control._controls[id] = m
+    return m
 
 #=====================================================================================================
 
@@ -418,6 +442,57 @@ class Slider(Control):
 
 #=====================================================================================================
 
+#--- KNOB --------------------------------------------------------------------------------------------
+
+class Knob(Control):
+    
+    def __init__(self, default=0, limit=True, x=0, y=0, id=None, **kwargs):
+        """ A twistable knob that will fire Knob.on_action() when dragged.
+            The knob's angle can be retrieved with Knob.value (in degrees, 0-360).
+            With CTRL pressed, twists by a very small amount.
+        """
+        Control.__init__(self, x=x, y=y, id=id, **kwargs)
+        self.default = default # Knob default angle.
+        self.value   = default # Knob current angle.
+        self._limit  = limit   # Constrain between 0-360 or scroll endlessly?
+        self.src = {
+            "face" : Image(theme["knob"]),
+            "well" : Image(theme["knob-well"]),
+        }
+        self._pack()
+        
+    @property
+    def relative(self):
+        """ Yields the knob's angle as a relative number (0.0-1.0).
+        """
+        return self.value % 360 / 360.0
+
+    def _pack(self):
+        self._set_width(self.src["well"].width)
+        self._set_height(self.src["well"].height)
+
+    def reset(self):
+        Control.reset(self)
+        self.value = self.default
+
+    def draw(self):
+        translate(self.width/2, self.height/2)
+        image(self.src["well"], -self.width/2, -self.height/2)
+        rotate(360-self.value)
+        clr = self.pressed and (0.85, 0.85, 0.85) or (1.0, 1.0, 1.0)
+        image(self.src["face"], -self.width/2, -self.height/2, color=clr)
+        
+    def on_mouse_press(self, mouse):
+        self.value += mouse.dy * (CTRL in mouse.modifiers and 1 or 5)
+        if self._limit:
+            self.value %= 360
+        self.on_action()
+    
+    def on_mouse_drag(self, mouse):
+        self.on_mouse_press(mouse)
+
+#=====================================================================================================
+
 #--- FLAG --------------------------------------------------------------------------------------------
 
 class Flag(Control):
@@ -509,7 +584,8 @@ class Panel(Control):
     def append(self, control):
         self.insert(len(self), control)
     def extend(self, controls):
-        for control in controls: self.append(control)
+        for control in controls: 
+            self.append(control)
 
     def _pack(self):
         # Center the caption in the label's header.
@@ -519,7 +595,7 @@ class Panel(Control):
         self[1].x = self.width - self[1].width - 4
         self[1].y = self.height - self[1].height - 2
         
-    def pack(self, padding=10):
+    def pack(self, padding=20):
         """ Resizes the panel to the most compact size,
             based on the position and size of the controls in the panel.
         """
@@ -599,6 +675,8 @@ class Editable(Control):
         self._empty   = value == "" and True or False
         self._editor  = IncrementalTextLayout(txt._label.document, width, height, multiline=wrap)
         self._editor.content_valign = wrap and "top" or "center"
+        self._editor.selection_background_color = (170, 200, 230, 255)
+        self._editor.selection_color = txt._label.color
         self._editor.caret = Caret(self._editor)
         self._editor.caret.visible = False
         self._editing = False # When True, cursor is blinking and text can be edited.
@@ -910,12 +988,36 @@ class Layout(Layer):
         """
         kwargs["x"] = kwargs["y"] = kwargs["width"] = kwargs["height"] = 0
         Layer.__init__(self, **kwargs)
+        self._controls = {} # Lazy cache of (id, control)-children, see nested().
+
+    def insert(self, i, control):
+        if isinstance(control, Layout):
+            control.apply() # If the control is actually a Layout, apply it.
+        Layer.insert(self, i, control)
+        
+    def append(self, control):
+        self.insert(len(self), control)
+    def extend(self, controls):
+        for control in controls: 
+            self.append(control)
 
     def on_key_press(self, key):
-        for control in self: control.on_key_press(key)
+        for control in self: 
+            control.on_key_press(key)
     def on_key_release(self, key):
-        for control in self: control.on_key_release(key)
+        for control in self: 
+            control.on_key_release(key)
     
+    def __getattr__(self, k):
+        # Yields the property with the given name, or
+        # yields the child control with the given id.
+        if k in self.__dict__: 
+            return self.__dict__[k]
+        ctrl = nested(self, k)
+        if ctrl is not None:
+            return ctrl
+        raise AttributeError, "'%s' object has no attribute '%s'" % (self.__class__.__name__, k)
+
     def apply(self, padding=0):
         """ Adjusts the position and size of the controls to match the layout.
         """
@@ -923,20 +1025,21 @@ class Layout(Layer):
         
     def __repr__(self):
         return "Layout(type=%s)" % repr(self.__class__.__name__.lower())
+    
+    # Debug mode:
+    #def draw(self):
+    #    rect(0, 0, self.width, self.height, fill=None, stroke=(1,1,1,0.5), strokestyle="dotted")
 
-#--- Layout: Rows ------------------------------------------------------------------------------------
+#--- Layout: Labeled ----------------------------------------------------------------------------------
 
-class Rows(Layout):
+class Labeled(Layout):
 
-    def __init__(self, controls=[], width=125):
-        """ A layout where each control appears on a new line.
-            Each control has an associated text caption, displayed to the left of the control.
-            The given width defines the desired width for each control.
+    def __init__(self, controls=[]):
+        """ A layout where each control has an associated text label.
         """
         Layout.__init__(self)
-        self.maxwidth = width
-        self.controls = []
-        self.captions = []
+        self.controls  = []
+        self.captions  = []
         self.extend(controls)
 
     def insert(self, i, control, caption=""):
@@ -956,29 +1059,87 @@ class Rows(Layout):
         for control in controls:
             caption, control = isinstance(control, tuple) and control or ("", control)
             self.append(control, caption)
+            
     def remove(self, control):
         self.pop(self.controls.index(control))
     def pop(self, i):
         self.captions.pop(i); return self.controls.pop(i)
 
-    def apply(self, padding=20):
-        """ Adjusts the position and width of all the controls in the layout:
-            - each control is placed next to its caption, with padding in between and around,
-            - each caption is aligned to the right, and centered vertically,
-            - the width of all Label, Button, Sliderm, Field controls is evened out.
-        """
-        width = max([caption.width for caption in self.captions])
-        dx = 0
-        dy = padding
-        for caption, control in reversed(zip(self.captions, self.controls)):
-            caption.x = dx + padding * 1.0 + width - caption.width
-            control.x = dx + padding * 1.5 + width
-            caption.y = dy + 0.5 * (control.height - caption.height)
-            control.y = dy
-            if isinstance(control, (Label, Button, Slider, Field)):
-                control._set_width(self.maxwidth)
-                control._pack()
-            dy += max(caption.height, control.height, 10) + 0.5 * padding
-        self.width  = width + self.maxwidth + padding * 2.5
-        self.height = dy + padding * 0.5
+#--- Layout: Rows ------------------------------------------------------------------------------------
 
+class Rows(Labeled):
+
+    def __init__(self, controls=[], width=125):
+        """ A layout where each control appears on a new line.
+            Each control has an associated text caption, displayed to the left of the control.
+            The given width defines the desired width for each control.
+        """
+        Labeled.__init__(self, controls)
+        self._maxwidth = width
+
+    def apply(self, spacing=10):
+        """ Adjusts the position and width of all the controls in the layout:
+            - each control is placed next to its caption, with spacing in between,
+            - each caption is aligned to the right, and centered vertically,
+            - the width of all Label, Button, Slider, Field controls is evened out.
+        """
+        mw = self._maxwidth
+        for control in self.controls:
+            if isinstance(control, Layout):
+                # Child containers in the layout can be wider than the desired width.
+                # adjusting mw at the start will controls wider to line out with the total width,
+                # adjusting it at the end would just ensure that the layout is wide enough.
+                mw = max(self._maxwidth, control.width)
+        w1 = max([caption.width for caption in self.captions])
+        w2 = max([control.width for control in self.controls])
+        dx = 0
+        dy = 0
+        for caption, control in reversed(zip(self.captions, self.controls)):
+            caption.x = dx + w1 - caption.width                      # halign right.
+            control.x = dx + w1 + (w1>0 and spacing)
+            caption.y = dy + 0.5 * (control.height - caption.height) # valign center.
+            control.y = dy
+            if isinstance(control, Layout) and control.height > caption.height * 2:
+                caption.y = dy + control.height - caption.height     # valign top.
+            if isinstance(control, (Label, Button, Slider, Field)):
+                control._set_width(mw)
+                control._pack()
+            dy += max(caption.height, control.height, 10) + spacing
+        self.width  = w1 + w2 + (w1>0 and spacing)
+        self.height = dy - spacing
+
+TOP, CENTER = "top", "center"
+
+class Row(Labeled):
+
+    def __init__(self, controls=[], width=125, align=CENTER):
+        """ A layout where each control appears in a new column.
+            Each control has an associated text caption, displayed on top of the control.
+            The given width defines the desired width for each control.
+        """
+        Labeled.__init__(self, controls)
+        self._maxwidth = width
+        self._align    = align
+
+    def apply(self, spacing=10):
+        """ Adjusts the position and width of all the controls in the layout:
+            - each control is placed centrally below its caption, with spacing in between,
+            - the width of all Label, Button, Slider, Field controls is evened out.
+        """
+        mw = self._maxwidth
+        da = self._align==TOP and 1.0 or 0.5
+        h1 = max([control.height for control in self.controls])
+        h2 = max([caption.height for caption in self.captions])
+        dx = 0
+        dy = 0
+        for caption, control in zip(self.captions, self.controls):
+            caption.x = dx + 0.5 * max(control.width - caption.width, 0) # halign center
+            control.x = dx + 0.5 * max(caption.width - control.width, 0) # halign center
+            caption.y = dy + h1 + (h2>0 and spacing)                 
+            control.y = dy + da * (h1 - control.height)                  # valign center
+            if isinstance(control, (Label, Button, Slider, Field)):
+                control._set_width(mw)
+                control._pack()
+            dx += max(caption.width, control.width, 10) + spacing
+        self.width = dx - spacing
+        self.height = h1 + h2 + (h2>0 and spacing)

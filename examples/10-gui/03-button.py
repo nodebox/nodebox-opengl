@@ -16,17 +16,16 @@ def reset_panel(button):
     panel.field_text.reset()
     panel.slider_size.reset()
     panel.slider_opacity.reset()
-    panel.flag_visible.reset()
+    panel.show.reset()
 
 panel = Panel("Example", width=200, height=200, fixed=False, modal=False)
 panel.append(Rows(
     [Field(value="hello world", hint="text", id="field_text"),
-     ("size",    Slider(default=1.0, min=0.0, max=2.0, steps=100, id="slider_size")),
-     ("opacity", Slider(default=1.0, min=0.0, max=1.0, steps=100, id="slider_opacity")),
-     ("visible", Flag(default=True, id="flag_visible")),
-     Button("Reset", action=reset_panel) # Register our function as the button's action.
-     ]
-))
+     (    "size", Slider(default=1.0, min=0.0, max=2.0, steps=100, id="slider_size")),
+     ( "opacity", Slider(default=1.0, min=0.0, max=1.0, steps=100, id="slider_opacity")),
+     (   "show?", Flag(default=True, id="show")),
+     Button("Reset", action=reset_panel), # Register our function as the button's action.
+]))
 panel.pack()
 canvas.append(panel)
 
@@ -34,11 +33,11 @@ def draw(canvas):
     
     canvas.clear()
 
-    if panel.flag_visible.value == True:
+    if panel.show.value == True:
         font("Droid Serif")
         fontsize(50 * panel.slider_size.value)
         fill(0, panel.slider_opacity.value)
-        text(panel.field_text.value, 20, 200)
+        text(panel.field_text.value, 50, 250)
 
 canvas.size = 500, 500
 canvas.run(draw)

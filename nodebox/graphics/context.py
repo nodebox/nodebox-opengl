@@ -921,14 +921,31 @@ class BezierPath(list):
         """
         self.append(PathElement(CLOSE))
 
-    def rect(self, x, y, width, height):
-        """ Adds a rectangle to the path.
+    def rect(self, x, y, width, height, roundness=0.0):
+        """ Adds a (rounded) rectangle to the path.
+            Corner roundness can be given as a relative float or absolute int.
         """
-        self.moveto(x, y)
-        self.lineto(x+width, y)
-        self.lineto(x+width, y+height)
-        self.lineto(x, y+height)
-        self.lineto(x, y)
+        if roundness <= 0:
+            self.moveto(x, y)
+            self.lineto(x+width, y)
+            self.lineto(x+width, y+height)
+            self.lineto(x, y+height)
+            self.lineto(x, y)
+        else:
+            if isinstance(roundness, int):
+                r = min(roundness, width/2, height/2)
+            else:
+                r = min(width, height)
+                r = min(roundness, 1) * r * 0.5
+            self.moveto(x+r, y)
+            self.lineto(x+width-r, y)
+            self.arcto(x+width, y+r, radius=r, clockwise=False)
+            self.lineto(x+width, y+height-r)
+            self.arcto(x+width-r, y+height, radius=r, clockwise=False)
+            self.lineto(x+r, y+height)
+            self.arcto(x, y+height-r, radius=r, clockwise=False)
+            self.lineto(x, y+r)
+            self.arcto(x+r, y, radius=r, clockwise=False)
     
     def ellipse(self, x, y, width, height):
         """ Adds an ellipse to the path.
@@ -1213,6 +1230,8 @@ def findpath(points, curvature=1.0):
     """ Returns a smooth BezierPath from the given list of (x,y)-tuples.
     """
     return bezier.findpath(points, curvature)
+
+Path = BezierPath
 
 #--- POINT ANGLES ------------------------------------------------------------------------------------
 

@@ -5,6 +5,9 @@ import tempfile
 import subprocess
 import shutil
 
+class MovieEncoderError(Exception):
+    pass
+
 class Movie:
     
     def __init__(self, canvas, encoder="ffmpeg"):
@@ -23,17 +26,22 @@ class Movie:
         self._encoder = encoder
     
     def record(self):
-        """ Call in Canvas.draw() to add the current frame to the movie.
+        """ Call Movie.record() in Canvas.draw() to add the current frame to the movie.
+            Frames are stored as PNG-images in a temporary folder until Movie.save() is called.
         """
         self._canvas.save(os.path.join(self._frames, "%09d.png" % self._canvas.frame))
         
     def save(self, path):
         """ Saves the movie at the given path (e.g. "test.mp4").
+            Raises MovieEncoderError if unable to launch ffmpeg from the shell.
         """
-        f = os.path.join(self._frames, "%"+"09d.png")
-        p = subprocess.Popen([self._encoder, "-y", "-i", f, path], stderr=subprocess.PIPE)
-        p.wait()
-        self.close()
+        try:
+            f = os.path.join(self._frames, "%"+"09d.png") # Option -y overwrites exising files.
+            p = subprocess.Popen([self._encoder, "-y", "-i", f, path], stderr=subprocess.PIPE)
+            p.wait()
+            self.close()
+        except:
+            raise MovieEncoderError
         
     def close(self):
         try: shutil.rmtree(self._frames)
