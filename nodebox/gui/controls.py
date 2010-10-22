@@ -457,7 +457,7 @@ class Knob(Control):
         self._limit  = limit   # Constrain between 0-360 or scroll endlessly?
         self.src = {
             "face" : Image(theme["knob"]),
-            "well" : Image(theme["knob-well"]),
+          "socket" : Image(theme["knob-socket"]),
         }
         self._pack()
         
@@ -468,8 +468,8 @@ class Knob(Control):
         return self.value % 360 / 360.0
 
     def _pack(self):
-        self._set_width(self.src["well"].width)
-        self._set_height(self.src["well"].height)
+        self._set_width(self.src["socket"].width)
+        self._set_height(self.src["socket"].height)
 
     def reset(self):
         Control.reset(self)
@@ -477,7 +477,7 @@ class Knob(Control):
 
     def draw(self):
         translate(self.width/2, self.height/2)
-        image(self.src["well"], -self.width/2, -self.height/2)
+        image(self.src["socket"], -self.width/2, -self.height/2)
         rotate(360-self.value)
         clr = self.pressed and (0.85, 0.85, 0.85) or (1.0, 1.0, 1.0)
         image(self.src["face"], -self.width/2, -self.height/2, color=clr)
@@ -1018,7 +1018,7 @@ class Layout(Layer):
             return ctrl
         raise AttributeError, "'%s' object has no attribute '%s'" % (self.__class__.__name__, k)
 
-    def apply(self, padding=0):
+    def apply(self, spacing=0):
         """ Adjusts the position and size of the controls to match the layout.
         """
         pass

@@ -13,11 +13,11 @@ path = textpath("GROW", x=40, y=200, fontname="Arial", fontsize=100, bold=True)
 
 # Now that we have a BezierPath from the text we can use all sorts of math on it.
 # Calculate a list of points (PathElement objects), evenly distributed along the path:
-points = list(path.points(500))
+points = list(path.points(1000))
 
 def draw(canvas):
     
-    fill(0.2, 0.2, 0, max(0.1, 1-canvas.frame*0.1)) # Less opacity over time.
+    fill(0.2, 0.2, 0, max(0.1, 1-canvas.frame*0.05)) # Less opacity over time.
     
     for pt in points:
         ellipse(pt.x, pt.y, 1, 1)
@@ -28,6 +28,7 @@ def draw(canvas):
         pt.x += random(-1.0, 1.0)
         pt.y += random(-1.0, 1.0)
 
+canvas.fps  = 20
 canvas.size = 500, 500
 canvas.run(draw)
 

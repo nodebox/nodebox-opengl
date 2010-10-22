@@ -9,6 +9,13 @@ p = Pixels(solid(200, 200, Color(1)))
 # Colorize pixels with the Perlin noise() generator.
 # Noise is smoother than random(), comparable to a random gradient.
 # This is often used to generate terrain surface maps.
+
+# The noise() command returns a smooth value between -1.0 and 1.0.
+# The x, y, z parameters determine the coordinates in the noise landscape. 
+# Since the landscape is infinite, the actual value of a coordinate doesn't matter, 
+# only the distance between successive steps. 
+# The smaller the difference between steps, the smoother the noise sequence. 
+# Steps between 0.005 and 0.1 usually work best.
 zoom = 4
 for i in range(p.width):
     for j in range(p.height):
