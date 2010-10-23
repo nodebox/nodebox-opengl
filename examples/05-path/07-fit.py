@@ -3,12 +3,12 @@ import os, sys; sys.path.insert(0,os.path.join("..",".."))
 
 from nodebox.graphics import *
 
-# This example demonstrated how to use the directed() command
-# to fit text to a path (thanks to Karsten Wolf).
+# This example demonstrated how to fit text to a path using the directed() command
+# (thanks to Karsten Wolf).
 
 # Create a Text object for each character.
 txt = "NodeBox for OpenGL"
-chars = [Text(ch, fontname="Droid Sans Mono") for ch in txt]
+glyphs = [Text(ch, fontname="Droid Sans Mono") for ch in txt]
   
 def draw(canvas):
     
@@ -22,14 +22,14 @@ def draw(canvas):
     path.curveto(200, 250, dx, dy, 400, 250)
 
     # Calculate points on the path and draw a character at each points.
-    # The directed() commands yields (angle, pt)-tuples.
+    # The directed() command yields (angle, point)-tuples.
     # The angle can be used to rotate each character along the path curvature.
-    points = path.points(amount=len(chars), start=0.05, end=0.95)
+    points = path.points(amount=len(glyphs), start=0.05, end=0.95)
     for i, (angle, pt) in enumerate(directed(points)):
         push()
         translate(pt.x, pt.y)
         rotate(angle)
-        text(chars[i], x=-textwidth(chars[i])/2)
+        text(glyphs[i], x=-textwidth(glyphs[i])/2)
         pop()
     
     drawpath(path, fill=None, stroke=(0,0,0,0.5))
