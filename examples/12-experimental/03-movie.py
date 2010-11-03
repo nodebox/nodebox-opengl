@@ -10,9 +10,11 @@ class MovieEncoderError(Exception):
 
 class Movie:
     
-    def __init__(self, canvas, encoder="ffmpeg"):
+    def __init__(self, canvas, fps=25, compression=0.0, encoder="ffmpeg"):
         """ Creates a movie recorder for the given Canvas.
             Saving the movie requires ffmpeg (http://www.ffmpeg.org/).
+            If fps=None, uses the actual framerate of the canvas.
+            Compression can be given as a number between 0.0-1.0.
             The encoder parameter specifies the path to the ffmpeg executable.
         """
         # You need to compile and build ffmpeg from source.
@@ -21,13 +23,15 @@ class Movie:
         # If you place it in the same folder as this script, set encoder="./ffmpeg".
         # This binary was obtained from ffmpegX.
         # Binaries for Win32 can also be found online.
-        self._canvas  = canvas
-        self._frames  = tempfile.mkdtemp()
-        self._encoder = encoder
+        self._canvas      = canvas
+        self._frames      = tempfile.mkdtemp()
+        self._fps         = fps
+        self._compression = compression
+        self._encoder     = encoder
     
     def record(self):
         """ Call Movie.record() in Canvas.draw() to add the current frame to the movie.
-            Frames are stored as PNG-images in a temporary folder until Movie.save() is called.
+            Frames are stored as PNG-images in a temporary folder until Movie.close() is called.
         """
         self._canvas.save(os.path.join(self._frames, "%09d.png" % self._canvas.frame))
         
@@ -35,12 +39,17 @@ class Movie:
         """ Saves the movie at the given path (e.g. "test.mp4").
             Raises MovieEncoderError if unable to launch ffmpeg from the shell.
         """
+        import glob
+        os.unlink(files(os.path.join(self._frames, "*.png"))[-1])
         try:
-            f = os.path.join(self._frames, "%"+"09d.png") # Option -y overwrites exising files.
-            p = subprocess.Popen([self._encoder, "-y", "-i", f, path], stderr=subprocess.PIPE)
+            f = os.path.join(self._frames, "%"+"09d.png")
+            r = str(int(self._fps or self._canvas.profiler.framerate))
+            q = str(int(max(0, min(1, self._compression)) * 30.0 + 1))
+            o = [self._encoder, "-y", "-r", r, "-i", f, "-qscale", q, path]
+            p = subprocess.Popen(o, stderr=subprocess.PIPE) # Option -y overwrites exising files.
             p.wait()
+        except Exception, e:
             self.close()
-        except:
             raise MovieEncoderError
         
     def close(self):

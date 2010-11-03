@@ -11,7 +11,6 @@ from math     import sqrt, pow
 from math     import sin, cos, atan2, degrees, radians, pi
 from random   import random
 from heapq    import heappush, heappop
-from sets     import Set
 from warnings import warn
 
 # float("inf") doesn't work on windows.
@@ -1471,7 +1470,7 @@ def dijkstra_shortest_path(graph, id1, id2, heuristic=None, directed=False):
             yield list[0]; list=list[1]
     G = adjacency(graph, directed=directed, heuristic=heuristic)
     q = [(0, id1, ())] # Heap of (cost, path_head, path_rest).
-    visited = Set()    # Visited nodes.
+    visited = set()    # Visited nodes.
     while True:
         (cost1, n1, path) = heappop(q)
         if n1 not in visited:
