@@ -39,8 +39,6 @@ class Movie:
         """ Saves the movie at the given path (e.g. "test.mp4").
             Raises MovieEncoderError if unable to launch ffmpeg from the shell.
         """
-        import glob
-        os.unlink(files(os.path.join(self._frames, "*.png"))[-1])
         try:
             f = os.path.join(self._frames, "%"+"09d.png")
             r = str(int(self._fps or self._canvas.profiler.framerate))

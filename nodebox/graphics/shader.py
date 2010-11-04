@@ -615,7 +615,7 @@ class VerticalBlur(Filter):
 _blur["gaussian3x3"] = shader(fragment='''
 uniform sampler2D src;
 uniform vec2 radius;
-void main(void) {
+void main() {
     float dx = radius.x;
     float dy = radius.y;
     vec2 v = gl_TexCoord[0].xy;
