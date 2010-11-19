@@ -207,9 +207,9 @@ class Vector(object):
         self.x/=v.x; self.y/=v.y; self.z/=v.z; return self
 
     def dot(self, v):
-        """ Returns a new vector that is the dot product between the two vectors.
+        """ Returns a scalar that is the dot product between the two vectors.
         """
-        return self * v
+        return self.x*v.x + self.y*v.y + self.z*v.z
         
     def cross(self, v):
         """ Returns a new vector that is the cross product between the two vectors.

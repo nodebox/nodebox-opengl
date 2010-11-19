@@ -407,38 +407,38 @@ class Colorize(Filter):
 glsl_hsb2rgb = '''
 float _hue2rgb(float a, float b, float hue) {
     hue = mod(hue, 1.0);
-	if (6.0 * hue < 1.0) return a + (b - a) * 6.0 * hue;
-	if (2.0 * hue < 1.0) return b;
-	if (3.0 * hue < 2.0) return a + (b - a) * 6.0 * (2.0/3.0 - hue);
-	return a;
+    if (6.0 * hue < 1.0) return a + (b - a) * 6.0 * hue;
+    if (2.0 * hue < 1.0) return b;
+    if (3.0 * hue < 2.0) return a + (b - a) * 6.0 * (2.0/3.0 - hue);
+    return a;
 }
 vec3 hsb2rgb(vec3 hsb) {
-	if (hsb.y == 0.0) return vec3(hsb.z);
-	float b = (hsb.z < 0.5)? hsb.z * (1.0 + hsb.y) : (hsb.y + hsb.z) - (hsb.y * hsb.z);
-	float a = 2.0 * hsb.z - b;
-	return vec3(
-	    _hue2rgb(a, b, hsb.x + (1.0/3.0)),
-	    _hue2rgb(a, b, hsb.x),
-	    _hue2rgb(a, b, hsb.x - (1.0/3.0))
-	);
+    if (hsb.y == 0.0) return vec3(hsb.z);
+    float b = (hsb.z < 0.5)? hsb.z * (1.0 + hsb.y) : (hsb.y + hsb.z) - (hsb.y * hsb.z);
+    float a = 2.0 * hsb.z - b;
+    return vec3(
+        _hue2rgb(a, b, hsb.x + (1.0/3.0)),
+        _hue2rgb(a, b, hsb.x),
+        _hue2rgb(a, b, hsb.x - (1.0/3.0))
+        );
 }'''
 
 glsl_rgb2hsb = '''
 vec3 rgb2hsb(vec3 rgb) {
-	vec3 hsb = vec3(0.0);
-	float a = min(min(rgb.r, rgb.g), rgb.b);
-	float b = max(max(rgb.r, rgb.g), rgb.b);
-	float c = b - a;
-	if (c != 0.0) {
-		vec3 d = ((vec3(b) - rgb) / 6.0 + c / 2.0) / c;
-		     if (rgb.r == b) hsb.x = d.b - d.g;
-		else if (rgb.g == b) hsb.x = d.r - d.b + 1.0/3.0;
-		else if (rgb.b == b) hsb.x = d.g - d.r + 2.0/3.0;
-		hsb.x = mod(hsb.x, 1.0);
-		hsb.y = (hsb.z < 0.5)? c / (a+b) : c / (2.0 - c);
-	}
-	hsb.z = (a+b) / 2.0;
-	return hsb;
+    vec3 hsb = vec3(0.0);
+    float a = min(min(rgb.r, rgb.g), rgb.b);
+    float b = max(max(rgb.r, rgb.g), rgb.b);
+    float c = b - a;
+    if (c != 0.0) {
+        vec3 d = ((vec3(b) - rgb) / 6.0 + c / 2.0) / c;
+             if (rgb.r == b) hsb.x = d.b - d.g;
+        else if (rgb.g == b) hsb.x = d.r - d.b + 1.0/3.0;
+        else if (rgb.b == b) hsb.x = d.g - d.r + 2.0/3.0;
+        hsb.x = mod(hsb.x, 1.0);
+        hsb.y = (hsb.z < 0.5)? c / (a+b) : c / (2.0 - c);
+    }
+    hsb.z = (a+b) / 2.0;
+    return hsb;
 }''';
 
 #--- ADJUSTMENTS ------------------------------------------------------------------------------------
@@ -565,17 +565,20 @@ glsl_blur = '''
 uniform sampler2D src;
 uniform int kernel;
 uniform float radius;
+uniform vec2 extent;
 void main() {
     vec2 v = gl_TexCoord[0].xy;
     vec4 p = vec4(0.0);
     float n = float(kernel * kernel);
-    for (int i=1; i<kernel; i++) {
-        float a = float(i) * radius;
-        float b = float(kernel - i) / n;
-        p += texture2D(src, vec2(v.x%s, v.y%s)) * b;
-        p += texture2D(src, vec2(v.x%s, v.y%s)) * b;
-    }    
-    p += texture2D(src, vec2(v.x, v.y)) * float(kernel) / n;
+    if (v.x <= extent.x && v.y <= extent.y) {
+        for (int i=1; i<kernel; i++) {
+            float a = float(i) * radius;
+            float b = float(kernel - i) / n;
+            p += texture2D(src, vec2(v.x%s, v.y%s)) * b;
+            p += texture2D(src, vec2(v.x%s, v.y%s)) * b;
+        }
+        p += texture2D(src, vec2(v.x, v.y)) * float(kernel) / n;
+    }
     gl_FragColor = p;
 }'''
 _blur = {
@@ -594,6 +597,7 @@ class HorizontalBlur(Filter):
     def push(self):
         self.shader.set("kernel", int(self.kernel));
         self.shader.set("radius", float(self.scale) / self.texture.width)
+        self.shader.set("extent", vec2(*extent2(self.texture)))
         self.shader.push()
 
 class VerticalBlur(Filter):
@@ -607,6 +611,7 @@ class VerticalBlur(Filter):
     def push(self):
         self.shader.set("kernel", int(self.kernel));
         self.shader.set("radius", float(self.scale) / self.texture.height)
+        self.shader.set("extent", vec2(*extent2(self.texture)))
         self.shader.push()
 
 # It is useful to have a blur in a single pass as well,
@@ -1152,7 +1157,7 @@ def filter(img, filter=None, clear=True):
     # Note: Image.alpha and Image.color attributes won't work here,
     # because the shader overrides the default drawing behavior.
     # Instead, add the transparent() and colorize() filters to the chain.
-    img.draw(0, 0)
+    img.draw(0, 0, img.texture.width, img.texture.height)
     if filter != None:
         filter.pop()
     buffer.pop()
@@ -1251,16 +1256,16 @@ def adjust(img, brightness=1.0, contrast=1.0, saturation=1.0, hue=0.0):
         - saturation: the intensity of the colors (0.0 is a grayscale image).
         - hue       : the shift in hue (1.0 is 360 degrees on the color wheel).
     """
-    if brightness != 1: img = filter(img.texture, BrightnessAdjustment(img, brightness))
-    if contrast   != 1: img = filter(img.texture, ContrastAdjustment(img, contrast))
-    if saturation != 1: img = filter(img.texture, SaturationAdjustment(img, saturation))
-    if hue        != 0: img = filter(img.texture, HueAdjustment(img, hue))
+    if brightness != 1: img = filter(img, BrightnessAdjustment(img.texture, brightness))
+    if contrast   != 1: img = filter(img, ContrastAdjustment(img.texture, contrast))
+    if saturation != 1: img = filter(img, SaturationAdjustment(img.texture, saturation))
+    if hue        != 0: img = filter(img, HueAdjustment(img.texture, hue))
     return img
     
 def desaturate(img):
     """ Returns a grayscale version of the image.
     """
-    return filter(img, SaturationAdjustment(img, 0.0))
+    return filter(img, SaturationAdjustment(img.texture, 0.0))
     
 grayscale = desaturate
 
@@ -1311,34 +1316,34 @@ def blend(img1, img2, mode=OVERLAY, alpha=1.0, dx=0, dy=0):
         - dx: horizontal offset (in pixels) of the blend layer.
         - dy: vertical offset (in pixels) of the blend layer.
     """
-    return filter(img1, Blend(mode, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(mode, img1.texture, _q(img2).texture, alpha, dx, dy))
 
 def add(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(ADD, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(ADD, img1.texture, _q(img2).texture, alpha, dx, dy))
 
 def subtract(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(SUBTRACT, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(SUBTRACT, img1.texture, _q(img2).texture, alpha, dx, dy))
 
 def lighten(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(LIGHTEN, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(LIGHTEN, img1.texture, _q(img2).texture, alpha, dx, dy))
     
 def darken(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(DARKEN, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(DARKEN, img1.texture, _q(img2).texture, alpha, dx, dy))
 
 def multiply(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(MULTIPLY, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(MULTIPLY, img1.texture, _q(img2).texture, alpha, dx, dy))
     
 def screen(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(SCREEN, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(SCREEN, img1.texture, _q(img2).texture, alpha, dx, dy))
     
 def overlay(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(OVERLAY, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(OVERLAY, img1.texture, _q(img2).texture, alpha, dx, dy))
 
 def hardlight(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(HARDLIGHT, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(HARDLIGHT, img1.texture, _q(img2).texture, alpha, dx, dy))
     
 def hue(img1, img2, alpha=1.0, dx=0, dy=0):
-    return filter(img1, Blend(HUE, img1, _q(img2).texture, alpha, dx, dy))
+    return filter(img1, Blend(HUE, img1.texture, _q(img2).texture, alpha, dx, dy))
     
 def glow(img, intensity=0.5, amount=1):
     """ Returns the image blended with a blurred version, yielding a glowing effect.
@@ -1355,7 +1360,7 @@ def bloom(img, intensity=0.5, amount=1, threshold=0.3):
         - threshold: the luminance threshold of pixels that light up.
     """
     b = brightpass(img, threshold)
-    b = blur(b, kernel=9, scale=1.0, amount=max(1, amount))
+    b = blur(img, kernel=9, scale=1.0, amount=max(1, amount))
     return add(img, b, alpha=intensity)
 
 def distortion_mixin(type, dx, dy, **kwargs):
@@ -1399,7 +1404,7 @@ def bump(img, dx=0.5, dy=0.5, **kwargs):
         - zoom: the amount to zoom in.
     """
     dx, dy, m, i = distortion_mixin(BUMP, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(BUMP, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(BUMP, img.texture, dx-0.5, dy-0.5, m, i))
 
 #def dent(img, dx=0.5, dy=0.5, radius=0.5, zoom=0.5)    
 def dent(img, dx=0.5, dy=0.5, **kwargs):
@@ -1410,7 +1415,7 @@ def dent(img, dx=0.5, dy=0.5, **kwargs):
         - zoom: the amount to zoom in.
     """
     dx, dy, m, i = distortion_mixin(DENT, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(DENT, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(DENT, img.texture, dx-0.5, dy-0.5, m, i))
 
 #def pinch(img, dx=0.5, dy=0.5, zoom=0.75)
 def pinch(img, dx=0.5, dy=0.5, **kwargs):
@@ -1420,7 +1425,7 @@ def pinch(img, dx=0.5, dy=0.5, **kwargs):
         - zoom: the amount of bulge (0.1-0.5) or pinch (0.5-1.0):
     """
     dx, dy, m, i = distortion_mixin(PINCH, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(PINCH, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(PINCH, img.texture, dx-0.5, dy-0.5, m, i))
 
 #def twirl(img, dx=0.5, dy=0.5, radius=1.0, angle=180.0)
 def twirl(img, dx=0.5, dy=0.5, **kwargs):
@@ -1431,7 +1436,7 @@ def twirl(img, dx=0.5, dy=0.5, **kwargs):
         - angle: the amount of rotation in degrees.
     """
     dx, dy, m, i = distortion_mixin(TWIRL, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(TWIRL, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(TWIRL, img.texture, dx-0.5, dy-0.5, m, i))
 
 #def splash(img, dx=0.5, dy=0.5, radius=0.5)
 def splash(img, dx=0.5, dy=0.5, **kwargs):
@@ -1441,7 +1446,7 @@ def splash(img, dx=0.5, dy=0.5, **kwargs):
         - radius: the radius of the unaffected area, proportional to the image size.
     """
     dx, dy, m, i = distortion_mixin(SPLASH, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(SPLASH, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(SPLASH, img.texture, dx-0.5, dy-0.5, m, i))
 
 #def stretch(img, dx=0.5, dy=0.5, radius=0.5, zoom=1.0)
 def stretch(img, dx=0.5, dy=0.5, **kwargs):
@@ -1452,7 +1457,7 @@ def stretch(img, dx=0.5, dy=0.5, **kwargs):
         - zoom: the amount to zoom in (0.0-2.0, where 1.0 means 1x zoomed in, or 200%).
     """
     dx, dy, m, i = distortion_mixin(STRETCH, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(STRETCH, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(STRETCH, img.texture, dx-0.5, dy-0.5, m, i))
 
 #def mirror(img, dx=0.5, dy=0.5, horizontal=True, vertical=True)
 def mirror(img, dx=0.5, dy=0.5, **kwargs):
@@ -1463,7 +1468,7 @@ def mirror(img, dx=0.5, dy=0.5, **kwargs):
         - vertical  : when True, mirrors the image vertically.
     """
     dx, dy, m, i = distortion_mixin(MIRROR, dx, dy, **kwargs)
-    return filter(img, filter=Distortion(MIRROR, img, dx-0.5, dy-0.5, m, i))
+    return filter(img, filter=Distortion(MIRROR, img.texture, dx-0.5, dy-0.5, m, i))
 
 def dropshadow(img, alpha=0.5, amount=2):
     """ Returns a blurred and grayscale version of the image.
