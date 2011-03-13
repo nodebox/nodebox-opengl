@@ -16,19 +16,23 @@ from warnings import warn
 # float("inf") doesn't work on windows.
 INFINITE = 1e20
 
-# These should be implemented for 
-# Vector.draw(), System.draw(), Node.draw() and Edge.draw().
-# We don't import nodebox.graphics so that this module is standalone.
+# This module is standalone, line(), ellipse() and Text.draw() 
+# must be either implemented or patched:
 def line(x1, y1, x2, y2, stroke=(0,0,0,1), strokewidth=1):
     pass
 def ellipse(x, y, width, height, fill=(0,0,0,1), stroke=None, strokewidth=1):
     pass
-def text(str, fontsize=10, fill=(0,0,0,1), draw=True, **kwargs):
-    pass
 
-_UID = 0
-def _uid():
-    global _UID; _UID+=1; return _UID
+class Text:
+    def __init__(self, string, **kwargs):
+        self.string = string
+        self.__dict__.update(kwargs)
+    def copy(self):
+        k = self.__dict__.copy()
+        k.pop("string")
+        return Text(self.string, **k)
+    def draw(self):
+        pass
 
 #=====================================================================================================
 
@@ -250,6 +254,10 @@ class Vector(object):
 # can be considered emergent. The boids framework is often used in computer graphics, 
 # providing realistic-looking representations of flocks of birds and other creatures, 
 # such as schools of fish or herds of animals.
+
+_UID = 0
+def _uid():
+    global _UID; _UID+=1; return _UID
 
 class Boid:
     
@@ -955,14 +963,14 @@ class Node(object):
         self._y          = 0    # Calculated by Graph.layout.update().
         self.force       = Vector(0,0,0)
         self.radius      = radius
-        self.fill        = kwargs.get("fill", None)
-        self.stroke      = kwargs.get("stroke", (0,0,0,1))
-        self.strokewidth = kwargs.get("strokewidth", 1)
+        self.fill        = kwargs.pop("fill", None)
+        self.stroke      = kwargs.pop("stroke", (0,0,0,1))
+        self.strokewidth = kwargs.pop("strokewidth", 1)
         self.text        = kwargs.get("text", True) and \
-            text(unicode(id), 
+            Text(unicode(id), 
                    width = 85,
                     fill = kwargs.pop("text", (0,0,0,1)), 
-                fontsize = kwargs.pop("fontsize", 9), draw=False, **kwargs) or None
+                fontsize = kwargs.pop("fontsize", 9), **kwargs) or None
         self._weight     = None # Calculated by Graph.eigenvector_centrality().
         self._centrality = None # Calculated by Graph.betweenness_centrality().
     
@@ -985,7 +993,9 @@ class Node(object):
 
     @property
     def edges(self):
-        return self.links.edges.values()
+        return self.graph is not None \
+           and [e for e in self.graph.edges if self.id in (e.node1, e.node2)] \
+            or []
     
     @property
     def weight(self):
@@ -1020,7 +1030,7 @@ class Node(object):
             Override this method in a subclass for custom drawing.
         """
         # Draw the node weight as a shadow (based on node betweenness centrality).
-        if weighted and self.centrality > 0:
+        if weighted is not False and self.centrality > (weighted==True and -1 or weighted):
             w = self.centrality * 35
             ellipse(
                 self.x, 
@@ -1048,15 +1058,8 @@ class Node(object):
 
     def __eq__(self, node):
         return isinstance(node, Node) and self.id == node.id
-        
-    def copy(self):
-        """ Returns a shallow copy of the node (i.e. linked nodes are not copied).
-        """
-        n = Node(self.id, self.radius, strokewidth=self.strokewidth, text=None,
-              fill = _copy(self.fill),
-            stroke = _copy(self.stroke))
-        if self.text: n.text = self.text.copy()
-        return n
+    def __ne__(self, node):
+        return not self.__eq__(node)
 
 class Links(list):
     
@@ -1067,7 +1070,8 @@ class Links(list):
         self.edges = dict()
     
     def append(self, node, edge=None):
-        list.append(self, node)
+        if node.id not in self.edges:
+            list.append(self, node)
         self.edges[node.id] = edge
 
     def remove(self, node):
@@ -1083,30 +1087,18 @@ coordinates = lambda x, y, d, a: (x + d*cos(radians(a)), y + d*sin(radians(a)))
 
 class Edge(object):
 
-    def __init__(self, node1, node2, weight=0.0, length=1.0, stroke=(0,0,0,1), strokewidth=1):
+    def __init__(self, node1, node2, weight=0.0, length=1.0, type=None, stroke=(0,0,0,1), strokewidth=1):
         """ A connection between two nodes.
             Its weight indicates the importance (not the cost) of the connection.
+            Its type is useful in a semantic network (e.g. "is-a", "is-part-of", ...)
         """
         self.node1       = node1
         self.node2       = node2
         self.weight      = weight
         self.length      = length
+        self.type        = type
         self.stroke      = stroke
         self.strokewidth = strokewidth
-
-    def __new__(self, node1, node2, weight=0.0, length=1.0, stroke=(0,0,0,1), strokewidth=1):
-        # Creates an Edge instance.
-        # If an edge (in the same direction) already exists, yields that edge instead.
-        # Synchronizes Node.links:
-        # A.links.edge(B) yields edge A->B
-        # B.links.edge(A) yields edge B->A
-        e1 = node1.links.edge(node2)
-        if e1 and e1.node1 == node1 and e1.node2 == node2:
-            return e1
-        e2 = object.__new__(self)
-        node1.links.append(node2, edge=e2)
-        node2.links.append(node1, edge=e1 or e2)
-        return e2
         
     def draw(self, weighted=False, directed=False):
         """ Draws the edge as a line with the given stroke and strokewidth (increased with Edge.weight).
@@ -1133,15 +1125,15 @@ class Edge(object):
         d = sqrt(pow(x1-x0, 2) + pow(y1-y0, 2))
         x01, y01 = coordinates(x0, y0, d-r-1, a)
         # Find the two other arrow corners under the given angle.
-        r = self.node1.radius
+        r = max(kwargs.get("strokewidth", 1) * 3, 6)
         dx1, dy1 = coordinates(x01, y01, -r, a-20)
         dx2, dy2 = coordinates(x01, y01, -r, a+20)
         line(x01, y01, dx1, dy1, **kwargs)
         line(x01, y01, dx2, dy2, **kwargs)
         line(dx1, dy1, dx2, dy2, **kwargs)
-        
-    def copy(self, node1, node2):
-        return Edge(node1, node2, self.weight, self.length, _copy(self.stroke), self.strokewidth)
+
+    def __repr__(self):
+        return "%s(id1=%s, id2=%s)" % (self.__class__.__name__, repr(self.node1.id), repr(self.node2.id))
 
 #--- GRAPH -------------------------------------------------------------------------------------------
 
@@ -1170,20 +1162,43 @@ class Graph(dict):
         self.distance = distance
         self.layout   = layout==SPRING and GraphSpringLayout(self) or GraphLayout(self)
         
-    def append(self, x, root=False):
-        """ Appends a Node or Edge to the graph.
+    def append(self, type, *args, **kwargs):
+        """ Appends a Node or Edge to the graph: Graph.append(Node, id="rabbit").
         """
-        if isinstance(x, Node):
-            if x.id not in self:
-                self.nodes.append(x)
-                self[x.id] = x; x.graph = self
-            if root is True:
-                self.root = x
-        if isinstance(x, Edge):
-            # Append nodes that are not yet part of the graph.
-            if x.node1.id not in self: self.append(x.node1)
-            if x.node2.id not in self: self.append(x.node2)
-            self.edges.append(x)
+        if type is Node:
+            return self.add_node(*args, **kwargs)
+        if type is Edge:
+            return self.add_edge(*args, **kwargs)
+    
+    def add_node(self, id, *args, **kwargs):
+        """ Appends a new Node to the graph.
+        """
+        n = isinstance(id, Node) and id or self.get(id) or Node(id, *args, **kwargs)
+        if n.id not in self:
+            self.nodes.append(n)
+            self[n.id] = n; n.graph = self
+            self.root = kwargs.get("root", False) and n or self.root
+        return n
+    
+    def add_edge(self, id1, id2, *args, **kwargs):
+        """ Appends a new Edge to the graph.
+        """
+        # Create nodes that are not yet part of the graph.
+        n1 = self.add_node(id1)
+        n2 = self.add_node(id2)
+        # Creates an Edge instance.
+        # If an edge (in the same direction) already exists, yields that edge instead.
+        e1 = n1.links.edge(n2)
+        if e1 and e1.node1 == n1 and e1.node2 == n2:
+            return e1
+        e2 = Edge(n1, n2, *args, **kwargs)
+        self.edges.append(e2)
+        # Synchronizes Node.links:
+        # A.links.edge(B) yields edge A->B
+        # B.links.edge(A) yields edge B->A
+        n1.links.append(n2, edge=e2)
+        n2.links.append(n1, edge=e1 or e2)
+        return e2 
             
     def remove(self, x):
         """ Removes the given Node (and all its edges) or Edge from the graph.
@@ -1262,7 +1277,7 @@ class Graph(dict):
         """ For depth=0, returns the list of leaf nodes (nodes with only one connection).
             For depth=1, returns the list of leaf nodes and their connected nodes, and so on.
         """
-        u = []; [u.extend(n.flatten(depth) ) for n in self.nodes if len(n.links) == 1]
+        u = []; [u.extend(n.flatten(depth)) for n in self.nodes if len(n.links) == 1]
         return unique(u)
         
     @property
@@ -1285,7 +1300,7 @@ class Graph(dict):
         """
         for e in self.edges: 
             e.draw(weighted, directed)
-        for n in self.nodes: 
+        for n in reversed(self.nodes): # New nodes (with Node._weight=None) first. 
             n.draw(weighted)
             
     def node_at(self, x, y):
@@ -1294,19 +1309,41 @@ class Graph(dict):
         for n in self.nodes:
             if n.contains(x, y): return n
             
+    def _add_node_copy(self, n, **kwargs):
+        self.add_node(n.id, 
+               radius = n.radius, 
+                 text = None,
+                 fill = _copy(n.fill),
+               stroke = _copy(n.stroke),  
+          strokewidth = n.strokewidth, root=kwargs.get("root", False)
+          ).__class__ = n.__class__
+        if n.text: 
+            self.nodes[-1].text = n.text.copy()
+    
+    def _add_edge_copy(self, e, **kwargs):
+        if kwargs.get("node1", e.node1).id not in self \
+        or kwargs.get("node2", e.node2).id not in self: 
+            return
+        self.add_edge(
+            kwargs.get("node1", self[e.node1.id]), 
+            kwargs.get("node2", self[e.node2.id]),
+               weight = e.weight, 
+               length = e.length, 
+                 type = e.type, 
+               stroke = _copy(e.stroke), 
+          strokewidth = e.strokewidth
+          ).__class__ = e.__class__
+    
     def copy(self, nodes=ALL):
         """ Returns a copy of the graph with the given list of nodes (and connecting edges).
             The layout will be reset.
         """
-        g = self.__class__(layout=None, distance=self.distance)
+        g = Graph(layout=None, distance=self.distance)
         g.layout = self.layout.copy(graph=g)
         for n in (nodes==ALL and self.nodes or nodes):
-            g.append(n.copy(), root=self.root==n)
+            g._add_node_copy(n, root=self.root==n)
         for e in self.edges: 
-            if e.node1.id in g and e.node2.id in g:
-                g.append(e.copy(
-                    node1=g[e.node1.id], 
-                    node2=g[e.node2.id]))
+            g._add_edge_copy(e)
         return g
 
 #--- GRAPH LAYOUT ------------------------------------------------------------------------------------
@@ -1345,7 +1382,7 @@ class GraphLayout:
         return (x0, y0, x1-x0, y1-y0)
 
     def copy(self, graph):
-        return self.__class__(graph)
+        return GraphLayout(self, graph)
 
 class GraphSpringLayout(GraphLayout):
     
@@ -1413,6 +1450,11 @@ class GraphSpringLayout(GraphLayout):
             n.force.x = 0
             n.force.y = 0
 
+    def copy(self, graph):
+        g = GraphSpringLayout(graph)
+        g.k, g.force, g.repulsion = self.k, self.force, self.repulsion
+        return g
+
 #--- GRAPH THEORY ------------------------------------------------------------------------------------
 
 def depth_first_search(node, visit=lambda node: False, traversable=lambda node, edge: True, _visited=None):
@@ -1433,6 +1475,24 @@ def depth_first_search(node, visit=lambda node: False, traversable=lambda node, 
         if not n.id in _visited:
             stop = depth_first_search(n, visit, traversable, _visited)
     return stop
+    
+dfs = depth_first_search
+
+def breadth_first_search(node, visit=lambda node: False, traversable=lambda node, edge: True):
+    """ Visits all the nodes connected to the given root node, breadth-first.
+    """
+    q = [node]
+    _visited = {}
+    while q:
+        node = q.pop(0)
+        if not node.id in _visited:
+            if visit(node):
+                return True
+            q.extend((n for n in node.links if traversable(node, node.links.edge(n))))
+            _visited[node.id] = True
+    return False
+        
+bfs = breadth_first_search
 
 def adjacency(graph, directed=False, reversed=False, stochastic=False, heuristic=None):
     """ Returns a dictionary indexed by node id1's,
@@ -1512,8 +1572,7 @@ def brandes_betweenness_centrality(graph, normalized=True, directed=False):
             sigma[v] = sigma[v] + sigma[pred] # count paths 
             S.append(v) 
             D[v] = dist
-            for w in graph[v].links:
-                w = w.id
+            for w in W[v].keys():
                 vw_dist = D[v] + W[v][w]
                 if w not in D and (w not in seen or vw_dist < seen[w]): 
                     seen[w] = vw_dist 
@@ -1530,14 +1589,14 @@ def brandes_betweenness_centrality(graph, normalized=True, directed=False):
                 delta[v] = delta[v] + (float(sigma[v]) / float(sigma[w])) * (1.0 + delta[w]) 
             if w != s: 
                 betweenness[w] = betweenness[w] + delta[w]
-        if normalized:
-            # Normalize between 0.0 and 1.0.
-            m = max(betweenness.values())
-            if m == 0: m = 1
-        else:
-            m = 1
-        betweenness = dict([(id, w/m) for id, w in betweenness.iteritems()])
-        return betweenness
+    if normalized:
+        # Normalize between 0.0 and 1.0.
+        m = max(betweenness.values())
+        if m == 0: m = 1
+    else:
+        m = 1
+    betweenness = dict([(id, w/m) for id, w in betweenness.iteritems()])
+    return betweenness
         
 def eigenvector_centrality(graph, normalized=True, reversed=True, rating={}, iterations=100, tolerance=0.0001):
     """ Eigenvector centrality for nodes in the graph (cfr. Google's PageRank).
@@ -1574,13 +1633,13 @@ def eigenvector_centrality(graph, normalized=True, reversed=True, rating={}, ite
     warn("node weight is 0 because eigenvector_centrality() did not converge.", Warning)
     return dict([(n, 0) for n in G])
 
-# a & b => elements that appear in a as well as in b.
 # a | b => all elements from a and all the elements from b. 
+# a & b => elements that appear in a as well as in b.
 # a - b => elements that appear in a but not in b.
-def intersection(a, b):
-    return [x for x in a if x in b]
 def union(a, b):
     return [x for x in a] + [x for x in b if x not in a]
+def intersection(a, b):
+    return [x for x in a if x in b]
 def difference(a, b):
     return [x for x in a if x not in b]
 
@@ -1598,6 +1657,6 @@ def partition(graph):
             if g[i] and g[j] and len(intersection(g[i], g[j])) > 0:
                 g[i] = union(g[i], g[j])
                 g[j] = []
-    g = [graph.copy(nodes=[graph[id] for id in g]) for g in g]
+    g = [graph.copy(nodes=[graph[id] for id in n]) for n in g if n]
     g.sort(lambda a, b: len(b) - len(a))
     return g

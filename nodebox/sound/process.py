@@ -14,7 +14,9 @@ import signal
 import time
 import socket as _socket
 
-def find(match=lambda item: False, list=[]):
+def _find(match=lambda item: False, list=[]):
+    """ Returns the first item in the list for which match(item)=True, or None.
+    """
     for item in list:
         if match(item): return item
 
@@ -78,7 +80,8 @@ class Process(object):
     @property
     def output(self, bytes=1024):
         # Yields a number of bytes of output, or None if the process is idle.
-        return self._process and read_non_blocking(self._process.stdout, bytes)
+        if self._process is not None:
+            return read_non_blocking(self._process.stdout, bytes)
     
     def start(self):
         """ Starts the program with the given command-line options.
@@ -151,7 +154,8 @@ def socket(host, port):
 # /usr/local/bin/pd
 # /Applications/Pd-extended.app/Contents/Resources/bin/pd
 # C:\Program Files\pd\bin\pd.exe
-PD_UNIX    = "pd"
+PD_UNIX1   = "pdextended"
+PD_UNIX2   = "pd"
 PD_MACOSX  = "Pd-extended.app/Contents/Resources/bin/pd"
 PD_WINDOWS = "pd\\bin\\pd.exe"
 DEFAULT    = "default"
@@ -178,19 +182,26 @@ class PD(object):
             The path defines the location of the PD executable.
             A number of default locations are searched as well:
             - the current folder,
+            - /usr/bin/pdextended (Unix, preferred),
             - /usr/local/bin/pd (Unix),
             - /Applications/Pd-extended.app/Contents/Resources/bin/pd (Mac OS X),
             - C:\Program Files\pd\bin\pd.exe (Windows).
+            Command-line options can be given as a dictionary, e.g.
+            PD(options={'-alsa': None})
         """
         path = path != DEFAULT and path or ""
-        path = find(lambda x: os.path.exists(x), [
+        path = _find(lambda x: os.path.exists(x), [
             path,
-            os.path.join(path, PD_UNIX),
+            os.path.join(path, PD_UNIX1),
+            os.path.join(path, PD_UNIX2),
             os.path.join(path, PD_MACOSX),
             os.path.join(path, PD_WINDOWS),
-            "usr/local/bin/" + PD_UNIX, 
-            "/Applications/" + PD_MACOSX, 
-            "C:\\Program Files\\" + PD_WINDOWS
+                   "usr/bin/" + PD_UNIX1,
+             "usr/local/bin/" + PD_UNIX1,
+                   "usr/bin/" + PD_UNIX2,
+             "usr/local/bin/" + PD_UNIX2,
+             "/Applications/" + PD_MACOSX,
+        "C:\\Program Files\\" + PD_WINDOWS
         ])
         self._path     = path          # PD executable location.
         self._process  = None          # PD executable running in background.

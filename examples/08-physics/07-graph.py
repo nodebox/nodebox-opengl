@@ -11,18 +11,18 @@ from nodebox.graphics.physics import Node, Edge, Graph
 g = Graph()
 # Random nodes.
 for i in range(50):
-    g.append(Node(id=str(i+1), 
+    g.add_node(id=str(i+1), 
         radius = 5,
         stroke = color(0), 
-          text = color(0)))
+          text = color(0))
 # Random edges.
 for i in range(75):
     node1 = choice(g.nodes)
     node2 = choice(g.nodes)
-    g.append(Edge(node1, node2, 
+    g.add_edge(node1, node2, 
         length = 1.0, 
         weight = random(), 
-        stroke = color(0)))
+        stroke = color(0))
 
 # Two handy tricks to prettify the layout:
 # 1) Nodes with a higher weight (i.e. incoming traffic) appear bigger.
@@ -45,10 +45,11 @@ def draw(canvas):
     background(1)
     translate(250, 250)
     
-    # With weighted=True, Node.centrality is indicated by a shadow under high-traffic nodes.
     # With directed=True, edges have an arrowhead indicating the direction of the connection.
+    # With weighted=True, Node.centrality is indicated by a shadow under high-traffic nodes.
+    # With weighted=0.0-1.0, indicates nodes whose centrality > the given threshold.
     # This requires some extra calculations.
-    g.draw(weighted=True, directed=True)
+    g.draw(weighted=0.5, directed=True)
     g.update(iterations=10)
     
     # Make it interactive!

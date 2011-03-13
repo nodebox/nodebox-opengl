@@ -66,9 +66,19 @@ def smoothstep(a, b, x):
     if x >=b: return 1.0
     x = float(x-a) / (b-a)
     return x*x * (3-2*x)
-    
+
+def bounce(x):
+    """ Returns a bouncing value between 0.0 and 1.0 (e.g. Mac OS X Dock) for a value between 0.0-1.0.
+    """
+    return abs(sin(2*pi * (x+1) * (x+1)) * (1-x))
+
 def clamp(v, a, b):
     return max(a, min(v, b))
+    
+# Fast C implementations:
+try: from nodebox.ext.geometry import smoothstep
+except:
+    pass
 
 #--- INTERSECTION ------------------------------------------------------------------------------------
 
@@ -95,33 +105,33 @@ def line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4, infinite=False):
     return [(x1+ua*(x2-x1), y1+ua*(y2-y1))]
     
 def circle_line_intersection(cx, cy, radius, x1, y1, x2, y2, infinite=False):
-	""" Returns a list of points where the circle and the line intersect.
-	    Returns an empty list when the circle and the line do not intersect.
-	"""	
-	# Based on: http://www.vb-helper.com/howto_net_line_circle_intersections.html
-	dx = x2-x1
-	dy = y2-y1
-	A = dx*dx + dy*dy
-	B = 2 * (dx*(x1-cx) + dy*(y1-cy))
-	C = pow(x1-cx, 2) + pow(y1-cy, 2) - radius*radius
-	det = B*B - 4*A*C
-	if A <= 0.0000001 or det < 0: 
-	    return []
-	elif det == 0:
-		# One point of intersection.
-		t = -B / (2*A)
-		return [(x1+t*dx, y1+t*dy)]
-	else:
-		# Two points of intersection.
-		# A point of intersection lies on the line segment if 0 <= t <= 1,
-		# and on an extension of the segment otherwise.
-		points = []
-		det2 = sqrt(det)
-		t1 = (-B+det2) / (2*A)
-		t2 = (-B-det2) / (2*A)
-		if infinite or 0 <= t1 <= 1: points.append((x1+t1*dx, y1+t1*dy))  
-		if infinite or 0 <= t2 <= 1: points.append((x1+t2*dx, y1+t2*dy))
-		return points
+    """ Returns a list of points where the circle and the line intersect.
+        Returns an empty list when the circle and the line do not intersect.
+    """	
+    # Based on: http://www.vb-helper.com/howto_net_line_circle_intersections.html
+    dx = x2-x1
+    dy = y2-y1
+    A = dx*dx + dy*dy
+    B = 2 * (dx*(x1-cx) + dy*(y1-cy))
+    C = pow(x1-cx, 2) + pow(y1-cy, 2) - radius*radius
+    det = B*B - 4*A*C
+    if A <= 0.0000001 or det < 0: 
+        return []
+    elif det == 0:
+        # One point of intersection.
+        t = -B / (2*A)
+        return [(x1+t*dx, y1+t*dy)]
+    else:
+        # Two points of intersection.
+        # A point of intersection lies on the line segment if 0 <= t <= 1,
+        # and on an extension of the segment otherwise.
+        points = []
+        det2 = sqrt(det)
+        t1 = (-B+det2) / (2*A)
+        t2 = (-B-det2) / (2*A)
+        if infinite or 0 <= t1 <= 1: points.append((x1+t1*dx, y1+t1*dy))  
+        if infinite or 0 <= t2 <= 1: points.append((x1+t2*dx, y1+t2*dy))
+        return points
 
 def intersection(*args, **kwargs):
     if len(args) == 8:
@@ -147,6 +157,30 @@ def point_in_polygon(points, x, y):
             if x0 + (y-y0) / (y1-y0) * (x1-x0) < x:
                 odd = not odd
     return odd
+
+#=====================================================================================================
+
+#--- AFFINE TRANSFORM --------------------------------------------------------------------------------
+
+def superformula(m, n1, n2, n3, phi):
+    """ A generalization of the superellipse first proposed by Johan Gielis.
+        It can be used to describe many complex shapes and curves that are found in nature.
+    """
+    if n1 == 0: 
+        return (0,0)
+    a = 1.0
+    b = 1.0
+    r = pow(pow(abs(cos(m * phi/4) / a), n2) + \
+            pow(abs(sin(m * phi/4) / b), n3), 1/n1)
+    if abs(r) == 0:
+        return (0,0)
+    r = 1 / r
+    return (r*cos(phi), r*sin(phi))
+
+# Fast C implementation:
+try: from nodebox.ext.geometry import superformula
+except:
+    pass
 
 #=====================================================================================================
 
@@ -443,6 +477,9 @@ _tessellate_callback_type = {
         POINTER(POINTER(GLvoid))) 
 }
 
+# One path with a 100 points is somewhere around 15KB.
+TESSELLATION_CACHE = 100
+
 class TessellationError(Exception):
     pass
 
@@ -451,6 +488,8 @@ class Tessellate(list):
         while tessellate() is processing.
     """
     def __init__(self): 
+        self.cache = {}         # Cache of previously triangulated contours
+        self.queue = []         # Latest contours appear at the end of the list.
         self.reset()
     def clear(self):
         list.__init__(self, []) # Populated during _tessellate_vertex().
@@ -517,6 +556,8 @@ def _tessellate_error(code):
         i += 1
     raise TessellationError, s
 
+_cache = {}
+
 def tessellate(contours):
     """ Returns a list of triangulated (x,y)-vertices from the given list of path contours,
         where each contour is a list of (x,y)-tuples.
@@ -526,15 +567,24 @@ def tessellate(contours):
             glVertex3f(x, y, 0)
         glEnd()
     """
+    id = repr(contours)
+    if id in _tessellate.cache:
+        return _tessellate.cache[id]
+    # Push the given contours to C and call gluTessVertex().
     _tessellate.reset()
     contours = [[(GLdouble * 3)(x, y, 0) for x, y in points] for points in contours]
     gluTessBeginPolygon(_tessellator, None)
-    for vertices in contours:    
+    for vertices in contours:
         gluTessBeginContour(_tessellator)
         for v in vertices:
             gluTessVertex(_tessellator, v, v)
         gluTessEndContour(_tessellator)
     gluTessEndPolygon(_tessellator)
+    # Update the tessellation cache with the results.
+    if len(_tessellate.cache) > TESSELLATION_CACHE:
+        del _tessellate.cache[_tessellate.queue.pop(0)]
+    _tessellate.queue.append(id)
+    _tessellate.cache[id] = _tessellate.triangles
     return _tessellate.triangles
     
 tesselate = tessellate # Common spelling error.

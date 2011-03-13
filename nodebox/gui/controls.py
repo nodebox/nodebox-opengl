@@ -21,14 +21,14 @@ from nodebox.graphics import \
     DEFAULT, HAND, TEXT, \
     LEFT, RIGHT, UP, DOWN, TAB, ENTER, BACKSPACE, CTRL, SHIFT, ALT
 
-def popdefault(dict, key, default=None):
+def _popdefault(dict, key, default=None):
     """ Pops the given key from the dictionary and returns its value (or default).
     """
     if key in dict: 
         return dict.pop(key)
     return default
     
-def find(match=lambda item: False, list=[]):
+def _find(match=lambda item: False, list=[]):
     """ Returns the first item in the list for which match(item)=True, or None.
     """
     for item in list:
@@ -202,10 +202,10 @@ class Label(Control):
             Optional parameters can include fill, font, fontsize, fontweight.
         """
         txt = Text(caption, **{
-               "fill" : popdefault(kwargs, "fill", theme["text"]),
-               "font" : popdefault(kwargs, "font", theme["fontname"]),
-           "fontsize" : popdefault(kwargs, "fontsize", theme["fontsize"]),
-         "fontweight" : popdefault(kwargs, "fontweight", theme["fontweight"]),
+               "fill" : _popdefault(kwargs, "fill", theme["text"]),
+               "font" : _popdefault(kwargs, "font", theme["fontname"]),
+           "fontsize" : _popdefault(kwargs, "fontsize", theme["fontsize"]),
+         "fontweight" : _popdefault(kwargs, "fontweight", theme["fontweight"]),
          "lineheight" : 1,
               "align" : CENTER
         })
@@ -262,8 +262,8 @@ class Button(Control):
         if action:
             # Override the Button.on_action() method from the given function.
             self.set_method(action, name="on_action")
-        popdefault(kwargs, "width")
-        popdefault(kwargs, "height")
+        _popdefault(kwargs, "width")
+        _popdefault(kwargs, "height")
         self.append(Label(caption, **kwargs))
         self._pack()
     
@@ -552,8 +552,8 @@ class Panel(Control):
           "right" : crop(img, img.width-w, w+1, w, 1),
            "face" : crop(img, w+1, w+1, 1, 1)
         }
-        popdefault(kwargs, "width")
-        popdefault(kwargs, "height")
+        _popdefault(kwargs, "width")
+        _popdefault(kwargs, "height")
         self.append(Label(caption, **kwargs))
         self.append(Close())
         self.fixed = fixed # Draggable?
@@ -660,16 +660,17 @@ class Editable(Control):
             Optional parameters can include fill, font, fontsize, fontweight.
         """
         txt = Text(value or " ", **{
-               "fill" : popdefault(kwargs, "fill", Color(0,0.9)),
-               "font" : popdefault(kwargs, "font", theme["fontname"]),
-           "fontsize" : popdefault(kwargs, "fontsize", theme["fontsize"]),
-         "fontweight" : popdefault(kwargs, "fontweight", theme["fontweight"]),
-         "lineheight" : 1,
+               "fill" : _popdefault(kwargs, "fill", Color(0,0.9)),
+               "font" : _popdefault(kwargs, "font", theme["fontname"]),
+           "fontsize" : _popdefault(kwargs, "fontsize", theme["fontsize"]),
+         "fontweight" : _popdefault(kwargs, "fontweight", theme["fontweight"]),
+         "lineheight" : _popdefault(kwargs, "lineheight", 1),
               "align" : LEFT
         })
         kwargs["width"]  = width
         kwargs["height"] = height
         Control.__init__(self, x=x, y=y, id=id, **kwargs)
+        self.reserved = kwargs.get("reserved", [ENTER, TAB])
         self._padding = padding
         self._i       = 0     # Index of character on which the mouse is pressed.
         self._empty   = value == "" and True or False
@@ -689,8 +690,8 @@ class Editable(Control):
         self._editor.height = max(0, self.height - self._padding[1] * 2)
 
     def _get_value(self):
-        # IncrementalTextLayout in Pyglet 1.1.4 has a bug with the empty string.
-        # We keep track of empty strings with Editable._empty to avoid the bug.
+        # IncrementalTextLayout in Pyglet 1.1.4 has a bug with empty strings.
+        # We keep track of empty strings with Editable._empty to avoid this.
         return not self._empty and self._editor.document.text or u""
     def _set_value(self, string):
         self._editor.begin_update()
@@ -778,8 +779,8 @@ class Editable(Control):
             self._editor.set_selection(i, i+1)
         if i == len(self.value) and self.value != "" and delimiter(self.value[i-1]):
             self._editor.set_selection(i-1, i)
-        a = find(lambda (i,ch): delimiter(ch), enumerate(reversed(self.value[:i])))
-        b = find(lambda (i,ch): delimiter(ch), enumerate(self.value[i:]))
+        a = _find(lambda (i,ch): delimiter(ch), enumerate(reversed(self.value[:i])))
+        b = _find(lambda (i,ch): delimiter(ch), enumerate(self.value[i:]))
         a = a and i-a[0] or 0
         b = b and i+b[0] or len(self.value)
         self._editor.set_selection(a, b)
@@ -803,21 +804,21 @@ class Editable(Control):
                     max(self._editor.get_line_from_position(i)+y, 0),
                         self._editor.get_point_from_position(i)[0])
                 self._editor.caret.position = i
-            elif key.code == TAB:
+            elif key.code == TAB and TAB in self.reserved:
                 # The tab key navigates away from the control.
                 self._editor.caret.position = 0
                 self.editing = False
-            elif key.code == ENTER:
+            elif key.code == ENTER and ENTER in self.reserved:
                 # The enter key executes on_action() and navigates away from the control.
                 self._editor.caret.position = 0
                 self.editing = False
                 self.on_action()
             elif key.code == BACKSPACE and self.selected:
-                # The backspace key removes the character at the text cursor.
+                # The backspace key removes the current text selection.
                 self.value = self.value[:self.selection[0]] + self.value[self.selection[1]:]
                 self._editor.caret.position = max(self.selection[0], 0)
             elif key.code == BACKSPACE and i > 0:
-                # The backspace key removes the current text selection.
+                # The backspace key removes the character at the text cursor.
                 self.value = self.value[:i-1] + self.value[i:]
                 self._editor.caret.position = max(i-1, 0)
             elif key.char:
@@ -825,8 +826,9 @@ class Editable(Control):
                     # Typing replaces any text currently selected.
                     self.value = self.value[:self.selection[0]] + self.value[self.selection[1]:]
                     self._editor.caret.position = i = max(self.selection[0], 0)
-                # Character input is inserted at the text cursor.
-                self.value = self.value[:i] + key.char + self.value[i:]
+                ch = key.char
+                ch = ch.replace("\r", "\n\r")
+                self.value = self.value[:i] + ch + self.value[i:]
                 self._editor.caret.position = min(i+1, len(self.value))
             self._editor.set_selection(0, 0)
     

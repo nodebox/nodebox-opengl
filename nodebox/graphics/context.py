@@ -34,11 +34,6 @@ import geometry
 #import shader
 # Do this when we have defined texture() and image(), which are needed in the shader module.
 
-def find(match=lambda item: False, list=[]):
-    for item in list:
-        if match(item): return item
-    return None
-
 # OpenGL version, e.g. "2.0 NVIDIA-1.5.48".
 OPENGL = pyglet.gl.gl_info.get_version()
 
@@ -684,7 +679,7 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
         p.lineto(x+r*sin(a), y+r*cos(a))
     p.closepath()
     if kwargs.get("draw", True): 
-        p.draw()
+        p.draw(**kwargs)
     return p
 
 #=====================================================================================================
@@ -1027,10 +1022,10 @@ class BezierPath(list):
         def _draw_fill(contours):
             # Drawing commands for the path fill (as triangles by tessellating the contours).
             v = geometry.tesselate(contours)
-            glBegin(GL_TRIANGLES),
+            glBegin(GL_TRIANGLES)
             for x, y in v:
                 glVertex3f(x, y, 0)
-            glEnd()            
+            glEnd()
         def _draw_stroke(contours):
             # Drawing commands for the path stroke.
             for path in contours:
@@ -1307,6 +1302,27 @@ def beginclip(path):
 def endclip():
     glDisable(GL_STENCIL_TEST)
 
+#--- SUPERSHAPE --------------------------------------------------------------------------------------
+
+def supershape(x, y, width, height, m, n1, n2, n3, points=100, percentage=1.0, range=2*pi, **kwargs):
+    """ Returns a BezierPath constructed using the superformula,
+        which can be used to describe many complex shapes and curves that are found in nature.
+    """
+    path = BezierPath()
+    first = True
+    for i in xrange(points):
+        if i <= points * percentage: 
+            dx, dy = geometry.superformula(m, n1, n2, n3, i*range/points)
+            dx, dy = dx*width + x, dy*height + y
+            if first is Trues:
+                path.moveto(dx, dy); first=False
+            else:
+                path.lineto(dx, dy)
+    path.closepath()
+    if kwargs.get("draw", True):
+        path.draw(**kwargs)
+    return path
+
 #=====================================================================================================
 
 #--- IMAGE -------------------------------------------------------------------------------------------
@@ -1382,7 +1398,7 @@ def cached(texture):
     
 def _render(texture, quad=(0,0,0,0,0,0,0,0)):
     """ Renders the texture on the canvas inside a quadtriliteral (i.e. rectangle).
-        The quadtriliteral can be distorted by giving corner offset coordinates.
+        The quadriliteral can be distorted by giving corner offset coordinates.
     """
     t = texture.tex_coords # power-2 dimensions
     w = texture.width      # See Pyglet programming guide -> OpenGL imaging.
@@ -2035,6 +2051,8 @@ class Text(object):
             return self.__dict__[k]
         elif k in ("text", "height", "bold", "italic"):
             return getattr(self._label, k)
+        elif k == "string":
+            return self._label.text
         elif k == "width":
             if self._label.width != geometry.INFINITE: return self._label.width
         elif k in ("font", "fontname"):
@@ -2062,6 +2080,8 @@ class Text(object):
         self._label.begin_update()
         if k in ("text", "height", "bold", "italic"):
             setattr(self._label, k, v)
+        elif k == "string":
+            self._label.text = v
         elif k == "width":
             self._label.width = v is None and geometry.INFINITE or v
         elif k in ("font", "fontname"):
@@ -3532,15 +3552,16 @@ class Canvas(list, Prototype, EventHandler):
             self._focus.on_mouse_press(self._mouse)
         
     def _on_mouse_release(self, x, y, button, modifiers):
-        self._mouse.button    = None
-        self._mouse.modifiers = []
-        self._mouse.pressed   = False
-        self._mouse.dragged   = False
-        self.on_mouse_release(self._mouse)
         if self._focus is not None:
             self._focus.on_mouse_release(self._mouse)
             self._focus.pressed = False
             self._focus.dragged = False
+        self.on_mouse_release(self._mouse)
+        self._mouse.button    = None
+        self._mouse.modifiers = []
+        self._mouse.pressed   = False
+        self._mouse.dragged   = False
+        if self._focus is not None:
             # Get the topmost layer over which the mouse is hovering.
             layer = self.layer_at(x, y, enabled=True)
             # If the mouse is no longer over the layer with the focus
@@ -3587,17 +3608,19 @@ class Canvas(list, Prototype, EventHandler):
               (CTRL, pyglet.window.key.MOD_CTRL), 
              (SHIFT, pyglet.window.key.MOD_SHIFT), 
             (OPTION, pyglet.window.key.MOD_OPTION)) if modifiers & b]
+        if self._key.code == TAB:
+            self._key.char = "\t"
         # The event is delegated in _update():
         self._window.on_key_pressed = True
 
     def _on_key_release(self, keycode, modifiers):
+        for layer in self:
+            layer.on_key_release(self.key)
+        self.on_key_release(self.key)
         self._key.char      = ""
         self._key.code      = None
         self._key.modifiers = [] 
         self._key.pressed   = False
-        self.on_key_release(self.key)
-        for layer in self:
-            layer.on_key_release(self.key)
 
     def _on_text(self, text):
         self._key.char = text

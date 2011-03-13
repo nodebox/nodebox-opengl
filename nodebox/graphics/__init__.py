@@ -9,4 +9,4 @@ from context import *
 
 physics.line    = context.line
 physics.ellipse = context.ellipse
-physics.text    = context.text
+physics.Text    = context.Text

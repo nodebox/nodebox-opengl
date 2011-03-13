@@ -7,8 +7,14 @@
 
 from pyglet.image import Texture, SolidColorImagePattern
 from pyglet.gl    import *
-from geometry     import lerp
+from geometry     import lerp, clamp
 from math         import radians
+
+def next(generator, default=None):
+    try: 
+        return generator.next()
+    except StopIteration:
+        return default
 
 #=====================================================================================================
 
@@ -35,17 +41,6 @@ def ratio2(texture1, texture2):
         float(ceil2(texture1.width)) / ceil2(texture2.width), 
         float(ceil2(texture1.height)) / ceil2(texture2.height)
     )
-    
-def find(f, seq):
-    """ Return first item in the sequence where f(item) == True.
-    """
-    for item in seq:
-        if f(item): return item
-        
-def clamp(value, a, b):
-    """ Returns value clamped between a (minimum) and b (maximum).
-    """
-    return max(a, min(value, b))
 
 #=====================================================================================================
 
@@ -184,7 +179,7 @@ class Shader(object):
                 glUniform4f(address, value[0], value[1], value[2], value[3])
         # A list representing an array of ints or floats.
         elif isinstance(value, (list, tuple)):
-            if find(lambda v: isinstance(v, float), value):
+            if next((v for v in value if isinstance(v, float))) is not None:
                 array = c_float * len(value)
                 glUniform1fv(address, len(value), array(*value))
             else:
@@ -1470,14 +1465,14 @@ def mirror(img, dx=0.5, dy=0.5, **kwargs):
     dx, dy, m, i = distortion_mixin(MIRROR, dx, dy, **kwargs)
     return filter(img, filter=Distortion(MIRROR, img.texture, dx-0.5, dy-0.5, m, i))
 
-def dropshadow(img, alpha=0.5, amount=2):
+def dropshadow(img, alpha=0.5, amount=2, kernel=5):
     """ Returns a blurred and grayscale version of the image.
         If filters are not supported, returns a grayscale version without blur (using Image.color).
     """
     if not SUPPORTED:
         t = texture(img)
     else:
-        t = blur(img, kernel=5, amount=amount).texture
+        t = blur(img, kernel=kernel, amount=amount).texture
     img = isinstance(img, Image) and img.copy(t) or Image(t)
     img.color.rgba = (0,0,0, alpha)
     return img

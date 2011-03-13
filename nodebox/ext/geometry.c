@@ -38,6 +38,36 @@ void _rotate(double x, double y, double x0, double y0, double a, double *x1, dou
     *y1 = y*u+x*v+y0;
 }
 
+// --- SMOOTHSTEP ---------------------------------------------------------------
+void _smoothstep(double a, double b, double x, double *t) {
+    if (x < a) {
+        *t = 0.0;
+    } else if (x >= b) {
+        *t = 1.0;
+    } else {
+        x = (x-a) / (b-a);
+        *t = x*x * (3-2*x);
+    }
+}
+
+// --- SUPERFORMULA -------------------------------------------------------------
+
+void _superformula(double m, double n1, double n2, double n3, double phi, double *x, double *y) {
+    double a=1.0, b=1.0, r;
+    if (n1 != 0) { 
+        r = pow(pow(fabs(cos(m*phi/4.0)/a), n2) + 
+            pow(fabs(sin(m*phi/4.0)/b), n3), 1.0/n1);
+    }
+    if (n1 == 0 || fabs(r) == 0) {
+        *x = 0;
+        *y = 0;
+    } else {
+        r = 1.0 / r;
+        *x = r*cos(phi);
+        *y = r*sin(phi);
+    }
+}
+
 // --- MATRIX MULTIPLY ----------------------------------------------------------
 
 void _mmult(double  a0, double  a1, double  a2, double  a3, double  a4, double  a5, double  a6, double  a7, double  a8,
@@ -102,6 +132,24 @@ rotate(PyObject *self, PyObject *args) {
 }
 
 static PyObject *
+smoothstep(PyObject *self, PyObject *args) {
+    double a, b, x, t;
+    if (!PyArg_ParseTuple(args, "ddd", &a, &b, &x))
+        return NULL;
+    _smoothstep(a, b, x, &t);
+    return Py_BuildValue("d", t);
+}
+
+static PyObject *
+superformula(PyObject *self, PyObject *args) {
+    double m, n1, n2, n3, phi, x, y;
+    if (!PyArg_ParseTuple(args, "ddddd", &m, &n1, &n2, &n3, &phi))
+        return NULL;
+    _superformula(m, n1, n2, n3, phi, &x, &y);
+    return Py_BuildValue("dd", x, y);
+}
+
+static PyObject *
 mmult(PyObject *self, PyObject *args) {
     double a0, a1, a2, a3, a4, a5, a6, a7, a8;
     double b0, b1, b2, b3, b4, b5, b6, b7, b8;
@@ -124,6 +172,8 @@ static PyMethodDef geometry_methods[]={
     { "distance", distance, METH_VARARGS },
     { "coordinates", coordinates, METH_VARARGS }, 
     { "rotate", rotate, METH_VARARGS },
+    { "smoothstep", smoothstep, METH_VARARGS },
+    { "superformula", superformula, METH_VARARGS },
     { "mmult", mmult, METH_VARARGS }, 
     { NULL, NULL }
 };
