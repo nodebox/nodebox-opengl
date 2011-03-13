@@ -6,12 +6,12 @@ NodeBox for OpenGL is a Python module for creating 2D interactive visuals using 
 VERSION
 =======
 
-1.5
+1.6
 
 LICENSE
 =======
 
-GNU General Public License, see LICENSE.txt for further details.
+BSD, see LICENSE.txt for further details.
 
 REQUIREMENTS
 ============
