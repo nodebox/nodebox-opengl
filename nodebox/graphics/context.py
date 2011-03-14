@@ -1313,7 +1313,7 @@ def supershape(x, y, width, height, m, n1, n2, n3, points=100, percentage=1.0, r
     for i in xrange(points):
         if i <= points * percentage: 
             dx, dy = geometry.superformula(m, n1, n2, n3, i*range/points)
-            dx, dy = dx*width + x, dy*height + y
+            dx, dy = dx*width/2 + x, dy*height/2 + y
             if first is True:
                 path.moveto(dx, dy); first=False
             else:
