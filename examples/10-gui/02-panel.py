@@ -35,7 +35,7 @@ panel.pack()
 canvas.append(panel)
 
 def draw(canvas):
-    
+
     canvas.clear()
     
     # In this simple example,

@@ -8,7 +8,7 @@
 from math import sqrt, pow
 from math import sin, cos, atan2, degrees, radians, pi
 
-INFINITE = 1e20 # float("inf") doesn't work on windows.
+INFINITE = 1e15 # float("inf") doesn't work on windows.
 
 #=====================================================================================================
 

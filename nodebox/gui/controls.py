@@ -12,7 +12,7 @@ from time import time
 from pyglet.text.layout import IncrementalTextLayout
 from pyglet.text.caret  import Caret
 
-from nodebox.graphics.geometry import angle, distance, clamp, Bounds
+from nodebox.graphics.geometry import angle, distance, clamp, Bounds, INFINITE
 from nodebox.graphics import \
     Layer, Color, Image, image, crop, rect, \
     Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
@@ -225,7 +225,7 @@ class Label(Control):
     caption = property(_get_caption, _set_caption)
 
     @property
-    def fonts(self):
+    def font(self):
         return self._text.font
     @property
     def fontsize(self):
@@ -528,121 +528,6 @@ class Flag(Control):
             self.on_action()
 
 Checkbox = CheckBox = Flag
-
-#=====================================================================================================
-
-#--- PANEL -------------------------------------------------------------------------------------------    
-
-class Panel(Control):
-    
-    def __init__(self, caption="", fixed=False, modal=True, x=0, y=0, width=175, height=250, **kwargs):
-        """ A panel containing other controls that can be dragged when Panel.fixed=False.
-            Controls or (Layout groups) can be added with Panel.append().
-        """
-        Control.__init__(self, x=0, y=0, width=max(width,60), height=max(height,60), **kwargs)
-        img, w = Image(theme["panel"]), 30
-        self.src = {
-           "cap1" : crop(img, 0, img.height-w, w, w),
-           "cap2" : crop(img, img.width-w, img.height-w, w, w),
-           "cap3" : crop(img, 0, 0, w, w),
-           "cap4" : crop(img, img.width-w, 0, w, w),
-            "top" : crop(img, w+1, img.height-w, 1, w),
-         "bottom" : crop(img, w+1, 0, 1, w),
-           "left" : crop(img, 0, w+1, w, 1),
-          "right" : crop(img, img.width-w, w+1, w, 1),
-           "face" : crop(img, w+1, w+1, 1, 1)
-        }
-        _popdefault(kwargs, "width")
-        _popdefault(kwargs, "height")
-        self.append(Label(caption, **kwargs))
-        self.append(Close())
-        self.fixed = fixed # Draggable?
-        self.modal = modal # Closeable?
-        self._pack()
-
-    def _get_caption(self):
-        return self._caption.text
-    def _set_caption(self, str):
-        self._caption.text = str
-        self._pack()
-        
-    caption = property(_get_caption, _set_caption)
-
-    @property
-    def controls(self):
-        return iter(self[2:]) # self[0] is the Label,
-                              # self[1] is the Close action.
-    
-    def insert(self, i, control):
-        """ Inserts the control, or inserts all controls in the given Layout.
-        """
-        if isinstance(control, Layout):
-            # If the control is actually a Layout (e.g. ordered group of controls), apply it.
-            control.apply()
-        Layer.insert(self, i, control)
-        
-    def append(self, control):
-        self.insert(len(self), control)
-    def extend(self, controls):
-        for control in controls: 
-            self.append(control)
-
-    def _pack(self):
-        # Center the caption in the label's header.
-        # Position the close button in the top right corner.
-        self[0].x = 0.5 * (self.width - self[0].width)
-        self[0].y = self.height - self.src["top"].height + 0.5 * (self.src["top"].height - self[0].height)
-        self[1].x = self.width - self[1].width - 4
-        self[1].y = self.height - self[1].height - 2
-        
-    def pack(self, padding=20):
-        """ Resizes the panel to the most compact size,
-            based on the position and size of the controls in the panel.
-        """
-        def _visit(control):
-            if control not in (self, self[0], self[1]):
-                self._b = self._b and self._b.union(control.bounds) or control.bounds
-        self._b = None
-        self.traverse(_visit)
-        for control in self.controls:
-            control.x += padding - self._b.x
-            control.y += padding - self._b.y
-        self._set_width( padding + self._b.width  - self._b.x + padding)
-        self._set_height(padding + self._b.height - self._b.y + padding + self.src["top"].height)
-        self._pack()
-    
-    def update(self):
-        self[1].hidden = self.modal
-    
-    def draw(self):
-        im1, im2, im3 = self.src["cap1"], self.src["cap2"],  self.src["top"]
-        im4, im5, im6 = self.src["cap3"], self.src["cap4"],  self.src["bottom"]
-        im7, im8, im9 = self.src["left"], self.src["right"], self.src["face"]
-        image(im1, 0, self.height-im1.height)
-        image(im2, self.width-im2.width, self.height-im2.height)
-        image(im3, im1.width, self.height-im3.height, width=self.width-im1.width-im2.width)
-        image(im4, 0, 0)
-        image(im5, self.width-im5.width, 0)
-        image(im6, im4.width, 0, width=self.width-im4.width-im5.width)
-        image(im7, 0, im4.height, height=self.height-im1.height-im4.height)
-        image(im8, self.width-im8.width, im4.height, height=self.height-im2.height-im5.height)
-        image(im9, im4.width, im6.height, width=self.width-im7.width-im8.width, height=self.height-im3.height-im6.height)
-            
-    def on_mouse_enter(self, mouse): 
-        mouse.cursor = DEFAULT
-
-    def on_mouse_press(self, mouse):
-        self.dragged = not self.fixed and mouse.y > self.y+self.height-self.src["top"].height
-
-    def on_mouse_drag(self, mouse):
-        if self.dragged and not self.fixed:
-            self.x += mouse.dx
-            self.y += mouse.dy
-    
-    def open(self):
-        self.hidden = False
-    def close(self):
-        self.hidden = True
 
 #=====================================================================================================
 
@@ -978,18 +863,173 @@ class Rulers(Control):
 
 #=====================================================================================================
 
+#--- PANEL -------------------------------------------------------------------------------------------    
+
+class Panel(Control):
+    
+    def __init__(self, caption="", fixed=False, modal=True, x=0, y=0, width=175, height=250, **kwargs):
+        """ A panel containing other controls that can be dragged when Panel.fixed=False.
+            Controls or (Layout groups) can be added with Panel.append().
+        """
+        Control.__init__(self, x=x, y=y, width=max(width,60), height=max(height,60), **kwargs)
+        img, w = Image(theme["panel"]), 30
+        self.src = {
+           "cap1" : crop(img, 0, img.height-w, w, w),
+           "cap2" : crop(img, img.width-w, img.height-w, w, w),
+           "cap3" : crop(img, 0, 0, w, w),
+           "cap4" : crop(img, img.width-w, 0, w, w),
+            "top" : crop(img, w+1, img.height-w, 1, w),
+         "bottom" : crop(img, w+1, 0, 1, w),
+           "left" : crop(img, 0, w+1, w, 1),
+          "right" : crop(img, img.width-w, w+1, w, 1),
+           "face" : crop(img, w+1, w+1, 1, 1)
+        }
+        _popdefault(kwargs, "width")
+        _popdefault(kwargs, "height")
+        self.append(Label(caption, **kwargs))
+        self.append(Close())
+        self.fixed = fixed # Draggable?
+        self.modal = modal # Closeable?
+        self._pack()
+
+    def _get_caption(self):
+        return self._caption.text
+    def _set_caption(self, str):
+        self._caption.text = str
+        self._pack()
+        
+    caption = property(_get_caption, _set_caption)
+
+    @property
+    def controls(self):
+        return iter(self[2:]) # self[0] is the Label,
+                              # self[1] is the Close action.
+    
+    def insert(self, i, control):
+        """ Inserts the control, or inserts all controls in the given Layout.
+        """
+        if isinstance(control, Layout):
+            # If the control is actually a Layout (e.g. ordered group of controls), apply it.
+            control.apply()
+        Layer.insert(self, i, control)
+        
+    def append(self, control):
+        self.insert(len(self), control)
+    def extend(self, controls):
+        for control in controls: 
+            self.append(control)
+
+    def _pack(self):
+        # Center the caption in the label's header.
+        # Position the close button in the top right corner.
+        self[0].x = 0.5 * (self.width - self[0].width)
+        self[0].y = self.height - self.src["top"].height + 0.5 * (self.src["top"].height - self[0].height)
+        self[1].x = self.width - self[1].width - 4
+        self[1].y = self.height - self[1].height - 2
+        
+    def pack(self, padding=20):
+        """ Resizes the panel to the most compact size,
+            based on the position and size of the controls in the panel.
+        """
+        def _visit(control):
+            if control not in (self, self[0], self[1]):
+                self._b = self._b and self._b.union(control.bounds) or control.bounds
+        self._b = None
+        self.traverse(_visit)
+        for control in self.controls:
+            control.x += padding + self.x - self._b.x
+            control.y += padding + self.y - self._b.y
+        self._set_width( padding + self._b.width  + padding)
+        self._set_height(padding + self._b.height + padding + self.src["top"].height)
+        self._pack()
+    
+    def update(self):
+        self[1].hidden = self.modal
+    
+    def draw(self):
+        im1, im2, im3 = self.src["cap1"], self.src["cap2"],  self.src["top"]
+        im4, im5, im6 = self.src["cap3"], self.src["cap4"],  self.src["bottom"]
+        im7, im8, im9 = self.src["left"], self.src["right"], self.src["face"]
+        image(im1, 0, self.height-im1.height)
+        image(im2, self.width-im2.width, self.height-im2.height)
+        image(im3, im1.width, self.height-im3.height, width=self.width-im1.width-im2.width)
+        image(im4, 0, 0)
+        image(im5, self.width-im5.width, 0)
+        image(im6, im4.width, 0, width=self.width-im4.width-im5.width)
+        image(im7, 0, im4.height, height=self.height-im1.height-im4.height)
+        image(im8, self.width-im8.width, im4.height, height=self.height-im2.height-im5.height)
+        image(im9, im4.width, im6.height, width=self.width-im7.width-im8.width, height=self.height-im3.height-im6.height)
+            
+    def on_mouse_enter(self, mouse): 
+        mouse.cursor = DEFAULT
+
+    def on_mouse_press(self, mouse):
+        self._dragged = not self.fixed and mouse.y > self.y+self.height-self.src["top"].height
+
+    def on_mouse_drag(self, mouse):
+        if self._dragged and not self.fixed:
+            self.x += mouse.dx
+            self.y += mouse.dy
+        self.dragged = self._dragged
+    
+    def open(self):
+        self.hidden = False
+    def close(self):
+        self.hidden = True
+
+class Dock(Panel):
+    
+    def __init__(self, anchor=LEFT, caption="", fixed=True, modal=True, **kwargs):
+        """ A panel attached to the edge of the canvas (LEFT or RIGHT), extending the full height.
+            With fixed=False, it can be snapped from the edge and dragged as a normal panel.
+        """
+        kwargs.setdefault("x", anchor==RIGHT and INFINITE or 0)
+        kwargs.setdefault("y", 0)
+        Panel.__init__(self, caption=caption, fixed=fixed, modal=modal, **kwargs)
+        self.anchor = anchor
+        self.snap   = 1
+    
+    def update(self):
+        Panel.update(self)
+        if self.canvas is not None:
+            if self.anchor == LEFT and self.x < self.snap:
+                if self.dragged and self.x == 0:
+                    # Stop drag once snapped to the edge.
+                    self._dragged = False
+                self.x = 0
+                self.y = self.canvas.height - self.height
+            if self.anchor == RIGHT and self.x > self.canvas.width-self.width - self.snap:
+                if self.dragged and self.x == self.canvas.width-self.width:
+                    self._dragged = False
+                self.x = self.canvas.width  - self.width
+                self.y = self.canvas.height - self.height
+            
+    def draw(self):
+        im1, im2 = self.src["top"], self.src["face"]
+        if self.canvas is not None and \
+          (self.anchor == LEFT  and self.x == 0) or \
+          (self.anchor == RIGHT and self.x == self.canvas.width-self.width):
+            image(im1, 0, self.height-im1.height, width=self.width)
+            image(im2, 0, -self.canvas.height+self.height, width=self.width, height=self.canvas.height-im1.height)
+        else:
+            Panel.draw(self)
+
+#=====================================================================================================
+
 #--- Layout ------------------------------------------------------------------------------------------
 
 class Layout(Layer):
     
-    def __init__(self, **kwargs):
+    def __init__(self, x=0, y=0, **kwargs):
         """ A group of controls with a specific layout.
             Controls can be added with Layout.append().
             The layout will be applied when Layout.apply() is called.
             This happens automatically if a layout is appended to a Panel.
         """
-        kwargs["x"] = kwargs["y"] = kwargs["width"] = kwargs["height"] = 0
-        Layer.__init__(self, **kwargs)
+        
+        kwargs["width"]  = 0
+        kwargs["height"] = 0
+        Layer.__init__(self, x=x, y=y, **kwargs)
         self._controls = {} # Lazy cache of (id, control)-children, see nested().
 
     def insert(self, i, control):
@@ -1036,12 +1076,12 @@ class Layout(Layer):
 
 class Labeled(Layout):
 
-    def __init__(self, controls=[]):
+    def __init__(self, controls=[], x=0, y=0):
         """ A layout where each control has an associated text label.
         """
-        Layout.__init__(self)
-        self.controls  = []
-        self.captions  = []
+        Layout.__init__(self, x=x, y=y)
+        self.controls = []
+        self.captions = []
         self.extend(controls)
 
     def insert(self, i, control, caption=""):
@@ -1071,12 +1111,12 @@ class Labeled(Layout):
 
 class Rows(Labeled):
 
-    def __init__(self, controls=[], width=125):
+    def __init__(self, controls=[], x=0, y=0, width=125):
         """ A layout where each control appears on a new line.
             Each control has an associated text caption, displayed to the left of the control.
             The given width defines the desired width for each control.
         """
-        Labeled.__init__(self, controls)
+        Labeled.__init__(self, controls, x=x, y=y)
         self._maxwidth = width
 
     def apply(self, spacing=10):
@@ -1114,12 +1154,12 @@ TOP, CENTER = "top", "center"
 
 class Row(Labeled):
 
-    def __init__(self, controls=[], width=125, align=CENTER):
+    def __init__(self, controls=[], x=0, y=0, width=125, align=CENTER):
         """ A layout where each control appears in a new column.
             Each control has an associated text caption, displayed on top of the control.
             The given width defines the desired width for each control.
         """
-        Labeled.__init__(self, controls)
+        Labeled.__init__(self, controls, x=x, y=y)
         self._maxwidth = width
         self._align    = align
 
