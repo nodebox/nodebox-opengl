@@ -105,11 +105,14 @@ class Color(list):
         # One value, another color object.
         elif len(args) == 1 and isinstance(args[0], Color):
             r, g, b, a = args[0].r, args[0].g, args[0].b, args[0].a
+        # One value, None.
+        elif len(args) == 1 and args[0] is None:
+            r, g, b, a = 0, 0, 0, 0
         # One value, grayscale.
         elif len(args) == 1:
             r, g, b, a = args[0], args[0], args[0], 1
-        # No values or None, transparent black.
-        elif len(args) == 0 or (len(args) == 1 and args[0] is None):
+        # No value, transparent black.
+        elif len(args):
             r, g, b, a = 0, 0, 0, 0
         # Transform to base 1:
         base = float(kwargs.get("base", 1.0))

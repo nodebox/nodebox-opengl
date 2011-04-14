@@ -248,6 +248,10 @@ class AffineTransform:
     def identity(self):
         return [1,0,0, 0,1,0, 0,0,1]
         
+    @property
+    def rotation(self):
+        return (degrees(atan2(self.matrix[1], self.matrix[0])) + 360) % 360 # 0.0 => 360.0
+        
     def scale(self, x, y=None):
         if y==None: y = x
         self.matrix = self._mmult([x,0,0, 0,y,0, 0,0,1], self.matrix)
@@ -293,6 +297,8 @@ class AffineTransform:
     
     def map(self, points):
         return [self.apply(*pt) for pt in points]
+
+Transform = AffineTransform
 
 #=====================================================================================================
 
