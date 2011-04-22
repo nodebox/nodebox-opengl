@@ -322,7 +322,7 @@ def findpath(points, curvature=1.0):
 #--- BEZIER PATH INSERT POINT ------------------------------------------------------------------------
 
 def insert_point(path, t):
-    """ Returns a path copy with an extra point at t.
+    """ Inserts an extra point at t.
     """
     
     # Find the points before and after t on the path.
@@ -345,33 +345,47 @@ def insert_point(path, t):
             curvepoint(t, x0, y0, x1, y1, x2, y2, x3, y3, True)
     else:
         raise PathError, "Locate should not return a MOVETO"
+
+    # NodeBox for OpenGL modifies the path in place,
+    # NodeBox for Mac OS X returned a path copy (see inactive code below).
+    if pt_cmd == CURVETO:
+        path[i+1].ctrl1.x = pt_c2x
+        path[i+1].ctrl1.y = pt_c2y
+        path[i+1].ctrl2.x = pt_h2x
+        path[i+1].ctrl2.y = pt_h2y
+        path.insert(i+1, PathElement(cmd=CURVETO, pts=[(pt_h1x, pt_h1y), (pt_c1x, pt_c1y), (pt_x, pt_y)]))
+    elif pt_cmd == LINETO:
+        path.insert(i+1, PathElement(cmd=LINETO, pts=[(pt_x, pt_y)]))
+    else:
+        raise PathError, "Didn't expect pt_cmd %s here" % pt_cmd
+    return path[i+1]
     
-    new_path = BezierPath(None)
-    new_path.moveto(path[0].x, path[0].y)
-    for j in range(1, len(path)):
-        if j == i+1:
-            if pt_cmd == CURVETO:
-                new_path.curveto(pt_h1x, pt_h1y, pt_c1x, pt_c1y, pt_x, pt_y)
-                new_path.curveto(pt_c2x, pt_c2y, pt_h2x, pt_h2y, path[j].x, path[j].y)
-            elif pt_cmd == LINETO:
-                new_path.lineto(pt_x, pt_y)
-                if path[j].cmd != CLOSE:
-                    new_path.lineto(path[j].x, path[j].y)
-                else:
-                    new_path.closepath()
-            else:
-                raise PathError, "Didn't expect pt_cmd %s here" % pt_cmd
-        else:
-            if path[j].cmd == MOVETO:
-                new_path.moveto(path[j].x, path[j].y)
-            if path[j].cmd == LINETO:
-                new_path.lineto(path[j].x, path[j].y)
-            if path[j].cmd == CURVETO:
-                new_path.curveto(path[j].ctrl1.x, path[j].ctrl1.y,
-                             path[j].ctrl2.x, path[j].ctrl2.y,
-                             path[j].x, path[j].y)
-            if path[j].cmd == CLOSE:
-                new_path.closepath()
+    #new_path = BezierPath(None)
+    #new_path.moveto(path[0].x, path[0].y)
+    #for j in range(1, len(path)):
+    #    if j == i+1:
+    #        if pt_cmd == CURVETO:
+    #            new_path.curveto(pt_h1x, pt_h1y, pt_c1x, pt_c1y, pt_x, pt_y)
+    #            new_path.curveto(pt_c2x, pt_c2y, pt_h2x, pt_h2y, path[j].x, path[j].y)
+    #        elif pt_cmd == LINETO:
+    #            new_path.lineto(pt_x, pt_y)
+    #            if path[j].cmd != CLOSE:
+    #                new_path.lineto(path[j].x, path[j].y)
+    #            else:
+    #                new_path.closepath()
+    #        else:
+    #            raise PathError, "Didn't expect pt_cmd %s here" % pt_cmd
+    #    else:
+    #        if path[j].cmd == MOVETO:
+    #            new_path.moveto(path[j].x, path[j].y)
+    #        if path[j].cmd == LINETO:
+    #            new_path.lineto(path[j].x, path[j].y)
+    #        if path[j].cmd == CURVETO:
+    #            new_path.curveto(path[j].ctrl1.x, path[j].ctrl1.y,
+    #                         path[j].ctrl2.x, path[j].ctrl2.y,
+    #                         path[j].x, path[j].y)
+    #        if path[j].cmd == CLOSE:
+    #            new_path.closepath()
                 
     return new_path
 

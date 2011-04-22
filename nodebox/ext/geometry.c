@@ -19,7 +19,7 @@ void _angle(double x0, double y0, double x1, double y1, double *a) {
 
 // --- DISTANCE -----------------------------------------------------------------
 void _distance(double x0, double y0, double x1, double y1, double *d) {
-    *d = 1.0 / _fast_inverse_sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0));
+    *d = sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0));
 }
 
 // --- COORDINATES --------------------------------------------------------------

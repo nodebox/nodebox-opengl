@@ -744,7 +744,7 @@ class PathElement(object):
         """ A point in the path, optionally with control handles:
             - MOVETO  : the list of points contains a single (x,y)-tuple.
             - LINETO  : the list of points contains a single (x,y)-tuple.
-            - CURVETO : the list of points contains (x,y), (vx1,vy1), (vx2,vy2) tuples.
+            - CURVETO : the list of points contains (vx1,vy1), (vx2,vy2), (x,y) tuples.
             - CLOSETO : no points.
         """
         if cmd == MOVETO \
@@ -853,28 +853,31 @@ class BezierPath(list):
         self._bounds   = None # Cached bounding rectangle.
         self._polygon  = None # Cached polygon hit test area.
         self._dirty    = False
+        self._index    = {}
 
     def copy(self):
         return BezierPath(self, **self._kwargs)
     
-    def insert(self, i, pathelement):
-        self._dirty = True; list.insert(self, i, pathelement)
-    def append(self, pathelement):
-        self._dirty = True; list.append(self, pathelement)
-    def extend(self, pathelements):
-        self._dirty = True; list.extend(self, pathelements)
-    def remove(self, pathelement):
-        self._dirty = True; list.remove(self, pathelement)
+    def append(self, pt):
+        self._dirty = True; list.append(self, pt)
+    def extend(self, points):
+        self._dirty = True; list.extend(self, points)
+    def insert(self, i, pt):
+        self._dirty = True; self._index={}; list.insert(self, i, pt)
+    def remove(self, pt):
+        self._dirty = True; self._index={}; list.remove(self, pt)
     def pop(self, i):
-        self._dirty = True; list.pop(self, i)
-    def __setitem__(self, i, pathelement):
-        self._dirty = True; list.__setitem__(self, i, pathelement)
+        self._dirty = True; self._index={}; list.pop(self, i)
+    def __setitem__(self, i, pt):
+        self._dirty = True; self._index={}; list.__setitem__(self, i, pt)
     def __delitem__(self, i):
-        self._dirty = True; list.__delitem__(self, i)
+        self._dirty = True; self._index={}; list.__delitem__(self, i)
     def sort(self):
-        self._dirty = True; list.sort(self)
+        self._dirty = True; self._index={}; list.sort(self)
     def reverse(self):
-        self._dirty = True; list.reverse(self)
+        self._dirty = True; self._index={}; list.reverse(self)
+    def index(self, pt):
+        return self._index.setdefault(pt, list.index(self, pt))
     
     def _update(self):
         # Called from BezierPath.draw().
@@ -970,6 +973,15 @@ class BezierPath(list):
                 self.moveto(*p[:2])
             self.curveto(*p[2:])
 
+    def smooth(self, *args, **kwargs):
+        """ Smooths the path by making the curve handles colinear.
+            With mode=EQUIDISTANT, the curve handles will be of equal (average) length.
+        """
+        e = BezierEditor(self)
+        for i, pt in enumerate(self):
+            self._index[pt] = i
+            e.smooth(pt, *args, **kwargs)
+
     def flatten(self, precision=RELATIVE):
         """ Returns a list of contours, in which each contour is a list of (x,y)-tuples.
             The precision determines the number of straight lines to use as a substition for a curve.
@@ -982,7 +994,7 @@ class BezierPath(list):
         closeto = None
         for pt in self:
             if (pt.cmd == LINETO or pt.cmd == CURVETO) and x0 == y0 is None:
-                raise NoCurrentPointForPathError
+                raise NoCurrentPointForPath
             elif pt.cmd == LINETO:
                 contours[-1].append((x0, y0))
                 contours[-1].append((pt.x, pt.y))
@@ -1086,7 +1098,8 @@ class BezierPath(list):
         """ Inserts a new PathElement at time t (0.0-1.0) on the path.
         """
         self._segments = None
-        bezier.insert_point(self, t)
+        self._index = {}
+        return bezier.insert_point(self, t)
         
     split = addpoint
     
@@ -1230,6 +1243,84 @@ def findpath(points, curvature=1.0):
     return bezier.findpath(points, curvature)
 
 Path = BezierPath
+
+#--- BEZIER EDITOR -----------------------------------------------------------------------------------
+
+EQUIDISTANT = "equidistant"
+IN, OUT, BOTH = "in", "out", "both" # Drag pt1.ctrl2, pt2.ctrl1 or both simultaneously?
+
+class BezierEditor:
+    
+    def __init__(self, path):
+        self.path = path
+        
+    def _nextpoint(self, pt):
+        i = self.path.index(pt) # BezierPath caches this operation.
+        return i < len(self.path)-1 and self.path[i+1] or None
+    
+    def translate(self, pt, x=0, y=0, h1=(0,0), h2=(0,0)):
+        """ Translates the point and its control handles by (x,y).
+            Translates the incoming handle by h1 and the outgoing handle by h2.
+        """
+        pt1, pt2 = pt, self._nextpoint(pt)
+        pt1.x += x
+        pt1.y += y
+        pt1.ctrl2.x += x + h1[0]
+        pt1.ctrl2.y += y + h1[1]
+        if pt2 is not None:
+            pt2.ctrl1.x += x + (pt2.cmd == CURVETO and h2[0] or 0)
+            pt2.ctrl1.y += y + (pt2.cmd == CURVETO and h2[1] or 0)
+            
+    def rotate(self, pt, angle, handle=BOTH):
+        """ Rotates the point control handles by the given angle.
+        """
+        pt1, pt2 = pt, self._nextpoint(pt)
+        if handle == BOTH or handle == IN:
+            pt1.ctrl2.x, pt1.ctrl2.y = geometry.rotate(pt1.ctrl2.x, pt1.ctrl2.y, pt1.x, pt1.y, angle)
+        if handle == BOTH or handle == OUT and pt2 is not None and pt2.cmd == CURVETO:
+            pt2.ctrl1.x, pt2.ctrl1.y = geometry.rotate(pt2.ctrl1.x, pt2.ctrl1.y, pt1.x, pt1.y, angle)
+            
+    def scale(self, pt, v, handle=BOTH):
+        """ Scales the point control handles by the given factor.
+        """
+        pt1, pt2 = pt, self._nextpoint(pt)
+        if handle == BOTH or handle == IN:
+            pt1.ctrl2.x, pt1.ctrl2.y = bezier.linepoint(v, pt1.x, pt1.y, pt1.ctrl2.x, pt1.ctrl2.y)
+        if handle == BOTH or handle == OUT and pt2 is not None and pt2.cmd == CURVETO:
+            pt2.ctrl1.x, pt2.ctrl1.y = bezier.linepoint(v, pt1.x, pt1.y, pt2.ctrl1.x, pt2.ctrl1.y)
+
+    def smooth(self, pt, mode=None, handle=BOTH):
+        pt1, pt2, i = pt, self._nextpoint(pt), self.path.index(pt)
+        if pt2 is None:
+            return
+        if pt1.cmd == pt2.cmd == CURVETO:
+            if mode == EQUIDISTANT:
+                d1 = d2 = 0.5 * (
+                     geometry.distance(pt1.x, pt1.y, pt1.ctrl2.x, pt1.ctrl2.y) + \
+                     geometry.distance(pt1.x, pt1.y, pt2.ctrl1.x, pt2.ctrl1.y))
+            else:
+                d1 = geometry.distance(pt1.x, pt1.y, pt1.ctrl2.x, pt1.ctrl2.y)
+                d2 = geometry.distance(pt1.x, pt1.y, pt2.ctrl1.x, pt2.ctrl1.y)            
+            if handle == IN: 
+                a = geometry.angle(pt1.x, pt1.y, pt1.ctrl2.x, pt1.ctrl2.y)
+            if handle == OUT: 
+                a = geometry.angle(pt2.ctrl1.x, pt2.ctrl1.y, pt1.x, pt1.y)
+            if handle == BOTH: 
+                a = geometry.angle(pt2.ctrl1.x, pt2.ctrl1.y, pt1.ctrl2.x, pt1.ctrl2.y)
+            pt1.ctrl2.x, pt1.ctrl2.y = geometry.coordinates(pt1.x, pt1.y, d1, a)
+            pt2.ctrl1.x, pt2.ctrl1.y = geometry.coordinates(pt1.x, pt1.y, d2, a-180)
+        elif pt1.cmd == CURVETO and pt2.cmd == LINETO:
+            d = mode == EQUIDISTANT and \
+                geometry.distance(pt1.x, pt1.y, pt2.x, pt2.y) or \
+                geometry.distance(pt1.x, pt1.y, pt1.ctrl2.x, pt1.ctrl2.y)
+            a = geometry.angle(pt1.x, pt1.y, pt2.x, pt2.y)
+            pt1.ctrl2.x, pt1.ctrl2.y = geometry.coordinates(pt1.x, pt1.y, d, a-180)
+        elif pt1.cmd == LINETO and pt2.cmd == CURVETO and i > 0:
+            d = mode == EQUIDISTANT and \
+                geometry.distance(pt1.x, pt1.y, self.path[i-1].x, self.path[i-1].y) or \
+                geometry.distance(pt1.x, pt1.y, pt2.ctrl1.x, pt2.ctrl1.y)
+            a = geometry.angle(self.path[i-1].x, self.path[i-1].y, pt1.x, pt1.y)
+            pt2.ctrl1.x, pt2.ctrl1.y = geometry.coordinates(pt1.x, pt1.y, d, a)
 
 #--- POINT ANGLES ------------------------------------------------------------------------------------
 
