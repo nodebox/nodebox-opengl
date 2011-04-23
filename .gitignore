@@ -12,3 +12,6 @@ Thumbs.db
 # Python
 *.pyc
 *.pyo
+
+# Temporary editor files
+*.swp
