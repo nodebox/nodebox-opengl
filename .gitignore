@@ -1,0 +1,14 @@
+# Build directories
+build
+dist
+*.egg-info
+
+# Mac OS X custom attribute files
+.DS_Store
+
+# Windows thumbnails
+Thumbs.db
+
+# Python
+*.pyc
+*.pyo
