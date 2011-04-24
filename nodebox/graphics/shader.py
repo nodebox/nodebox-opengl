@@ -5,8 +5,9 @@
 # Copyright (c) 2008 City In A Bottle (cityinabottle.org)
 # http://cityinabottle.org/nodebox
 
-from pyglet.image import Texture, SolidColorImagePattern
 from pyglet.gl    import *
+from pyglet.image import Texture, SolidColorImagePattern
+from context      import Image, texture
 from geometry     import lerp, clamp
 from math         import radians
 
@@ -1122,8 +1123,6 @@ try:
     _buffer = OffscreenBuffer(640, 480)
 except OffscreenBufferError:
     _buffer = None
-
-from context import Image, texture
 
 def filter(img, filter=None, clear=True):
     """ Returns a new Image object with the given filter applied to it.

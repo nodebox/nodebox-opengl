@@ -3400,6 +3400,10 @@ VERY_LIGHT_GREY = 0.95
 
 FRAME = 0
 
+# Window styles.
+WINDOW_DEFAULT    = pyglet.window.Window.WINDOW_STYLE_DEFAULT
+WINDOW_BORDERLESS = pyglet.window.Window.WINDOW_STYLE_BORDERLESS
+
 # Configuration settings for the canvas.
 # http://www.pyglet.org/doc/programming_guide/opengl_configuration_options.html
 # The stencil buffer is enabled (we need it to do clipping masks).
@@ -3434,7 +3438,7 @@ def _configure(settings):
 
 class Canvas(list, Prototype, EventHandler):
 
-    def __init__(self, width=640, height=480, name="NodeBox for OpenGL", resizable=False, settings=OPTIMAL, vsync=True):
+    def __init__(self, width=640, height=480, name="NodeBox for OpenGL", resizable=False, border=True, settings=OPTIMAL, vsync=True):
         """ The main application window containing the drawing canvas.
             It is opened when Canvas.run() is called.
             It is a collection of drawable Layer objects, and it has its own draw() method.
@@ -3448,6 +3452,7 @@ class Canvas(list, Prototype, EventHandler):
                 width = width,
                height = height,
             resizable = resizable,
+                style = border is False and WINDOW_BORDERLESS or WINDOW_DEFAULT,
                config = _configure(settings), 
                 vsync = vsync
         )
@@ -4010,7 +4015,7 @@ class Profiler:
 
 #--- LIBRARIES ---------------------------------------------------------------------------------------
 # Import the library and assign it a _ctx variable containing the current context.
-# This mimics the behavior in NodeBox.
+# This mimics the behavior in NodeBox for Mac OS X.
 
 def ximport(library):
     from sys import modules
