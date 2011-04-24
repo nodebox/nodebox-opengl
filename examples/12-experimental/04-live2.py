@@ -1,8 +1,14 @@
+<<<<<<< HEAD
 # Live coding example.
 # See 04-live1.py.
 # The commands below are read and executed in a canvas there.
 # If you edit and save this file, changes are automatically reflected,
 # while the canvas started in 04-live1.py keeps on running.
+=======
+# See 04-live1.py.
+# The commands below are read and executed in a canvas there.
+# If you edit and save this file, changes are automatically reflected.
+>>>>>>> 2dde5a7eb4a0f379e8d2476487011bdacba7e165
 
 #canvas.clear()
 for i in range(10):
@@ -11,4 +17,8 @@ for i in range(10):
     r = random(20) + 50
     fill(random(), 0.0, random(0.25), random(0.25))
     stroke(0, 0.2)
+<<<<<<< HEAD
     ellipse(x, y, random, r)
+=======
+    ellipse(x, y, r, r)
+>>>>>>> 2dde5a7eb4a0f379e8d2476487011bdacba7e165
