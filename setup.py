@@ -11,7 +11,7 @@ setup(name="nodebox-opengl",
     version="1.6",
     description="NodeBox for OpenGL is a free, cross-platform library for "
                 "generating 2D animations with Python programming code.",
-    long_description=read("nodebox/README.txt"),
+    long_description=read("README.txt"),
     keywords = "2d graphics sound physics games multimedia",
     license = "BSD",
     author="Tom De Smedt, Frederik De Bleser",
