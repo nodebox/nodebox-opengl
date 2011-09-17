@@ -221,22 +221,22 @@ class Color(list):
 
 color = Color
 
-def background(*args):
+def background(*args, **kwargs):
     """ Sets the current background color.
     """
     global _background
     if args:
-        _background = Color(*args)
+        _background = Color(*args, **kwargs)
         xywh = (GLint*4)(); glGetIntegerv(GL_VIEWPORT, xywh); x,y,w,h = xywh
         rect(x, y, w, h, fill=_background, stroke=None)   
     return _background
 
-def fill(*args):
+def fill(*args, **kwargs):
     """ Sets the current fill color for drawing primitives and paths.
     """
     global _fill
     if args:
-        _fill = Color(*args)
+        _fill = Color(*args, **kwargs)
     return _fill
 
 fill(0) # The default fill is black.
@@ -246,7 +246,7 @@ def stroke(*args, **kwargs):
     """
     global _stroke
     if args:
-        _stroke = Color(*args)
+        _stroke = Color(*args, **kwargs)
     return _stroke
 
 def nofill():
@@ -442,7 +442,7 @@ def analog(clr, angle=20, d=0.1):
         Analogous color schemes can often be found in nature.
     """
     h, s, b = rgb_to_hsb(*clr[:3])
-    h, s, b = rotate_ryb(h, s, b, angle=random(-1.0,1.0))
+    h, s, b = rotate_ryb(h, s, b, angle=random(-angle,angle))
     s *= 1 - random(-d,d)
     b *= 1 - random(-d,d)
     return Color(h, s, b, len(clr)==4 and clr[3] or 1, colorspace=HSB)
@@ -518,25 +518,27 @@ def pop():
     """
     glPopMatrix()
 
-def translate(x, y):
+def translate(x, y, z=0):
     """ By default, the origin of the layer or canvas is at the bottom left.
         This origin point will be moved by (x,y) pixels.
     """
-    glTranslatef(round(x), round(y), 0)
+    glTranslatef(round(x), round(y), round(z))
 
-def rotate(degrees):
+def rotate(degrees, axis=(0,0,1)):
     """ Rotates the transformation state, i.e. all subsequent drawing primitives are rotated.
         Rotations work incrementally:
         calling rotate(60) and rotate(30) sets the current rotation to 90.
     """
-    glRotatef(degrees, 0, 0, 1)
+    glRotatef(degrees, *axis)
 
-def scale(x, y=None):
+def scale(x, y=None, z=None):
     """ Scales the transformation state.
     """
     if y is None: 
         y = x
-    glScalef(x, y, 1)
+    if z is None: 
+        z = 1
+    glScalef(x, y, z)
 
 def reset():
     """ Resets the transform state of the layer or canvas.
@@ -1240,7 +1242,7 @@ def endpath(draw=True, **kwargs):
 def findpath(points, curvature=1.0):
     """ Returns a smooth BezierPath from the given list of (x,y)-tuples.
     """
-    return bezier.findpath(points, curvature)
+    return bezier.findpath(list(points), curvature)
 
 Path = BezierPath
 
@@ -1461,6 +1463,9 @@ def texture(img, data=None):
         return img.texture
     # Pixels object, return pixel texture.
     if isinstance(img, Pixels):
+        return img.texture
+    # Pyglet image data.
+    if isinstance(img, pyglet.image.ImageData):
         return img.texture
     # Image data as byte string, load it, return texture.
     if isinstance(data, basestring):
@@ -2550,9 +2555,9 @@ class EventHandler:
     def on_mouse_scroll(self, mouse):
         pass
     
-    def on_key_press(self, key):
+    def on_key_press(self, keys):
         pass
-    def on_key_release(self, key):
+    def on_key_release(self, keys):
         pass
     
     # Instead of calling an event directly it could be queued,
@@ -3356,41 +3361,55 @@ LEFT      = "left"
 RIGHT     = "right"
 
 # Key modifiers:
-OPTION = \
-ALT    = "option"
-CTRL   = "ctrl"
-SHIFT  = "shift"
+OPTION  = \
+ALT     = "option"
+CTRL    = "ctrl"
+SHIFT   = "shift"
+COMMAND = "command"
 
-class Key(object):
+MODIFIERS = (OPTION, CTRL, SHIFT, COMMAND)
+
+class Keys(list):
     
     def __init__(self, canvas):
-        """ Keeps track of the key pressed and any modifiers (e.g. shift or control key).
+        """ Keeps track of the keys pressed and any modifiers (e.g. shift or control key).
         """
         self._canvas   = canvas
-        self._code     = None
-        self.char      = ""
-        self.modifiers = [] 
+        self.code      = None   # Last key pressed
+        self.char      = ""     # Last key character representation (i.e., SHIFT + "a" = "A").
+        self.modifiers = []     # Modifier keys pressed (OPTION, CTRL, SHIFT, COMMAND).
         self.pressed   = False
-        
-    def _get_code(self):
-        return self._code
-    def _set_code(self, v):
-        if isinstance(v, int):
-            s = pyglet.window.key.symbol_string(v)                        # 65288 => "BACKSPACE"
-            s = s.lower()                                                 # "BACKSPACE" => "backspace"
-            s = s.lstrip("_")                                             # "_1" => "1"
-            s = s.endswith((OPTION, CTRL, SHIFT)) and s.lstrip("lr") or s # "lshift" => "shift"
-            s = s.replace("return", ENTER)                                # "return" => "enter"
-            s = s.replace("num_", "")                                     # "num_space" => "space"
+
+
+    def append(self, code):
+        code = self._decode(code)
+        if code in MODIFIERS:
+            self.modifiers.append(code)
+        list.append(self, code)
+        self.code = self[-1]
+    
+    def remove(self, code):
+        code = self._decode(code)
+        if code in MODIFIERS:
+            self.modifiers.remove(code)
+        list.remove(self, self._decode(code))
+        self.code = len(self) > 0 and self[-1] or None
+
+    def _decode(self, code):
+        if not isinstance(code, int):
+            s = code
         else:
-            s = v
-        self._code = s
-        
-    code = property(_get_code, _set_code)
-        
+            s = pyglet.window.key.symbol_string(code)         # 65288 => "BACKSPACE"
+            s = s.lower()                                     # "BACKSPACE" => "backspace"
+            s = s.lstrip("_")                                 # "_1" => "1"
+            s = s.replace("return", ENTER)                    # "return" => "enter"
+            s = s.replace("num_", "")                         # "num_space" => "space"
+            s = s.endswith(MODIFIERS) and s.lstrip("lr") or s # "lshift" => "shift"
+        return s
+                
     def __repr__(self):
-        return "Key(char=%s, code=%s, modifiers=%s, pressed=%s)" % (
-            repr(self.char), repr(self.code), repr(self.modifiers), repr(self.pressed))
+        return "Keys(char=%s, code=%s, modifiers=%s, pressed=%s)" % (
+            repr(self.char), repr(iter(self)), repr(self.modifiers), repr(self.pressed))
 
 #=====================================================================================================
 
@@ -3462,10 +3481,11 @@ class Canvas(list, Prototype, EventHandler):
         self._window                  = pyglet.window.Window(**window)
         self._fps                     = None        # Frames per second.
         self._frame                   = 0           # The current frame.
+        self._elapsed                 = 0           # dt = time elapsed since last frame.
         self._active                  = False       # Application is running?
         self.paused                   = False       # Pause animation?
         self._mouse                   = Mouse(self) # The mouse cursor location. 
-        self._key                     = Key(self)   # The key pressed on the keyboard.
+        self._keys                    = Keys(self)  # The keys pressed on the keyboard.
         self._focus                   = None        # The layer being focused by the mouse.
         # Mouse and keyboard events:
         self._window.on_mouse_enter   = self._on_mouse_enter
@@ -3571,14 +3591,26 @@ class Canvas(list, Prototype, EventHandler):
         return self._frame
 
     @property
+    def elapsed(self):
+        """ Yields the elapsed time since last frame.
+        """
+        return self._elapsed
+        
+    dt = elapsed
+
+    @property
     def mouse(self):
         """ Yields a Point(x, y) with the mouse position on the canvas.
         """
         return self._mouse
-        
+    
     @property
+    def keys(self):
+        return self._keys
+        
+    @property # Backwards compatibility.
     def key(self):
-        return self._key
+        return self._keys
         
     @property
     def focus(self):
@@ -3701,14 +3733,10 @@ class Canvas(list, Prototype, EventHandler):
             self._focus.on_mouse_scroll(self._mouse)
 
     def _on_key_press(self, keycode, modifiers):
-        self._key.pressed   = True
-        self._key.code      = keycode
-        self._key.modifiers = [a for (a,b) in (
-              (CTRL, pyglet.window.key.MOD_CTRL), 
-             (SHIFT, pyglet.window.key.MOD_SHIFT), 
-            (OPTION, pyglet.window.key.MOD_OPTION)) if modifiers & b]
-        if self._key.code == TAB:
-            self._key.char = "\t"
+        self._keys.pressed = True            
+        self._keys.append(keycode)
+        if self._keys.code == TAB:
+            self._keys.char = "\t"
         # The event is delegated in _update():
         self._window.on_key_pressed = True
 
@@ -3716,19 +3744,17 @@ class Canvas(list, Prototype, EventHandler):
         for layer in self:
             layer.on_key_release(self.key)
         self.on_key_release(self.key)
-        self._key.char      = ""
-        self._key.code      = None
-        self._key.modifiers = [] 
-        self._key.pressed   = False
+        self._keys.char = ""
+        self._keys.remove(keycode)
+        self._keys.pressed = False
 
     def _on_text(self, text):
-        self._key.char = text
+        self._keys.char = text
         # The event is delegated in _update():
         self._window.on_key_pressed = True
             
     def _on_text_motion(self, keycode):
-        self._key.char = ""
-        self._key.code = keycode
+        self._keys.char = ""
         # The event is delegated in _update():
         self._window.on_key_pressed = True
         
@@ -3781,6 +3807,11 @@ class Canvas(list, Prototype, EventHandler):
         # Set the window color, this will be transparent in saved images.
         glClearColor(VERY_LIGHT_GREY, VERY_LIGHT_GREY, VERY_LIGHT_GREY, 0)
         # Reset the transformation state.
+        # Most of this is already taken care of in Pyglet.
+        #glMatrixMode(GL_PROJECTION)
+        #glLoadIdentity()
+        #glOrtho(0, self.width, 0, self.height, -1, 1)
+        #glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
         # Enable line anti-aliasing.
         glEnable(GL_LINE_SMOOTH)
@@ -3819,6 +3850,7 @@ class Canvas(list, Prototype, EventHandler):
         """ Updates the canvas and its layers.
             This method does not actually draw anything, it only updates the state.
         """
+        self._elapsed = lapse
         if not self.paused:
             # Advance the animation by updating all layers.
             # This is only done when the canvas is not paused.
@@ -3831,9 +3863,9 @@ class Canvas(list, Prototype, EventHandler):
             # Fire on_key_press() event,
             # which combines _on_key_press(), _on_text() and _on_text_motion().
             self._window.on_key_pressed = False
-            self.on_key_press(self._key)
+            self.on_key_press(self._keys)
             for layer in self:
-                layer.on_key_press(self._key)
+                layer.on_key_press(self._keys)
                 
     def stop(self):
         # If you override this method, don't forget to call Canvas.stop() to exit the app.

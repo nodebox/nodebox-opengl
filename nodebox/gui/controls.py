@@ -111,12 +111,12 @@ class Control(Layer):
     def on_mouse_doubleclick(self, mouse):
         pass
         
-    def on_key_press(self, key):
+    def on_key_press(self, keys):
         for control in self: 
-            control.on_key_press(key)
-    def on_key_release(self, key):
+            control.on_key_press(keys)
+    def on_key_release(self, keys):
         for control in self: 
-            control.on_key_release(key)
+            control.on_key_release(keys)
     
     def on_action(self):
         """ Override this method with a custom action.
@@ -670,48 +670,48 @@ class Editable(Control):
         b = b and i+b[0] or len(self.value)
         self._editor.set_selection(a, b)
 
-    def on_key_press(self, key):
+    def on_key_press(self, keys):
         if self._editing:
             self._editor.caret.visible = True
             i = self._editor.caret.position
-            if   key.code == LEFT:
+            if   keys.code == LEFT:
                 # The left arrow moves the text cursor to the left.
                 self._editor.caret.position = max(i-1, 0)
-            elif key.code == RIGHT:
+            elif keys.code == RIGHT:
                 # The right arrow moves the text cursor to the right.
                 self._editor.caret.position = min(i+1, len(self.value))
-            elif key.code in (UP, DOWN):
+            elif keys.code in (UP, DOWN):
                 # The up arrows moves the text cursor to the previous line.
                 # The down arrows moves the text cursor to the next line.
-                y = key.code == UP and -1 or +1
+                y = keys.code == UP and -1 or +1
                 n = self._editor.get_line_count()
                 i = self._editor.get_position_on_line(
                     max(self._editor.get_line_from_position(i)+y, 0),
                         self._editor.get_point_from_position(i)[0])
                 self._editor.caret.position = i
-            elif key.code == TAB and TAB in self.reserved:
+            elif keys.code == TAB and TAB in self.reserved:
                 # The tab key navigates away from the control.
                 self._editor.caret.position = 0
                 self.editing = False
-            elif key.code == ENTER and ENTER in self.reserved:
+            elif keys.code == ENTER and ENTER in self.reserved:
                 # The enter key executes on_action() and navigates away from the control.
                 self._editor.caret.position = 0
                 self.editing = False
                 self.on_action()
-            elif key.code == BACKSPACE and self.selected:
+            elif keys.code == BACKSPACE and self.selected:
                 # The backspace key removes the current text selection.
                 self.value = self.value[:self.selection[0]] + self.value[self.selection[1]:]
                 self._editor.caret.position = max(self.selection[0], 0)
-            elif key.code == BACKSPACE and i > 0:
+            elif keys.code == BACKSPACE and i > 0:
                 # The backspace key removes the character at the text cursor.
                 self.value = self.value[:i-1] + self.value[i:]
                 self._editor.caret.position = max(i-1, 0)
-            elif key.char:
+            elif keys.char:
                 if self.selected:
                     # Typing replaces any text currently selected.
                     self.value = self.value[:self.selection[0]] + self.value[self.selection[1]:]
                     self._editor.caret.position = i = max(self.selection[0], 0)
-                ch = key.char
+                ch = keys.char
                 ch = ch.replace("\r", "\n\r")
                 self.value = self.value[:i] + ch + self.value[i:]
                 self._editor.caret.position = min(i+1, len(self.value))
@@ -1043,12 +1043,12 @@ class Layout(Layer):
         for control in controls: 
             self.append(control)
 
-    def on_key_press(self, key):
+    def on_key_press(self, keys):
         for control in self: 
-            control.on_key_press(key)
-    def on_key_release(self, key):
+            control.on_key_press(keys)
+    def on_key_release(self, keys):
         for control in self: 
-            control.on_key_release(key)
+            control.on_key_release(keys)
     
     def __getattr__(self, k):
         # Yields the property with the given name, or
