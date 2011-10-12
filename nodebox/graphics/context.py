@@ -611,7 +611,6 @@ def triangle(x1, y1, x2, y2, x3, y3, **kwargs):
             glVertex2f(x1, y1)
             glVertex2f(x2, y2)
             glVertex2f(x3, y3)
-            #glVertex2f(x, y+height)
             glEnd()
 
 _ellipses = {}
@@ -1361,6 +1360,7 @@ def directed(points):
             pt0 = points.point(0.999)
             angle = geometry.angle(pt0.x, pt0.y, pt.x, pt.y)
         elif i == n-1 and isinstance(pt, bezier.DynamicPathElement) and pt.ctrl1.x != pt.x or pt.ctrl1.y != pt.y:
+            # For the last point in BezierPath.points(), use incoming handle (ctrl1) for curves.
             angle = geometry.angle(pt.ctrl1.x, pt.ctrl1.y, pt.x, pt.y)
         elif 0 < i:
             # For any point, look back gives a good result, if enough points are given.
@@ -3472,7 +3472,7 @@ class Canvas(list, Prototype, EventHandler):
                height = height,
             resizable = resizable,
                 style = border is False and WINDOW_BORDERLESS or WINDOW_DEFAULT,
-               config = _configure(settings), 
+               config = _configure(settings),
                 vsync = vsync
         )
         Prototype.__init__(self)
@@ -3480,7 +3480,7 @@ class Canvas(list, Prototype, EventHandler):
         self.profiler                 = Profiler(self)
         self._window                  = pyglet.window.Window(**window)
         self._fps                     = None        # Frames per second.
-        self._frame                   = 0           # The current frame.
+        self._frame                   = 60          # The current frame.
         self._elapsed                 = 0           # dt = time elapsed since last frame.
         self._active                  = False       # Application is running?
         self.paused                   = False       # Pause animation?
@@ -3766,17 +3766,17 @@ class Canvas(list, Prototype, EventHandler):
         self.on_resize()
 
     # Event methods are meant to be overridden or patched with Prototype.set_method().
-    def on_key_press(self, key):
+    def on_key_press(self, keys):
         """ The default behavior of the canvas:
             - ESC exits the application,
             - CTRL-P pauses the animation,
             - CTRL-S saves a screenshot.
         """
-        if key.code == ESCAPE:
+        if keys.code == ESCAPE:
             self.stop()
-        if key.code == "p" and CTRL in key.modifiers:
+        if keys.code == "p" and CTRL in keys.modifiers:
             self.paused = not self.paused
-        if key.code == "s" and CTRL in key.modifiers:
+        if keys.code == "s" and CTRL in keys.modifiers:
             self.save("nodebox-%s.png" % str(datetime.now()).split(".")[0].replace(" ","-").replace(":","-"))
     
     def on_move(self):
@@ -3832,9 +3832,9 @@ class Canvas(list, Prototype, EventHandler):
         """ Draws the canvas and its layers.
             This method gives the same result each time it gets drawn; only _update() advances state.
         """
-        self._frame += 1
         if self.paused: 
             return
+        self._window.switch_to()
         glPushMatrix()
         self.draw()
         glPopMatrix()
@@ -3856,6 +3856,7 @@ class Canvas(list, Prototype, EventHandler):
             # This is only done when the canvas is not paused.
             # Events will still be propagated during pause.
             global TIME; TIME = time()
+            self._frame += 1
             self.update()
             for layer in self:
                 layer._update()
@@ -3904,6 +3905,7 @@ class Canvas(list, Prototype, EventHandler):
             self.set_method(update, name="update")
         if isinstance(stop, FunctionType):
             self.set_method(stop, name="stop")
+        self._frame += 1
         self._setup()
         self.fps = self._fps # Schedule the _update and _draw events.
         pyglet.app.run()
@@ -3928,7 +3930,7 @@ class Canvas(list, Prototype, EventHandler):
                 pyglet.clock.schedule_interval(f, 1.0/v)
         self._fps = v
         
-    fps = property(_get_fps, _set_fps)
+    fps = property(_get_fps, _set_fps)        
 
     #--- Frame export -----------------------------------
 
@@ -4059,30 +4061,3 @@ def ximport(library):
 # Linear interpolation math for BezierPath.point() etc.
 
 import bezier
-
-#-----------------------------------------------------------------------------------------------------
-# Expose the canvas and some common canvas properties on global level.
-# Some magic constants from NodeBox are commands here:
-# - WIDTH  => width()
-# - HEIGHT => height()
-# - FRAME  => frame()
-
-canvas = Canvas()
-
-def size(width=None, height=None):
-    if width is not None:
-        canvas.width = width
-    if height is not None:
-        canvas.height = height
-    return canvas.size
-
-def speed(fps=None):
-    if fps is not None:
-        canvas.fps = fps
-    return canvas.fps
-
-def frame():
-    return canvas.frame
-    
-def clear():
-    canvas.clear()

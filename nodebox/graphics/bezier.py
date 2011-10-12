@@ -69,7 +69,7 @@ def curvepoint(t, x0, y0, x1, y1, x2, y2, x3, y3, handles=False):
 def curvelength(x0, y0, x1, y1, x2, y2, x3, y3, n=20):
     """ Returns the length of the spline.
         Integrates the estimated length of the cubic bezier spline defined by x0, y0, ... x3, y3, 
-        by adding the lengths of lineair lines between points at t.
+        by adding the lengths of linear lines between points at t.
         The number of points is defined by n 
         (n=10 would add the lengths of lines between 0.0 and 0.1, between 0.1 and 0.2, and so on).
         The default n=20 is fine for most cases, usually resulting in a deviation of less than 0.01.
