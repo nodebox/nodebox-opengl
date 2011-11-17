@@ -435,6 +435,8 @@ def complement(clr):
     """ Returns the color opposite on the color wheel.
         The complementary color contrasts with the given color.
     """
+    if not isinstance(clr, Color):
+        clr = Color(clr)
     return clr.rotate(180)
 
 def analog(clr, angle=20, d=0.1):
@@ -2092,7 +2094,7 @@ def label(str="", width=None, height=None, **kwargs):
     # FormattedDocument allows individual styling of characters - see Text.style().
     label = pyglet.text.Label(batch=_label_batch)
     label.begin_update()
-    label.document = pyglet.text.document.FormattedDocument(str)
+    label.document = pyglet.text.document.FormattedDocument(str or " ")
     label.width     = width    
     label.height    = height
     label.font_name = fontname
@@ -2104,6 +2106,9 @@ def label(str="", width=None, height=None, **kwargs):
     label.set_style("align", align)
     label.set_style("line_spacing", lineheight * fontsize)
     label.color     = [int(ch*255) for ch in fill]
+    if str == "":
+        # Empty string "" does not set properties so we used " " first.
+        label.text = str
     label.end_update()
     return label
 
@@ -3479,8 +3484,8 @@ class Canvas(list, Prototype, EventHandler):
         EventHandler.__init__(self)
         self.profiler                 = Profiler(self)
         self._window                  = pyglet.window.Window(**window)
-        self._fps                     = None        # Frames per second.
-        self._frame                   = 60          # The current frame.
+        self._fps                     = 60          # Frames per second.
+        self._frame                   = 0           # The current frame.
         self._elapsed                 = 0           # dt = time elapsed since last frame.
         self._active                  = False       # Application is running?
         self.paused                   = False       # Pause animation?
@@ -3905,7 +3910,6 @@ class Canvas(list, Prototype, EventHandler):
             self.set_method(update, name="update")
         if isinstance(stop, FunctionType):
             self.set_method(stop, name="stop")
-        self._frame += 1
         self._setup()
         self.fps = self._fps # Schedule the _update and _draw events.
         pyglet.app.run()
