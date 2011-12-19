@@ -58,7 +58,7 @@ class Theme(dict):
         self["fontweight"] = kwargs.get("fontweight", NORMAL)
         self["text"]       = kwargs.get("text", Color(1.0))
 
-theme = Theme(os.path.join(os.path.dirname(__file__), "theme")) 
+theme = Theme(os.path.join(os.path.dirname(os.path.abspath(__file__)), "theme")) 
 
 #=====================================================================================================
 

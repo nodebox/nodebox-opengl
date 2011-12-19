@@ -1699,8 +1699,11 @@ class Image(object):
             self.__class__.__name__, self.x, self.y, self.width, self.height, self.alpha)
     
     def __del__(self):
-        if hasattr(self, "_cache") and self._cache is not None and flush:
-            flush(self._cache)
+        try:
+            if hasattr(self, "_cache") and self._cache is not None and flush:
+                flush(self._cache)
+        except:
+            pass
 
 _IMAGE_CACHE = 200
 _image_cache = {} # Image object referenced by Image.texture.id.
