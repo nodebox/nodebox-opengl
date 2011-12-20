@@ -66,7 +66,7 @@ theme = Theme(os.path.join(os.path.dirname(os.path.abspath(__file__)), "theme"))
 
 class Control(Layer):
     
-    def __init__(self, x=0, y=0, id=None, **kwargs):
+    def __init__(self, x=0, y=0, id=None, color=(1,1,1,1), **kwargs):
         """ Base class for GUI controls.
             The Control class inherits from Layer so it must be appended to the canvas (or a container)
             to receive events and get drawn.
@@ -76,6 +76,7 @@ class Control(Layer):
         Layer.__init__(self, x=x, y=y, **kwargs)
         self.id        = id
         self.src       = {}    # Collection of source images.
+        self.color     = color # Color for source images.
         self.enabled   = True  # Enable event listener.
         self.duration  = 0     # Disable tweening.
         self._controls = {}    # Lazy index of (id, control) children, see nested().
@@ -288,7 +289,7 @@ class Button(Control):
         self[0].y = 0.5 * (self.height - self[0].height) - self.pressed
 
     def draw(self):
-        clr = self.pressed and (0.75, 0.75, 0.75) or (1.0, 1.0, 1.0)
+        clr = self.pressed and [v*0.75 for v in self.color] or self.color
         im1, im2, im3 = self.src["cap1"], self.src["cap2"], self.src["face"]
         image(im1, 0, 0, height=self.height, color=clr)
         image(im2, x=self.width-im2.width, height=self.height, color=clr)
@@ -322,7 +323,7 @@ class Action(Control):
         self._set_height(self.src["face"].height)
     
     def draw(self):
-        clr = self.pressed and (0.75, 0.75, 0.75) or (1.0, 1.0, 1.0)
+        clr = self.pressed and [v*0.75 for v in self.color] or self.color
         image(self.src["face"], 0, 0, color=clr)
             
     def on_mouse_release(self, mouse):
@@ -364,7 +365,7 @@ class Handle(Control):
         self.parent.on_mouse_release(mouse)
         
     def draw(self):
-        clr = self.parent.pressed | self.pressed and (0.75, 0.75, 0.75) or (1.0, 1.0, 1.0)
+        clr = self.parent.pressed | self.pressed and [v*0.75 for v in self.color] or self.color
         image(self.parent.src["handle"], 0, 0, color=clr)
 
 class Slider(Control):
@@ -421,10 +422,11 @@ class Slider(Control):
     def draw(self):
         t = self._t * self.width
         im1, im2, im3, im4  = self.src["cap1"], self.src["cap2"], self.src["face1"], self.src["face2"]
-        image(im1, x=0, y=0)
-        image(im2, x=self.width-im2.width, y=0)
-        image(im3, x=im1.width, y=0, width=t-im1.width)
-        image(im4, x=t, y=0, width=self.width-t-im2.width+1)
+        clr = self.color
+        image(im1, x=0, y=0, color=clr)
+        image(im2, x=self.width-im2.width, y=0, color=clr)
+        image(im3, x=im1.width, y=0, width=t-im1.width, color=clr)
+        image(im4, x=t, y=0, width=self.width-t-im2.width+1, color=clr)
 
     def on_mouse_press(self, mouse):
         x0, y0 = self.absolute_position() # Can be nested in other layers.
@@ -476,11 +478,12 @@ class Knob(Control):
         self.value = self.default
 
     def draw(self):
+        clr1 = self.color
+        clr2 = self.pressed and [v*0.85 for v in self.color] or self.color
         translate(self.width/2, self.height/2)
-        image(self.src["socket"], -self.width/2, -self.height/2)
+        image(self.src["socket"], -self.width/2, -self.height/2, color=clr1)
         rotate(360-self.value)
-        clr = self.pressed and (0.85, 0.85, 0.85) or (1.0, 1.0, 1.0)
-        image(self.src["face"], -self.width/2, -self.height/2, color=clr)
+        image(self.src["face"], -self.width/2, -self.height/2, color=clr2)
         
     def on_mouse_press(self, mouse):
         self.value += mouse.dy * (CTRL in mouse.modifiers and 1 or 5)
@@ -518,7 +521,8 @@ class Flag(Control):
         self.value = self.default
     
     def draw(self):
-        image(self.value and self.src["checked"] or self.src["face"])
+        clr = self.color
+        image(self.value and self.src["checked"] or self.src["face"], color=clr)
         
     def on_mouse_release(self, mouse):
         Control.on_mouse_release(self, mouse)
@@ -769,10 +773,11 @@ class Field(Editable):
         self[0].hidden = self.editing or self.value != ""
     
     def draw(self):
+        clr = self.color
         im1, im2, im3 = self.src["cap1"], self.src["cap2"], self.src["face"]
-        image(im1, 0, 0, height=self.height)
-        image(im2, x=self.width-im2.width, height=self.height)
-        image(im3, x=im1.width, width=self.width-im1.width-im2.width, height=self.height)
+        image(im1, 0, 0, height=self.height, color=clr)
+        image(im2, x=self.width-im2.width, height=self.height, color=clr)
+        image(im3, x=im1.width, width=self.width-im1.width-im2.width, height=self.height, color=clr)
         Editable.draw(self)
 
 #=====================================================================================================
@@ -781,7 +786,7 @@ class Field(Editable):
 
 class Rulers(Control):
     
-    def __init__(self, step=10, interval=5, crosshair=False, fill=(0,0,0,1)):
+    def __init__(self, step=10, interval=5, crosshair=False, color=(0,0,0,1)):
         """ A horizontal and vertical ruler displaying the width/height of the parent at intervals.
             A measurement line is drawn at each step(e.g. at 10 20 30...)
             A label with the value is drawn at each interval (e.g. 50 | | | | 100 | | | | 150).
@@ -791,7 +796,7 @@ class Rulers(Control):
         self.step      = step
         self.interval  = interval
         self.crosshair = crosshair
-        self._fill     = fill
+        self.color     = color
         self._dirty    = False
         self._markers  = {}
         self._pack()
@@ -827,7 +832,7 @@ class Rulers(Control):
                         Text(str(int(round(i*self._step))), 
                             fontname = theme["fontname"],
                             fontsize = theme["fontsize"] * 0.6,
-                                fill = self._fill))
+                                fill = self.color))
                             
     def update(self):
         self._pack()
@@ -838,7 +843,7 @@ class Rulers(Control):
         for i in range(1, int(round(self.height / self._step))):
             v, mark = i*self._step, i%self.interval==0
             line(0, v, mark and length*3 or length, v, 
-                     stroke = self._fill, 
+                     stroke = self.color, 
                 strokewidth = 0.5)
             if mark:
                 self._markers[v].draw(length*3-self._markers[v].metrics[0], v+2)
@@ -846,18 +851,18 @@ class Rulers(Control):
         for i in range(1, int(round(self.width / self._step))):
             v, mark = i*self._step, i%self.interval==0
             line(v, 0, v, mark and length*3 or length, 
-                     stroke = self._fill, 
+                     stroke = self.color, 
                 strokewidth = 0.5)
             if mark:
                 self._markers[v].draw(v+2, length*3-self._markers[v].fontsize)
         # Draw the crosshair.
         if self.crosshair:
             line(0, self.canvas.mouse.y, self.width, self.canvas.mouse.y, 
-                     stroke = self._fill, 
+                     stroke = self.color, 
                 strokewidth = 0.5, 
                 strokestyle = DOTTED)
             line(self.canvas.mouse.x, 0, self.canvas.mouse.x, self.height, 
-                     stroke = self._fill, 
+                     stroke = self.color, 
                 strokewidth = 0.5, 
                 strokestyle = DOTTED)
 
@@ -905,19 +910,19 @@ class Panel(Control):
         return iter(self[2:]) # self[0] is the Label,
                               # self[1] is the Close action.
     
-    def insert(self, i, control):
+    def insert(self, i, control, **kwargs):
         """ Inserts the control, or inserts all controls in the given Layout.
         """
         if isinstance(control, Layout):
             # If the control is actually a Layout (e.g. ordered group of controls), apply it.
-            control.apply()
+            control.apply(**kwargs)
         Layer.insert(self, i, control)
         
-    def append(self, control):
-        self.insert(len(self), control)
-    def extend(self, controls):
+    def append(self, control, **kwargs):
+        self.insert(len(self), control, **kwargs)
+    def extend(self, controls, **kwargs):
         for control in controls: 
-            self.append(control)
+            self.append(control, **kwargs)
 
     def _pack(self):
         # Center the caption in the label's header.
@@ -945,20 +950,22 @@ class Panel(Control):
     
     def update(self):
         self[1].hidden = self.modal
+        self[1].color  = self.color
     
     def draw(self):
         im1, im2, im3 = self.src["cap1"], self.src["cap2"],  self.src["top"]
         im4, im5, im6 = self.src["cap3"], self.src["cap4"],  self.src["bottom"]
         im7, im8, im9 = self.src["left"], self.src["right"], self.src["face"]
-        image(im1, 0, self.height-im1.height)
-        image(im2, self.width-im2.width, self.height-im2.height)
-        image(im3, im1.width, self.height-im3.height, width=self.width-im1.width-im2.width)
-        image(im4, 0, 0)
-        image(im5, self.width-im5.width, 0)
-        image(im6, im4.width, 0, width=self.width-im4.width-im5.width)
-        image(im7, 0, im4.height, height=self.height-im1.height-im4.height)
-        image(im8, self.width-im8.width, im4.height, height=self.height-im2.height-im5.height)
-        image(im9, im4.width, im6.height, width=self.width-im7.width-im8.width, height=self.height-im3.height-im6.height)
+        clr = self.color
+        image(im1, 0, self.height-im1.height, color=clr)
+        image(im2, self.width-im2.width, self.height-im2.height, color=clr)
+        image(im3, im1.width, self.height-im3.height, width=self.width-im1.width-im2.width, color=clr)
+        image(im4, 0, 0, color=clr)
+        image(im5, self.width-im5.width, 0, color=clr)
+        image(im6, im4.width, 0, width=self.width-im4.width-im5.width, color=clr)
+        image(im7, 0, im4.height, height=self.height-im1.height-im4.height, color=clr)
+        image(im8, self.width-im8.width, im4.height, height=self.height-im2.height-im5.height, color=clr)
+        image(im9, im4.width, im6.height, width=self.width-im7.width-im8.width, height=self.height-im3.height-im6.height, color=clr)
             
     def on_mouse_enter(self, mouse): 
         mouse.cursor = DEFAULT
@@ -1009,8 +1016,9 @@ class Dock(Panel):
         if self.canvas is not None and \
           (self.anchor == LEFT  and self.x == 0) or \
           (self.anchor == RIGHT and self.x == self.canvas.width-self.width):
-            image(im1, 0, self.height-im1.height, width=self.width)
-            image(im2, 0, -self.canvas.height+self.height, width=self.width, height=self.canvas.height-im1.height)
+            clr = self.color
+            image(im1, 0, self.height-im1.height, width=self.width, color=clr)
+            image(im2, 0, -self.canvas.height+self.height, width=self.width, height=self.canvas.height-im1.height, color=clr)
         else:
             Panel.draw(self)
 
@@ -1026,7 +1034,6 @@ class Layout(Layer):
             The layout will be applied when Layout.apply() is called.
             This happens automatically if a layout is appended to a Panel.
         """
-        
         kwargs["width"]  = 0
         kwargs["height"] = 0
         Layer.__init__(self, x=x, y=y, **kwargs)
@@ -1034,7 +1041,8 @@ class Layout(Layer):
 
     def insert(self, i, control):
         if isinstance(control, Layout):
-            control.apply() # If the control is actually a Layout, apply it.
+            # If the control is actually a Layout, apply it.
+            control.apply()
         Layer.insert(self, i, control)
         
     def append(self, control):
@@ -1076,10 +1084,10 @@ class Layout(Layer):
 
 class Labeled(Layout):
 
-    def __init__(self, controls=[], x=0, y=0):
+    def __init__(self, controls=[], x=0, y=0, **kwargs):
         """ A layout where each control has an associated text label.
         """
-        Layout.__init__(self, x=x, y=y)
+        Layout.__init__(self, x=x, y=y, **kwargs)
         self.controls = []
         self.captions = []
         self.extend(controls)
@@ -1111,12 +1119,12 @@ class Labeled(Layout):
 
 class Rows(Labeled):
 
-    def __init__(self, controls=[], x=0, y=0, width=125):
+    def __init__(self, controls=[], x=0, y=0, width=125, **kwargs):
         """ A layout where each control appears on a new line.
             Each control has an associated text caption, displayed to the left of the control.
             The given width defines the desired width for each control.
         """
-        Labeled.__init__(self, controls, x=x, y=y)
+        Labeled.__init__(self, controls, x=x, y=y, **kwargs)
         self._maxwidth = width
 
     def apply(self, spacing=10):
@@ -1154,12 +1162,12 @@ TOP, CENTER = "top", "center"
 
 class Row(Labeled):
 
-    def __init__(self, controls=[], x=0, y=0, width=125, align=CENTER):
+    def __init__(self, controls=[], x=0, y=0, width=125, align=CENTER, **kwargs):
         """ A layout where each control appears in a new column.
             Each control has an associated text caption, displayed on top of the control.
             The given width defines the desired width for each control.
         """
-        Labeled.__init__(self, controls, x=x, y=y)
+        Labeled.__init__(self, controls, x=x, y=y, **kwargs)
         self._maxwidth = width
         self._align    = align
 
