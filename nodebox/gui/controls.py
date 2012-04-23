@@ -238,7 +238,7 @@ class Label(Control):
     def _pack(self):
         # Center the text inside the label.
         self._text.x = 0.5 * (self.width - self._text.metrics[0])
-        self._text.y = 0.5 * (self.height - self._text.metrics[1])  
+        self._text.y = 0.5 * (self.height - self._text.metrics[1])
 
     def draw(self):
         self._text.draw()
@@ -542,7 +542,7 @@ editing = lambda: EDITING
 
 class Editable(Control):
     
-    def __init__(self, value="", x=0, y=0, width=125, height=30, padding=(0,0), wrap=True, id=None, **kwargs):
+    def __init__(self, value="", x=0, y=0, width=125, height=20, padding=(0,0), wrap=False, id=None, **kwargs):
         """ An editable text box.
             When clicked, it has the focus and can receive keyboard events.
             With wrap=True, several lines of text will wrap around the width.
@@ -553,7 +553,7 @@ class Editable(Control):
                "font" : _popdefault(kwargs, "font", theme["fontname"]),
            "fontsize" : _popdefault(kwargs, "fontsize", theme["fontsize"]),
          "fontweight" : _popdefault(kwargs, "fontweight", theme["fontweight"]),
-         "lineheight" : _popdefault(kwargs, "lineheight", 1),
+         "lineheight" : _popdefault(kwargs, "lineheight", wrap and 1.25 or 1.0),
               "align" : LEFT
         })
         kwargs["width"]  = width
@@ -690,8 +690,8 @@ class Editable(Control):
                 y = keys.code == UP and -1 or +1
                 n = self._editor.get_line_count()
                 i = self._editor.get_position_on_line(
-                    max(self._editor.get_line_from_position(i)+y, 0),
-                        self._editor.get_point_from_position(i)[0])
+                    min(max(self._editor.get_line_from_position(i)+y, 0), n-1),
+                            self._editor.get_point_from_position(i)[0])
                 self._editor.caret.position = i
             elif keys.code == TAB and TAB in self.reserved:
                 # The tab key navigates away from the control.
@@ -732,12 +732,18 @@ class Field(Editable):
         """ A single-line text input field.
             The string value can be retrieved with Field.value.
         """
-        Editable.__init__(self, value, x=x, y=y, width=width, padding=(padding,0), wrap=False, id=id, **kwargs)
+        Editable.__init__(self, value, x=x, y=y, width=width, padding=[padding]*2, id=id, **kwargs)
         img, w = Image(theme["field"]), 10
         self.src = {
-            "face" : crop(img, w, 0, 1, img.height),
-            "cap1" : crop(img, 0, 0, w, img.height),
-            "cap2" : crop(img, img.width-w, 0, w, img.height),
+           "cap1" : crop(img, 0, img.height-w, w, w),
+           "cap2" : crop(img, img.width-w, img.height-w, w, w),
+           "cap3" : crop(img, 0, 0, w, w),
+           "cap4" : crop(img, img.width-w, 0, w, w),
+            "top" : crop(img, w+1, img.height-w, 1, w),
+         "bottom" : crop(img, w+1, 0, 1, w),
+           "left" : crop(img, 0, w+1, w, 1),
+          "right" : crop(img, img.width-w, w+1, w, 1),
+           "face" : crop(img, w+1, w+1, 1, 1)
         }
         if action:
             # Override the Button.on_action() method from the given function.
@@ -759,11 +765,15 @@ class Field(Editable):
     def _pack(self):
         Editable._pack(self)
         w = max(self.width, self.src["cap1"].width + self.src["cap2"].width)
+        h = max(self.height, self.src["cap1"].width + self.src["cap3"].width)
+        h = max(h, int(self._editor.document.get_style("line_spacing") * 1.5 + self._padding[1] * 2))
         self._set_width(w)
-        self._set_height(self.src["face"].height)
-        # Position the hint text (if no other text is in the field):
+        self._set_height(h)
+        # Position the hint text (if no other text is in the field).
+        # The hint will not span multiple line if it is wider than the field
+        # (it was designed to be a short word or phrase).
         self[0].x = self._padding[0]
-        self[0]._set_height(self.height)
+        self[0].y = self.height - self._padding[1] - self[0]._text.metrics[1] * 1.25
         self[0]._pack()
     
     def on_action(self):
@@ -773,11 +783,19 @@ class Field(Editable):
         self[0].hidden = self.editing or self.value != ""
     
     def draw(self):
+        im1, im2, im3 = self.src["cap1"], self.src["cap2"],  self.src["top"]
+        im4, im5, im6 = self.src["cap3"], self.src["cap4"],  self.src["bottom"]
+        im7, im8, im9 = self.src["left"], self.src["right"], self.src["face"]
         clr = self.color
-        im1, im2, im3 = self.src["cap1"], self.src["cap2"], self.src["face"]
-        image(im1, 0, 0, height=self.height, color=clr)
-        image(im2, x=self.width-im2.width, height=self.height, color=clr)
-        image(im3, x=im1.width, width=self.width-im1.width-im2.width, height=self.height, color=clr)
+        image(im1, 0, self.height-im1.height, color=clr)
+        image(im2, self.width-im2.width, self.height-im2.height, color=clr)
+        image(im3, im1.width, self.height-im3.height, width=self.width-im1.width-im2.width, color=clr)
+        image(im4, 0, 0, color=clr)
+        image(im5, self.width-im5.width, 0, color=clr)
+        image(im6, im4.width, 0, width=self.width-im4.width-im5.width, color=clr)
+        image(im7, 0, im4.height, height=self.height-im1.height-im4.height, color=clr)
+        image(im8, self.width-im8.width, im4.height, height=self.height-im2.height-im5.height, color=clr)
+        image(im9, im4.width, im6.height, width=self.width-im7.width-im8.width, height=self.height-im3.height-im6.height, color=clr)
         Editable.draw(self)
 
 #=====================================================================================================
@@ -986,7 +1004,7 @@ class Panel(Control):
 
 class Dock(Panel):
     
-    def __init__(self, anchor=LEFT, caption="", fixed=True, modal=True, **kwargs):
+    def __init__(self, caption="", anchor=LEFT, fixed=True, modal=True, **kwargs):
         """ A panel attached to the edge of the canvas (LEFT or RIGHT), extending the full height.
             With fixed=False, it can be snapped from the edge and dragged as a normal panel.
         """
@@ -1028,7 +1046,7 @@ class Dock(Panel):
 
 class Layout(Layer):
     
-    def __init__(self, x=0, y=0, **kwargs):
+    def __init__(self, controls=[], x=0, y=0, **kwargs):
         """ A group of controls with a specific layout.
             Controls can be added with Layout.append().
             The layout will be applied when Layout.apply() is called.
@@ -1038,6 +1056,7 @@ class Layout(Layer):
         kwargs["height"] = 0
         Layer.__init__(self, x=x, y=y, **kwargs)
         self._controls = {} # Lazy cache of (id, control)-children, see nested().
+        self.extend(controls)
 
     def insert(self, i, control):
         if isinstance(control, Layout):
@@ -1087,7 +1106,7 @@ class Labeled(Layout):
     def __init__(self, controls=[], x=0, y=0, **kwargs):
         """ A layout where each control has an associated text label.
         """
-        Layout.__init__(self, x=x, y=y, **kwargs)
+        Layout.__init__(self, controls=[], x=x, y=y, **kwargs)
         self.controls = []
         self.captions = []
         self.extend(controls)
@@ -1137,11 +1156,12 @@ class Rows(Labeled):
         for control in self.controls:
             if isinstance(control, Layout):
                 # Child containers in the layout can be wider than the desired width.
-                # adjusting mw at the start will controls wider to line out with the total width,
+                # adjusting mw at the start will make controls wider to line out with the total width,
                 # adjusting it at the end would just ensure that the layout is wide enough.
-                mw = max(self._maxwidth, control.width)
+                mw = max(mw, control.width)
         w1 = max([caption.width for caption in self.captions])
         w2 = max([control.width for control in self.controls])
+        w2 = min(w2, mw)
         dx = 0
         dy = 0
         for caption, control in reversed(zip(self.captions, self.controls)):
@@ -1157,6 +1177,9 @@ class Rows(Labeled):
             dy += max(caption.height, control.height, 10) + spacing
         self.width  = w1 + w2 + (w1>0 and spacing)
         self.height = dy - spacing
+        
+    #def draw(self):
+    #    rect(0, 0, self.width, self.height, fill=None, stroke=[1,1,1,1])
 
 TOP, CENTER = "top", "center"
 

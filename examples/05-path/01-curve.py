@@ -25,7 +25,7 @@ leaf.curveto(0, 150, -50, 50, 0, 0)
 
 # The resulting path can be passed to drawpath() to render it to the canvas.
 # Note: just as in the classic NodeBox for Mac OS X, paths can also be constructed
-# with beginpath(). The commands below create exactlye the same leaf shape as above:
+# with beginpath(). The commands below create exactly the same leaf shape as above:
 #  beginpath(0, 0)
 #  curveto(50, 50, 0, 150, 0, 200)
 #  curveto(0, 150, -50, 50, 0, 0)

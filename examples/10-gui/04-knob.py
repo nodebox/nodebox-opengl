@@ -11,7 +11,7 @@ from nodebox.gui import *
 # It arranges all of its controls horizontally, with their captions on top.
 # The Row layout can then be nested in a Rows layout (or vice versa).
 # This allows you to build many different interface grids.
-panel = Panel("Example", width=200, height=200, fixed=False, modal=False)
+panel = Panel("Example", width=300, height=200, fixed=False, modal=False)
 panel.append(Rows(
     [("text",Field(value="hello world", hint="text", id="field_text")),
      (    "size", Slider(default=1.0, min=0.0, max=2.0, steps=100, id="slider_size")),
