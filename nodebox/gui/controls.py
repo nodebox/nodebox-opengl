@@ -984,7 +984,7 @@ class Panel(Control):
         image(im7, 0, im4.height, height=self.height-im1.height-im4.height, color=clr)
         image(im8, self.width-im8.width, im4.height, height=self.height-im2.height-im5.height, color=clr)
         image(im9, im4.width, im6.height, width=self.width-im7.width-im8.width, height=self.height-im3.height-im6.height, color=clr)
-            
+        
     def on_mouse_enter(self, mouse): 
         mouse.cursor = DEFAULT
 
@@ -1090,14 +1090,15 @@ class Layout(Layer):
     def apply(self, spacing=0):
         """ Adjusts the position and size of the controls to match the layout.
         """
-        pass
+        self.width  = max(control.width  for control in self)
+        self.height = max(control.height for control in self)
         
     def __repr__(self):
         return "Layout(type=%s)" % repr(self.__class__.__name__.lower())
     
     # Debug mode:
     #def draw(self):
-    #    rect(0, 0, self.width, self.height, fill=None, stroke=(1,1,1,0.5), strokestyle="dotted")
+    #    rect(0, 0, self.width, self.height, fill=None, stroke=(0,0.5,1,1))
 
 #--- Layout: Labeled ----------------------------------------------------------------------------------
 
@@ -1159,28 +1160,25 @@ class Rows(Labeled):
                 # adjusting mw at the start will make controls wider to line out with the total width,
                 # adjusting it at the end would just ensure that the layout is wide enough.
                 mw = max(mw, control.width)
-        w1 = max([caption.width for caption in self.captions])
-        w2 = max([control.width for control in self.controls])
+        w1 = max(caption.width for caption in self.captions)
+        w2 = max(control.width for control in self.controls)
         w2 = min(w2, mw)
         dx = 0
         dy = 0
         for caption, control in reversed(zip(self.captions, self.controls)):
-            caption.x = dx + w1 - caption.width                      # halign right.
-            control.x = dx + w1 + (w1>0 and spacing)
-            caption.y = dy + 0.5 * (control.height - caption.height) # valign center.
-            control.y = dy
             if isinstance(control, Layout) and control.height > caption.height * 2:
                 caption.y = dy + control.height - caption.height     # valign top.
             if isinstance(control, (Label, Button, Slider, Field)):
                 control._set_width(mw)
                 control._pack()
+            caption.x = dx + w1 - caption.width                      # halign right.
+            control.x = dx + w1 + (w1>0 and spacing)
+            caption.y = dy + 0.5 * (control.height - caption.height) # valign center.
+            control.y = dy
             dy += max(caption.height, control.height, 10) + spacing
-        self.width  = w1 + w2 + (w1>0 and spacing)
+        self.width  = w1 + max(w2, mw) + (w1>0 and spacing)
         self.height = dy - spacing
         
-    #def draw(self):
-    #    rect(0, 0, self.width, self.height, fill=None, stroke=[1,1,1,1])
-
 TOP, CENTER = "top", "center"
 
 class Row(Labeled):
@@ -1201,18 +1199,18 @@ class Row(Labeled):
         """
         mw = self._maxwidth
         da = self._align==TOP and 1.0 or 0.5
-        h1 = max([control.height for control in self.controls])
-        h2 = max([caption.height for caption in self.captions])
+        h1 = max(control.height for control in self.controls)
+        h2 = max(caption.height for caption in self.captions)
         dx = 0
         dy = 0
         for caption, control in zip(self.captions, self.controls):
+            if isinstance(control, (Label, Button, Slider, Field)):
+                control._set_width(mw)
+                control._pack()
             caption.x = dx + 0.5 * max(control.width - caption.width, 0) # halign center
             control.x = dx + 0.5 * max(caption.width - control.width, 0) # halign center
             caption.y = dy + h1 + (h2>0 and spacing)                 
             control.y = dy + da * (h1 - control.height)                  # valign center
-            if isinstance(control, (Label, Button, Slider, Field)):
-                control._set_width(mw)
-                control._pack()
             dx += max(caption.width, control.width, 10) + spacing
         self.width = dx - spacing
         self.height = h1 + h2 + (h2>0 and spacing)
