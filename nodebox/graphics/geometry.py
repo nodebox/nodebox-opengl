@@ -379,6 +379,8 @@ class Bounds:
     def union(self, b):
         """ Returns bounds that encompass the union of the two.
         """
+        # Note: this will also work with ghost points.
+        # Bounds(20, 20, 5, 5).union(Bounds(100, 100, 0, 0)) => Bounds(20, 20, 100, 100). 
         mx, my = min(self.x, b.x), min(self.y, b.y)
         return Bounds(mx, my, 
             max(self.x+self.width, b.x+b.width) - mx, 
