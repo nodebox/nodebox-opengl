@@ -6,14 +6,16 @@
 # animation & motion tweening, and simple 2D physics.
 
 __author__    = "Tom De Smedt, Frederik De Bleser"
-__version__   = "1.6"
-__copyright__ = "Copyright (c) 2008-2010 City In A Bottle (cityinabottle.org)"
+__version__   = "1.7"
+__copyright__ = "Copyright (c) 2008-2012 City In A Bottle (cityinabottle.org)"
 __license__   = "BSD"
 
-try: import psyco; psyco.profile()
-except:
-    try: from ext import psyco; psyco.profile()
+import sys
+if sys.version_info < (2,7):
+    try: import psyco; psyco.profile()
     except:
-        pass
+        try: from ext import psyco; psyco.profile()
+        except:
+            pass
     
 import nodebox
