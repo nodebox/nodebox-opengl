@@ -909,8 +909,9 @@ class Panel(Control):
         }
         _popdefault(kwargs, "width")
         _popdefault(kwargs, "height")
-        self.append(Label(caption, **kwargs))
+        self.append(Label(caption))
         self.append(Close())
+        #self.extend(kwargs.pop("controls", []), **kwargs)
         self.fixed = fixed # Draggable?
         self.modal = modal # Closeable?
         self._pack()
@@ -928,19 +929,19 @@ class Panel(Control):
         return iter(self[2:]) # self[0] is the Label,
                               # self[1] is the Close action.
     
-    def insert(self, i, control, **kwargs):
+    def insert(self, i, control):
         """ Inserts the control, or inserts all controls in the given Layout.
         """
         if isinstance(control, Layout):
             # If the control is actually a Layout (e.g. ordered group of controls), apply it.
-            control.apply(**kwargs)
+            control.apply()
         Layer.insert(self, i, control)
         
-    def append(self, control, **kwargs):
-        self.insert(len(self), control, **kwargs)
-    def extend(self, controls, **kwargs):
+    def append(self, control):
+        self.insert(len(self), control)
+    def extend(self, controls):
         for control in controls: 
-            self.append(control, **kwargs)
+            self.append(control)
 
     def _pack(self):
         # Center the caption in the label's header.
@@ -1046,6 +1047,8 @@ class Dock(Panel):
 
 class Layout(Layer):
     
+    SPACING = 10 # Spacing between controls in a Layout.
+    
     def __init__(self, controls=[], x=0, y=0, **kwargs):
         """ A group of controls with a specific layout.
             Controls can be added with Layout.append().
@@ -1056,11 +1059,14 @@ class Layout(Layer):
         kwargs["height"] = 0
         Layer.__init__(self, x=x, y=y, **kwargs)
         self._controls = {} # Lazy cache of (id, control)-children, see nested().
+        self.spacing = kwargs.get("spacing", Layout.SPACING)
         self.extend(controls)
 
     def insert(self, i, control):
+        """ Inserts the control, or inserts all controls in the given Layout.
+        """
         if isinstance(control, Layout):
-            # If the control is actually a Layout, apply it.
+            # If the control is actually a Layout (e.g. ordered group of controls), apply it.
             control.apply()
         Layer.insert(self, i, control)
         
@@ -1087,7 +1093,7 @@ class Layout(Layer):
             return ctrl
         raise AttributeError, "'%s' object has no attribute '%s'" % (self.__class__.__name__, k)
 
-    def apply(self, spacing=0):
+    def apply(self):
         """ Adjusts the position and size of the controls to match the layout.
         """
         self.width  = max(control.width  for control in self)
@@ -1147,7 +1153,7 @@ class Rows(Labeled):
         Labeled.__init__(self, controls, x=x, y=y, **kwargs)
         self._maxwidth = width
 
-    def apply(self, spacing=10):
+    def apply(self):
         """ Adjusts the position and width of all the controls in the layout:
             - each control is placed next to its caption, with spacing in between,
             - each caption is aligned to the right, and centered vertically,
@@ -1172,14 +1178,14 @@ class Rows(Labeled):
                 control._set_width(mw)
                 control._pack()
             caption.x = dx + w1 - caption.width                      # halign right.
-            control.x = dx + w1 + (w1>0 and spacing)
+            control.x = dx + w1 + (w1>0 and self.spacing)
             caption.y = dy + 0.5 * (control.height - caption.height) # valign center.
             control.y = dy
-            dy += max(caption.height, control.height, 10) + spacing
-        self.width  = w1 + max(w2, mw) + (w1>0 and spacing)
-        self.height = dy - spacing
+            dy += max(caption.height, control.height) + self.spacing
+        self.width  = w1 + max(w2, mw) + (w1>0 and self.spacing)
+        self.height = dy - self.spacing
         
-TOP, CENTER = "top", "center"
+TOP, BOTTOM, CENTER = "top", "bottom", "center"
 
 class Row(Labeled):
 
@@ -1192,13 +1198,13 @@ class Row(Labeled):
         self._maxwidth = width
         self._align    = align
 
-    def apply(self, spacing=10):
+    def apply(self):
         """ Adjusts the position and width of all the controls in the layout:
             - each control is placed centrally below its caption, with spacing in between,
             - the width of all Label, Button, Slider, Field controls is evened out.
         """
         mw = self._maxwidth
-        da = self._align==TOP and 1.0 or 0.5
+        da = {TOP: 1.0, BOTTOM: 0.0, CENTER: 0.5}.get(self._align, 0.5)
         h1 = max(control.height for control in self.controls)
         h2 = max(caption.height for caption in self.captions)
         dx = 0
@@ -1209,8 +1215,8 @@ class Row(Labeled):
                 control._pack()
             caption.x = dx + 0.5 * max(control.width - caption.width, 0) # halign center
             control.x = dx + 0.5 * max(caption.width - control.width, 0) # halign center
-            caption.y = dy + h1 + (h2>0 and spacing)                 
+            caption.y = dy + h1 + (h2>0 and self.spacing)                 
             control.y = dy + da * (h1 - control.height)                  # valign center
-            dx += max(caption.width, control.width, 10) + spacing
-        self.width = dx - spacing
-        self.height = h1 + h2 + (h2>0 and spacing)
+            dx += max(caption.width, control.width) + self.spacing
+        self.width = dx - self.spacing
+        self.height = h1 + h2 + (h2>0 and self.spacing)
