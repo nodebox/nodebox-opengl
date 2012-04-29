@@ -2,7 +2,7 @@
 # 2D geometry functions.
 # Authors: Tom De Smedt
 # License: BSD (see LICENSE.txt for details).
-# Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# Copyright (c) 2008-2012 City In A Bottle (cityinabottle.org)
 # http://cityinabottle.org/nodebox
 
 from math import sqrt, pow

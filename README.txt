@@ -1,7 +1,7 @@
 NodeBox for OpenGL
 ==================
 
-NodeBox for OpenGL is a Python module for creating 2D interactive visuals using OpenGL. It is based on the command set of the classic NodeBox for Mac OS X (http://nodebox.net). It has support for Bezier paths, text, image filters (blur, bloom, ...), offscreen rendering, animation & motion tweening, and simple 2D physics. Its purpose is to implement a small game engine for "City In A Bottle" (http://cityinabottle.org).
+NodeBox for OpenGL (NOGL) is a Python module for creating 2D interactive visuals using OpenGL. It is based on the command set of the classic NodeBox for Mac OS X (http://nodebox.net). It has support for Bezier paths, text, image filters (blur, bloom, ...), offscreen rendering, animation & motion tweening, and simple 2D physics. Its purpose is to implement a small game engine for "City In A Bottle" (http://cityinabottle.org).
 
 VERSION
 =======
@@ -27,8 +27,10 @@ If this is not the case, try updating to a new driver.
 INSTALLATION
 ============
 
-To be able to import NodeBox in your scripts, Python needs to know where the module is located. 
-There are three basic ways to accomplish this:
+If you have pip, you can automatically download and install from the PyPi repository:
+> pip install nodebox-opengl
+
+If that doesn't work, download the latest version manually. To be able to import NodeBox in your scripts, Python needs to know where the module is located. There are three basic ways to accomplish this:
 
 - Put the nodebox/ folder in the same folder as your script.
 - Put the nodebox/ folder in the standard location for modules so it is available to all scripts.
@@ -44,15 +46,15 @@ There are three basic ways to accomplish this:
 If you get an "import pyglet" error, make sure that Pyglet is installed in site-packages/ too.
 
 Binaries:
-NodeBox contains C extensions for faster mathematics. 
-These are precompiled for Mac, on other systems you need to execute "python setup.py" in nodebox/ext/ manually.
-Psyco (http://psyco.sourceforge.net/) can boost performance as well (if you use a 32-bit Python).
-A version precompiled for Mac is included in nodebox/ext/.
+NOGL contains C extensions for faster mathematics. If you want to activate them, you need to compile them from source. 
+From the command line, do:
+> cd nodebox/ext
+> python setup.py
 
 USAGE
 =====
 
-- For users coming from NodeBox for Mac OS X, or NodeBox 2: this NodeBox for OpenGL does not have a built-in code editor. You can use the IDLE editor bundled with Python. On Mac OS X, we prefer TextMate (http://macromates.com).
+- For users coming from NodeBox for Mac OS X: this NodeBox for OpenGL does not have a built-in code editor. You can use the IDLE editor bundled with Python. On Mac OS X, we prefer TextMate (http://macromates.com).
 - From the command line, you can run a script with: python example.py (or command-R in TextMate)
 - This will open an application window with the output of your script.
 
@@ -77,13 +79,17 @@ http://cityinabottle.org/nodebox
 ACKNOWLEDGEMENTS
 ================
 
-Authors: 
+Author: 
 - Tom De Smedt (tom@organisms.be)
-- Frederik De Bleser (frederik@burocrazy.com)
 
 Contributing authors:
+- Frederik De Bleser
 - Lieven Menschaert
 - Giorgio Olivero
+
+Contributors:
+- Karsten Wolf
+- Tuk Bredsdorff
 
 City In A Bottle:
 - Nicolas Marinus
@@ -92,4 +98,4 @@ City In A Bottle:
 - Frederik De Bleser
 - Tom De Smedt
 
-Copyright (c) 2008 City In A Bottle
+Copyright (c) 2008-2012 City In A Bottle

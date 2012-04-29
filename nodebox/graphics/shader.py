@@ -2,7 +2,7 @@
 # Fragment shaders, filters, Frame Buffer Object (FBO)
 # Authors: Tom De Smedt, Frederik De Bleser
 # License: BSD (see LICENSE.txt for details).
-# Copyright (c) 2008 City In A Bottle (cityinabottle.org)
+# Copyright (c) 2008-2012 City In A Bottle (cityinabottle.org)
 # http://cityinabottle.org/nodebox
 
 from pyglet.gl    import *

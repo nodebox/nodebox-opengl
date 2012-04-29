@@ -1,29 +1,25 @@
 import os
-from setuptools import setup, find_packages
-
+from setuptools import setup
+from setuptools import find_packages
 
 # Utility function to read the README file.
 # From http://packages.python.org/an_example_pypi_project/setuptools.html.
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-setup(name="nodebox-opengl",
-    version="1.6",
-    description="NodeBox for OpenGL is a free, cross-platform library for "
-                "generating 2D animations with Python programming code.",
-    long_description=read("README.txt"),
-    keywords="2d graphics sound physics games multimedia",
-    license="BSD",
-    author="Tom De Smedt, Frederik De Bleser",
-    url="http://www.cityinabottle.org/nodebox/",
-    packages=find_packages(),
-    package_data={
-        "nodebox.gui": ["theme/*"]
-    },
-    install_requires=[
-        "pyglet",
-    ],
-    classifiers=[
+setup(      name = "NodeBox for OpenGL",
+         version = "1.7",
+     description = "NodeBox for OpenGL (NOGL) is a free, cross-platform library "
+                   "for generating 2D animations with Python programming code.",
+long_description = read("README.txt"),
+        keywords = "2d graphics sound physics games multimedia",
+         license = "BSD",
+          author = "Tom De Smedt",
+             url = "http://www.cityinabottle.org/nodebox/",
+        packages = find_packages(),
+    package_data = {"nodebox.gui": ["theme/*"]},
+install_requires = ["pyglet",],
+     classifiers = [
         "Development Status :: 4 - Beta",
         "Environment :: MacOS X",
         "Environment :: Win32 (MS Windows)",
@@ -38,6 +34,7 @@ setup(name="nodebox-opengl",
         "Topic :: Artistic Software",
         "Topic :: Games/Entertainment",
         "Topic :: Multimedia :: Graphics",
+        "Topic :: Scientific/Engineering :: Visualization",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
 )
