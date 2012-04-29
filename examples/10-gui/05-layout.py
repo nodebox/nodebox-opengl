@@ -44,7 +44,7 @@ panel2.pack()
 panel3 = Panel("Panel 3", x=30, y=30)
 panel3.append(
     Row([ # Field will be 200 wide, the Row column width setting.
-        Field(value="", hint="message", height=70, id="field_msg2", wrap=True),
+        Field(value="", hint="message", height=70, id="field_msg3", wrap=True),
         ("Actions:", Rows([
             Button("Send"), # However, buttons will be 100 wide,
             Button("Save")  # because their Rows parent says so.
@@ -60,7 +60,7 @@ panel3.pack()
 # The field has its own dimensions (width=300 and height=50).
 panel4 = Panel("Panel 4", x=400, y=30)
 panel4.extend([
-    Field(value="", hint="message", y=40, width=300, height=50, id="field_msg3", wrap=True, reserved=[]),
+    Field(value="", hint="message", y=40, width=300, height=50, id="field_msg4", wrap=True, reserved=[]),
     Button("Send")
 ])
 panel4.pack()
@@ -75,7 +75,7 @@ panel4.pack()
 # as well as the position of all controls:
 panel5 = Panel("Panel 5", x=500, y=200, width=200, height=150)
 panel5.extend([
-    Field(value="", hint="message", x=10, y=60, width=180, height=50, id="field_msg3", wrap=True),
+    Field(value="", hint="message", x=10, y=60, width=180, height=50, id="field_msg5", wrap=True),
     Button("Send", x=10, y=20, width=180)
 ])
 
