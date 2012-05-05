@@ -8,7 +8,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 setup(name="nodebox-opengl",
-    version="1.6",
+    version="1.6.1",
     description="NodeBox for OpenGL is a free, cross-platform library for "
                 "generating 2D animations with Python programming code.",
     long_description=read("README.txt"),
