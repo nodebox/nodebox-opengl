@@ -449,10 +449,10 @@ class Bounds:
 #  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from sys import platform
-from ctypes import CFUNCTYPE, POINTER, byref, cast
+from ctypes import CFUNCTYPE, POINTER, byref, cast, pointer
 from ctypes import CFUNCTYPE as _CFUNCTYPE
 from pyglet.gl import \
-    GLdouble, GLvoid, GLenum, GLfloat, pointer, \
+    GLdouble, GLvoid, GLenum, GLfloat, \
     gluNewTess, gluTessProperty, gluTessNormal, gluTessCallback, gluTessVertex, \
     gluTessBeginPolygon, gluTessEndPolygon, \
     gluTessBeginContour, gluTessEndContour, \
