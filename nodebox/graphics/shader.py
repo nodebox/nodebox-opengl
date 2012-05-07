@@ -1,4 +1,4 @@
-#=== SHADER ==========================================================================================
+
 # Fragment shaders, filters, Frame Buffer Object (FBO)
 # Authors: Tom De Smedt, Frederik De Bleser
 # License: BSD (see LICENSE.txt for details).
@@ -10,6 +10,8 @@ from pyglet.image import Texture, SolidColorImagePattern
 from context      import Image, texture
 from geometry     import lerp, clamp
 from math         import radians
+from ctypes       import byref, cast, pointer, POINTER
+from ctypes       import c_char, c_char_p, c_uint, c_int
 
 def next(generator, default=None):
     try: 
