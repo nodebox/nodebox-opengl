@@ -3812,26 +3812,29 @@ class Canvas(list, Prototype, EventHandler):
     draw_over = draw_overlay
 
     def _setup(self):
-        # Set the window color, this will be transparent in saved images.
-        glClearColor(VERY_LIGHT_GREY, VERY_LIGHT_GREY, VERY_LIGHT_GREY, 0)
-        # Reset the transformation state.
-        # Most of this is already taken care of in Pyglet.
-        #glMatrixMode(GL_PROJECTION)
-        #glLoadIdentity()
-        #glOrtho(0, self.width, 0, self.height, -1, 1)
-        #glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-        # Enable line anti-aliasing.
-        glEnable(GL_LINE_SMOOTH)
-        # Enable alpha transparency.
-        glEnable(GL_BLEND)
-        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-        #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        """ Initializes the application window and resets the state.
+            Clears the canvas and calls Canvas.setup().
+        """
         # Start the application (if not already running).
         if not self._active:
             self._window.switch_to()
+            # Set the window color, this will be transparent in saved images.
+            glClearColor(VERY_LIGHT_GREY, VERY_LIGHT_GREY, VERY_LIGHT_GREY, 0)
+            # Reset the transformation state.
+            # Most of this is already taken care of in Pyglet.
+            #glMatrixMode(GL_PROJECTION)
+            #glLoadIdentity()
+            #glOrtho(0, self.width, 0, self.height, -1, 1)
+            #glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
+            # Enable line anti-aliasing.
+            glEnable(GL_LINE_SMOOTH)
+            # Enable alpha transparency.
+            glEnable(GL_BLEND)
+            glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+            #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
             self._window.dispatch_events()
-            self._window.set_visible()
+            self._window.set_visible(True)
             self._active = True
         self.clear()
         self.setup()
