@@ -583,19 +583,21 @@ def rect(x, y, width, height, **kwargs):
         The current stroke, strokewidth and fill color are applied.
     """
     fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
-    for i, clr in enumerate((fill, stroke)):
-        if clr is not None and (i==0 or strokewidth > 0):
-            if i == 1: 
-                glLineWidth(strokewidth)
-                glLineDash(strokestyle)
-            glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
-            # Note: this performs equally well as when using precompile().
-            glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
-            glVertex2f(x, y)
-            glVertex2f(x+width, y)
-            glVertex2f(x+width, y+height)
-            glVertex2f(x, y+height)
-            glEnd()
+    if fill is not None:
+        glColor4f(fill[0], fill[1], fill[2], fill[3] * _alpha)
+        glRectf(x, y, x+width, y+width)
+
+    if stroke is not None and strokewidth > 0:
+        glLineWidth(strokewidth)
+        glLineDash(strokestyle)
+        glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
+        # Note: this performs equally well as when using precompile().
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(x, y)
+        glVertex2f(x+width, y)
+        glVertex2f(x+width, y+height)
+        glVertex2f(x, y+height)
+        glEnd()
             
 def triangle(x1, y1, x2, y2, x3, y3, **kwargs):
     """ Draws the triangle created by connecting the three given points.
