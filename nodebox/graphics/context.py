@@ -609,10 +609,11 @@ def triangle(x1, y1, x2, y2, x3, y3, **kwargs):
         if clr is not None and (i==0 or strokewidth > 0):
             if i == 1: 
                 glLineWidth(strokewidth)
-                glLineDash(strokestyle)
+                if strokestyle != _strokestyle:
+                    glLineDash(strokestyle)
             glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             # Note: this performs equally well as when using precompile().
-            glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
+            glBegin((GL_TRIANGLES, GL_LINE_LOOP)[i])
             glVertex2f(x1, y1)
             glVertex2f(x2, y2)
             glVertex2f(x3, y3)
