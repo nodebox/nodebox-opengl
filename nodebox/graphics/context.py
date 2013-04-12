@@ -572,8 +572,9 @@ def line(x0, y0, x1, y1, **kwargs):
     if stroke is not None and strokewidth > 0:
         glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
         glLineWidth(strokewidth)
-        glLineDash(strokestyle)
-        glBegin(GL_LINE_LOOP)
+        if strokestyle != _strokestyle:
+            glLineDash(strokestyle)
+        glBegin(GL_LINES)
         glVertex2f(x0, y0)
         glVertex2f(x1, y1)
         glEnd()
