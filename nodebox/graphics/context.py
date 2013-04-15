@@ -628,19 +628,30 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
     if not segments in _ellipses:
         # For the given amount of line segments, calculate the ellipse once.
         # Then reuse the cached ellipse by scaling it to the desired size.
-        _ellipses[segments] = []
-        for mode in (GL_POLYGON, GL_LINE_LOOP):
-            _ellipses[segments].append(precompile(lambda:(
-                glBegin(mode),
-               [glVertex2f(cos(t)/2, sin(t)/2) for t in [2*pi*i/segments for i in range(segments)]],
-                glEnd()
-            )))
+        commands = []
+        v = [glVertex2f(cos(t)/2, sin(t)/2) for t in [2*pi*i/segments for i in range(segments)]]
+        commands.append(precompile(lambda:(
+            glBegin(GL_TRIANGLE_FAN),
+            [glVertex2f(0, 0)] +
+            v +
+            [glVertex2f(0, 0)],
+            glEnd()
+        )))
+        commands.append(precompile(lambda:(
+            glBegin(GL_LINE_LOOP),
+            v,
+            glEnd()
+        )))
+
+        _ellipses[segments] = commands
+
     fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
         if clr is not None and (i==0 or strokewidth > 0):
             if i == 1: 
                 glLineWidth(strokewidth)
-                glLineDash(strokestyle)
+                if strokestyle != _strokestyle:
+                    glLineDash(strokestyle)
             glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             glPushMatrix()
             glTranslatef(x, y, 0)
