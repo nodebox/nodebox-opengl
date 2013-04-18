@@ -629,20 +629,15 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
         # For the given amount of line segments, calculate the ellipse once.
         # Then reuse the cached ellipse by scaling it to the desired size.
         commands = []
-        v = [glVertex2f(cos(t)/2, sin(t)/2) for t in [2*pi*i/segments for i in range(segments)]]
-        commands.append(precompile(lambda:(
-            glBegin(GL_TRIANGLE_FAN),
-            [glVertex2f(0, 0)] +
-            v +
-            [glVertex2f(0, 0)],
-            glEnd()
-        )))
-        commands.append(precompile(lambda:(
-            glBegin(GL_LINE_LOOP),
-            v,
-            glEnd()
-        )))
-
+        f = 2 * pi / segments
+        v = [(cos(t)/2, sin(t)/2) for t in [i*f for i in range(segments)+[0]]]
+        for mode in (GL_TRIANGLE_FAN, GL_LINE_LOOP):
+            commands.append(precompile(lambda:(
+               glBegin(mode),
+               [glVertex2f(x, y) for (x, y) in v],
+               glEnd()
+               )))
+        
         _ellipses[segments] = commands
 
     fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
