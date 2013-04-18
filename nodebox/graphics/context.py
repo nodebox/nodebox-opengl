@@ -685,18 +685,42 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
     """ Draws a star with the given points, outer radius and inner radius.
         The current stroke, strokewidth and fill color are applied.
     """
-    # GL_POLYGON only works with convex polygons,
-    # so we use a BezierPath (which does tessellation for fill colors).
-    p = BezierPath(**kwargs)
-    p.moveto(x, y+outer)
-    for i in range(0, int(2*points)+1):
-        r = (outer, inner)[i%2]
-        a = pi*i/points
-        p.lineto(x+r*sin(a), y+r*cos(a))
-    p.closepath()
-    if kwargs.get("draw", True): 
-        p.draw(**kwargs)
-    return p
+    radii = [outer, inner] * int(points+1); radii.pop() # which radius?
+    f = pi / points
+    v = [(x+r*sin(i*f), y+r*cos(i*f)) for i, r in enumerate(radii)]
+
+    if kwargs.get("draw", True):
+        fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
+
+        if fill is not None:
+            glColor4f(fill[0], fill[1], fill[2], fill[3] * _alpha)
+
+            glBegin(GL_TRIANGLE_FAN)
+            glVertex2f(x, y)
+            for (vx, vy) in v:
+                glVertex2f(vx, vy)
+            glEnd()
+
+        if stroke is not None and 0 < strokewidth:
+            glLineWidth(strokewidth)
+            if strokestyle != _strokestyle:
+                glLineDash(strokestyle)
+            glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
+
+            glBegin(GL_LINE_LOOP)
+            for (vx, vy) in v:
+                glVertex2f(vx, vy)
+            glEnd()
+    else:
+        # For whatever reason, the original api specified that you
+        # can get the path to the star. This is about 20x slower,
+        # but I'm keeping it here for backwards compatibility.
+        p = BezierPath(**kwargs)
+        p.moveto(x, y+outer)
+        for (vx, vy) in v:
+            p.lineto(vx, vy)
+        p.closepath()
+        return p
 
 #=====================================================================================================
 
