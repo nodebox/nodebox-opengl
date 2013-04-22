@@ -681,44 +681,59 @@ def arrow(x, y, width, **kwargs):
             glVertex2f(x, y)
             glEnd()
 
+def gcd(a, b):
+    return gcd(b, a % b) if b else a
+
+_stars = {} #TODO: LRU?
 def star(x, y, points=20, outer=100, inner=50, **kwargs):
     """ Draws a star with the given points, outer radius and inner radius.
         The current stroke, strokewidth and fill color are applied.
     """
-    radii = [outer, inner] * int(points+1); radii.pop() # which radius?
-    f = pi / points
-    v = [(x+r*sin(i*f), y+r*cos(i*f)) for i, r in enumerate(radii)]
-
     if kwargs.get("draw", True):
+        scale = gcd(inner, outer)
+        iscale = inner / scale
+        oscale = outer / scale
+        cached = _stars.get((points, iscale, oscale), [])
+        if not cached:
+            radii = [oscale, iscale] * int(points+1); radii.pop() # which radius?
+            f = pi / points
+            v = [(r*sin(i*f), r*cos(i*f)) for i, r in enumerate(radii)]
+            cached.append(precompile(lambda:(
+                glBegin(GL_TRIANGLE_FAN),
+                glVertex2f(0, 0),
+                [glVertex2f(vx, vy) for (vx, vy) in v],
+                glEnd()
+            )))
+            cached.append(precompile(lambda:(
+                glBegin(GL_LINE_LOOP),
+                [glVertex2f(vx, vy) for (vx, vy) in v],
+                glEnd()
+            )))
+            _stars[(points, iscale, oscale)] = cached
+
         fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
-
-        if fill is not None:
-            glColor4f(fill[0], fill[1], fill[2], fill[3] * _alpha)
-
-            glBegin(GL_TRIANGLE_FAN)
-            glVertex2f(x, y)
-            for (vx, vy) in v:
-                glVertex2f(vx, vy)
-            glEnd()
-
-        if stroke is not None and 0 < strokewidth:
-            glLineWidth(strokewidth)
-            if strokestyle != _strokestyle:
-                glLineDash(strokestyle)
-            glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
-
-            glBegin(GL_LINE_LOOP)
-            for (vx, vy) in v:
-                glVertex2f(vx, vy)
-            glEnd()
+        for i, clr in enumerate((fill, stroke)):
+            if clr is not None and (i == 0 or strokewidth > 0):
+                if i == 1: 
+                    glLineWidth(strokewidth)
+                    if strokestyle != _strokestyle:
+                        glLineDash(strokestyle)
+                glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
+                glPushMatrix()
+                glTranslatef(x, y, 0)
+                glScalef(scale, scale, 1)
+                glCallList(cached[i])
+                glPopMatrix()
     else:
         # For whatever reason, the original api specified that you
-        # can get the path to the star. This is about 20x slower,
+        # can get the path to the star. This is about 30x slower,
         # but I'm keeping it here for backwards compatibility.
         p = BezierPath(**kwargs)
         p.moveto(x, y+outer)
-        for (vx, vy) in v:
-            p.lineto(vx, vy)
+        for i in range(0, int(2*points)+1):
+            r = (outer, inner)[i%2]
+            a = pi*i/points
+            p.lineto(x+r*sin(a), y+r*cos(a))
         p.closepath()
         return p
 
@@ -1486,7 +1501,8 @@ def texture(img, data=None):
         return _texture_cache[img]
     # Image file path, load it, cache it, return texture.
     if isinstance(img, basestring):
-        try: cache(img, pyglet.image.load(img).get_texture())
+        try: 
+            cache(img, pyglet.image.load(img).get_texture())
         except IOError:
             raise ImageError, "can't load image from %s" % repr(img)
         return _texture_cache[img]
