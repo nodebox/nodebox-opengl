@@ -228,6 +228,8 @@ class PD(object):
         if self.patch is None \
         or not os.path.exists(self.patch):
             raise PDError, "no PD patch file at '%s'" % self.patch
+        if not self._path:
+            raise PDError, "no PD application found"
         if not os.path.exists(self._path):
             raise PDError, "no PD application at '%s'" % self._path
         if not self._process:
