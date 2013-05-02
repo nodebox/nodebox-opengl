@@ -2,6 +2,8 @@
 // Based on: Malcolm Kesson, http://www.fundza.com/c4serious/noise/perlin/perlin.html
 // © 2002-4 Malcolm Kesson. All rights reserved.
 
+#include <Python.h>
+
 #include <math.h>
 #include <stdio.h>
 
@@ -48,8 +50,6 @@ double _generate(double x, double y, double z) {
 
 // -------------------------------------------------------------------------------------
 
-#include <Python.h> 
-
 static PyObject *
 generate(PyObject *self, PyObject *args) {
     double x, y, z, d;   
@@ -85,3 +85,4 @@ int main(int argc, char *argv[]) {
     initnoise();
     return 0;
 }
+
