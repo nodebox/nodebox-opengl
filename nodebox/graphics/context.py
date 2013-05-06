@@ -572,8 +572,9 @@ def line(x0, y0, x1, y1, **kwargs):
     if stroke is not None and strokewidth > 0:
         glColor4f(stroke[0], stroke[1], stroke[2], stroke[3] * _alpha)
         glLineWidth(strokewidth)
-        glLineDash(strokestyle)
-        glBegin(GL_LINE_LOOP)
+        if strokestyle != _strokestyle:
+            glLineDash(strokestyle)
+        glBegin(GL_LINES)
         glVertex2f(x0, y0)
         glVertex2f(x1, y1)
         glEnd()
@@ -598,7 +599,7 @@ def rect(x, y, width, height, **kwargs):
         glVertex2f(x+width, y+height)
         glVertex2f(x, y+height)
         glEnd()
-            
+
 def triangle(x1, y1, x2, y2, x3, y3, **kwargs):
     """ Draws the triangle created by connecting the three given points.
         The current stroke, strokewidth and fill color are applied.
@@ -608,10 +609,11 @@ def triangle(x1, y1, x2, y2, x3, y3, **kwargs):
         if clr is not None and (i==0 or strokewidth > 0):
             if i == 1: 
                 glLineWidth(strokewidth)
-                glLineDash(strokestyle)
+                if strokestyle != _strokestyle:
+                    glLineDash(strokestyle)
             glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             # Note: this performs equally well as when using precompile().
-            glBegin((GL_POLYGON, GL_LINE_LOOP)[i])
+            glBegin((GL_TRIANGLES, GL_LINE_LOOP)[i])
             glVertex2f(x1, y1)
             glVertex2f(x2, y2)
             glVertex2f(x3, y3)
@@ -626,19 +628,25 @@ def ellipse(x, y, width, height, segments=ELLIPSE_SEGMENTS, **kwargs):
     if not segments in _ellipses:
         # For the given amount of line segments, calculate the ellipse once.
         # Then reuse the cached ellipse by scaling it to the desired size.
-        _ellipses[segments] = []
-        for mode in (GL_POLYGON, GL_LINE_LOOP):
-            _ellipses[segments].append(precompile(lambda:(
-                glBegin(mode),
-               [glVertex2f(cos(t)/2, sin(t)/2) for t in [2*pi*i/segments for i in range(segments)]],
-                glEnd()
-            )))
+        commands = []
+        f = 2 * pi / segments
+        v = [(cos(t)/2, sin(t)/2) for t in [i*f for i in range(segments)+[0]]]
+        for mode in (GL_TRIANGLE_FAN, GL_LINE_LOOP):
+            commands.append(precompile(lambda:(
+               glBegin(mode),
+               [glVertex2f(x, y) for (x, y) in v],
+               glEnd()
+               )))
+        
+        _ellipses[segments] = commands
+
     fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
     for i, clr in enumerate((fill, stroke)):
         if clr is not None and (i==0 or strokewidth > 0):
             if i == 1: 
                 glLineWidth(strokewidth)
-                glLineDash(strokestyle)
+                if strokestyle != _strokestyle:
+                    glLineDash(strokestyle)
             glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
             glPushMatrix()
             glTranslatef(x, y, 0)
@@ -673,12 +681,54 @@ def arrow(x, y, width, **kwargs):
             glVertex2f(x, y)
             glEnd()
 
-def star(x, y, points=20, outer=100, inner=50, **kwargs):
+def gcd(a, b):
+    return gcd(b, a % b) if b else a
+
+_stars = {} #TODO: LRU?
+def fast_star(x, y, points=20, outer=100, inner=50, **kwargs):
     """ Draws a star with the given points, outer radius and inner radius.
         The current stroke, strokewidth and fill color are applied.
     """
-    # GL_POLYGON only works with convex polygons,
-    # so we use a BezierPath (which does tessellation for fill colors).
+    scale = gcd(inner, outer)
+    iscale = inner / scale
+    oscale = outer / scale
+    cached = _stars.get((points, iscale, oscale), [])
+    if not cached:
+        radii = [oscale, iscale] * int(points+1); radii.pop() # which radius?
+        f = pi / points
+        v = [(r*sin(i*f), r*cos(i*f)) for i, r in enumerate(radii)]
+        cached.append(precompile(lambda:(
+            glBegin(GL_TRIANGLE_FAN),
+            glVertex2f(0, 0),
+            [glVertex2f(vx, vy) for (vx, vy) in v],
+            glEnd()
+        )))
+        cached.append(precompile(lambda:(
+            glBegin(GL_LINE_LOOP),
+            [glVertex2f(vx, vy) for (vx, vy) in v],
+            glEnd()
+        )))
+        _stars[(points, iscale, oscale)] = cached
+
+    fill, stroke, strokewidth, strokestyle = color_mixin(**kwargs)
+    for i, clr in enumerate((fill, stroke)):
+        if clr is not None and (i == 0 or strokewidth > 0):
+            if i == 1: 
+                glLineWidth(strokewidth)
+                if strokestyle != _strokestyle:
+                    glLineDash(strokestyle)
+            glColor4f(clr[0], clr[1], clr[2], clr[3] * _alpha)
+            glPushMatrix()
+            glTranslatef(x, y, 0)
+            glScalef(scale, scale, 1)
+            glCallList(cached[i])
+            glPopMatrix()
+
+def star(x, y, points=20, outer=100, inner=50, **kwargs):
+    """ Draws a star with the given points, outer radius and inner radius.
+        The current stroke, strokewidth and fill color are applied.
+        This is about 20x slower than fast_star; use it only if you need the path returned.
+    """
     p = BezierPath(**kwargs)
     p.moveto(x, y+outer)
     for i in range(0, int(2*points)+1):
@@ -686,7 +736,8 @@ def star(x, y, points=20, outer=100, inner=50, **kwargs):
         a = pi*i/points
         p.lineto(x+r*sin(a), y+r*cos(a))
     p.closepath()
-    if kwargs.get("draw", True): 
+
+    if kwargs.get("draw", True):
         p.draw(**kwargs)
     return p
 
@@ -1454,7 +1505,8 @@ def texture(img, data=None):
         return _texture_cache[img]
     # Image file path, load it, cache it, return texture.
     if isinstance(img, basestring):
-        try: cache(img, pyglet.image.load(img).get_texture())
+        try: 
+            cache(img, pyglet.image.load(img).get_texture())
         except IOError:
             raise ImageError, "can't load image from %s" % repr(img)
         return _texture_cache[img]
