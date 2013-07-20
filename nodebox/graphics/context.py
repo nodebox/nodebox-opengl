@@ -25,6 +25,7 @@ from StringIO     import StringIO
 from hashlib      import md5
 from types        import FunctionType
 from datetime     import datetime
+from numbers      import Number
 
 import geometry
 
@@ -3454,11 +3455,14 @@ class Keys(list):
         code = self._decode(code)
         if code in MODIFIERS:
             self.modifiers.remove(code)
-        list.remove(self, self._decode(code))
+
+        if code in self:              # some window managers catch keys in weird manner
+            list.remove(self, code)   # .. so we may be in situation where no key code exists in our list
+
         self.code = len(self) > 0 and self[-1] or None
 
     def _decode(self, code):
-        if not isinstance(code, int):
+        if not isinstance(code, Number):
             s = code
         else:
             s = pyglet.window.key.symbol_string(code)         # 65288 => "BACKSPACE"
