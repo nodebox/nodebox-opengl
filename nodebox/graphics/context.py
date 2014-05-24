@@ -3807,7 +3807,10 @@ class Canvas(list, Prototype, EventHandler):
             layer.on_key_release(self.key)
         self.on_key_release(self.key)
         self._keys.char = ""
-        self._keys.remove(keycode)
+        try:
+            self._keys.remove(keycode)
+        except ValueError:
+            pass
         self._keys.pressed = False
 
     def _on_text(self, text):
