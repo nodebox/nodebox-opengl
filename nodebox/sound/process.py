@@ -196,10 +196,10 @@ class PD(object):
             os.path.join(path, PD_UNIX2),
             os.path.join(path, PD_MACOSX),
             os.path.join(path, PD_WINDOWS),
-                   "usr/bin/" + PD_UNIX1,
-             "usr/local/bin/" + PD_UNIX1,
-                   "usr/bin/" + PD_UNIX2,
-             "usr/local/bin/" + PD_UNIX2,
+                  "/usr/bin/" + PD_UNIX1,
+            "/usr/local/bin/" + PD_UNIX1,
+                  "/usr/bin/" + PD_UNIX2,
+            "/usr/local/bin/" + PD_UNIX2,
              "/Applications/" + PD_MACOSX,
         "C:\\Program Files\\" + PD_WINDOWS
         ])
