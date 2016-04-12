@@ -189,7 +189,7 @@ class Profiler:
         
         try:
             self.do_start()
-        except error, e:
+        except error as e:
             if logger:
                 logger.write('%s: disabled by psyco.error:' % (
                     self.__class__.__name__), 4)

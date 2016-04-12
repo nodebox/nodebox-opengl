@@ -17,17 +17,19 @@ from pyglet.image import Texture
 from math         import cos, sin, radians, pi, floor
 from time         import time
 from random       import seed, choice, shuffle, random as rnd
-from new          import instancemethod
 from glob         import glob
 from os           import path, remove
 from sys          import getrefcount
-from StringIO     import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 from hashlib      import md5
 from types        import FunctionType
 from datetime     import datetime
 from numbers      import Number
 
-import geometry
+from nodebox.graphics import geometry
 
 #import bezier
 # Do this at the end, when we have defined BezierPath, which is needed in the bezier module.
@@ -118,7 +120,7 @@ class Color(list):
         # Transform to base 1:
         base = float(kwargs.get("base", 1.0))
         if base != 1:
-            r, g, b, a = [ch/base for ch in r, g, b, a]
+            r, g, b, a = [ch/base for ch in [r, g, b, a]]
         # Transform to color space RGB:
         colorspace = kwargs.get("colorspace")
         if colorspace and colorspace != RGB:
@@ -149,7 +151,8 @@ class Color(list):
     
     def _get_rgb(self):
         return self[0], self[1], self[2]
-    def _set_rgb(self, (r,g,b)):
+    def _set_rgb(self, c):
+        r,g,b = c
         self[0] = r
         self[1] = g
         self[2] = b
@@ -158,7 +161,8 @@ class Color(list):
     
     def _get_rgba(self):
         return self[0], self[1], self[2], self[3]
-    def _set_rgba(self, (r,g,b,a)):
+    def _set_rgba(self, c):
+        r,g,b,a = c
         self[0] = r
         self[1] = g
         self[2] = b
@@ -197,9 +201,9 @@ class Color(list):
             if colorspace == XYZ: r, g, b = rgb_to_xyz(r, g, b)
             if colorspace == LAB: r, g, b = rgb_to_lab(r, g, b)
         if base != 1:
-            r, g, b, a = [ch*base for ch in r, g, b, a]
+            r, g, b, a = [ch*base for ch in [r, g, b, a]]
         if base != 1 and isinstance(base, int):
-            r, g, b, a = [int(ch) for ch in r, g, b, a]
+            r, g, b, a = [int(ch) for ch in [r, g, b, a]]
         return r, g, b, a
     
     def blend(self, clr, t=0.5, colorspace=RGB):
@@ -337,8 +341,8 @@ def hsb_to_rgb(h, s, v):
 def rgb_to_xyz(r, g, b):
     """ Converts the given R,G,B values to CIE X,Y,Z (between 0.0-1.0).
     """
-    r, g, b = [ch > 0.04045 and ((ch+0.055) / 1.055) ** 2.4 or ch / 12.92 for ch in r, g, b]
-    r, g, b = [ch * 100.0 for ch in r, g, b]
+    r, g, b = [ch > 0.04045 and ((ch+0.055) / 1.055) ** 2.4 or ch / 12.92 for ch in [r, g, b]]
+    r, g, b = [ch * 100.0 for ch in [r, g, b]]
     r, g, b = ( # Observer = 2, Illuminant = D65
         r * 0.4124 + g * 0.3576 + b * 0.1805,
         r * 0.2126 + g * 0.7152 + b * 0.0722,
@@ -349,18 +353,18 @@ def xyz_to_rgb(x, y, z):
     """ Converts the given CIE X,Y,Z color values to R,G,B (between 0.0-1.0).
     """
     x, y, z = x*95.047, y*100.0, z*108.883
-    x, y, z = [ch / 100.0 for ch in x, y, z]
+    x, y, z = [ch / 100.0 for ch in [x, y, z]]
     r = x *  3.2406 + y * -1.5372 + z * -0.4986
     g = x * -0.9689 + y *  1.8758 + z *  0.0415
     b = x * -0.0557 + y * -0.2040 + z *  1.0570
-    r, g, b = [ch > 0.0031308 and 1.055 * ch**(1/2.4) - 0.055 or ch * 12.92 for ch in r, g, b]
+    r, g, b = [ch > 0.0031308 and 1.055 * ch**(1/2.4) - 0.055 or ch * 12.92 for ch in [r, g, b]]
     return r, g, b
 
 def rgb_to_lab(r, g, b):
     """ Converts the given R,G,B values to CIE L,A,B (between 0.0-1.0).
     """
     x, y, z = rgb_to_xyz(r, g, b)
-    x, y, z = [ch > 0.008856 and ch**(1/3.0) or (ch*7.787) + (16/116.0) for ch in x, y, z]
+    x, y, z = [ch > 0.008856 and ch**(1/3.0) or (ch*7.787) + (16/116.0) for ch in [x, y, z]]
     l, a, b = y*116-16, 500*(x-y), 200*(y-z)
     l, a, b = l/100.0, (a+86)/(86+98), (b+108)/(108+94)
     return l, a, b
@@ -372,7 +376,7 @@ def lab_to_rgb(l, a, b):
     y = (l+16)/116.0
     x = y + a/500.0
     z = y - b/200.0
-    x, y, z = [ch**3 > 0.008856 and ch**3 or (ch-16/116.0)/7.787 for ch in x, y, z]
+    x, y, z = [ch**3 > 0.008856 and ch**3 or (ch-16/116.0)/7.787 for ch in [x, y, z]]
     return xyz_to_rgb(x, y, z)
 
 def luminance(r, g, b):
@@ -552,7 +556,7 @@ CORNER = "corner"
 CENTER = "center"
 def transform(mode=None):
     if mode == CENTER:
-        raise NotImplementedError, "no center-mode transform"
+        raise NotImplementedError("no center-mode transform")
     return CORNER
     
 def skew(x, y):
@@ -849,7 +853,8 @@ class PathElement(object):
 
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x,y = pos
         self.x = x
         self.y = y
         
@@ -1509,7 +1514,7 @@ def texture(img, data=None):
         try: 
             cache(img, pyglet.image.load(img).get_texture())
         except IOError:
-            raise ImageError, "can't load image from %s" % repr(img)
+            raise ImageError("can't load image from " + repr(img))
         return _texture_cache[img]
     # Image texture, return original.
     if isinstance(img, pyglet.image.Texture):
@@ -1528,7 +1533,7 @@ def texture(img, data=None):
     if isinstance(data, basestring):
         return pyglet.image.load("", file=StringIO(data)).get_texture()
     # Don't know how to handle this image.
-    raise ImageError, "unknown image type: %s" % repr(img.__class__)
+    raise ImageError("unknown image type: " + repr(img.__class__))
 
 def cache(id, texture):
     """ Store the given texture in cache, referenced by id (which can then be passed to image()).
@@ -1537,7 +1542,7 @@ def cache(id, texture):
     if isinstance(texture, (Image, Pixels)):
         texture = texture.texture
     if not isinstance(texture, pyglet.image.Texture):
-        raise ValueError, "can only cache texture, not %s" % repr(texture.__class__.__name__)
+        raise ValueError("can only cache texture, not " + repr(texture.__class__.__name__))
     _texture_cache[id] = texture
     _texture_cached[_texture_cache[id].id] = id
     
@@ -1661,7 +1666,8 @@ class Image(object):
 
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x, y = pos
         self.x = x
         self.y = y
         
@@ -1669,7 +1675,8 @@ class Image(object):
 
     def _get_size(self):
         return (self.width, self.height)
-    def _set_size(self, (w,h)):
+    def _set_size(self, dimensions):
+        w, h = dimensions
         self.width  = w
         self.height = h
         
@@ -2010,7 +2017,7 @@ animation = Animation
 # The less you change about an offscreen buffer, the faster it runs.
 # This includes switching it on and off and changing its size.
 
-from shader import *
+from nodebox.graphics.shader import *
 
 #=====================================================================================================
 
@@ -2194,7 +2201,8 @@ class Text(object):
 
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x, y = pos
         self.x = x
         self.y = y
         
@@ -2202,7 +2210,8 @@ class Text(object):
     
     def _get_size(self):
         return (self.width, self.height)
-    def _set_size(self, (w,h)):
+    def _set_size(self, dimensions):
+        w, h = dimensions
         self.width  = w
         self.height = h
         
@@ -2232,7 +2241,7 @@ class Text(object):
             if not self._fill: self._fill = Color([ch/255.0 for ch in self._label.color])
             return self._fill
         else:
-            raise AttributeError, "'Text' object has no attribute '%s'" % k
+            raise AttributeError("'Text' object has no attribute '" + str(k) + "'")
             
     def __setattr__(self, k, v):
         if k in self.__dict__:
@@ -2261,7 +2270,7 @@ class Text(object):
             self._fill = v 
             self._label.color = [int(255*ch) for ch in self._fill or (0,0,0,0)]
         else:
-            raise AttributeError, "'Text' object has no attribute '%s'" % k
+            raise AttributeError("'Text' object has no attribute '" + str(k) + "'")
     
     def _update(self):
         # Called from Text.draw(), Text.copy() and Text.metrics.
@@ -2432,13 +2441,13 @@ def textmetrics(txt, width=None, **kwargs):
 class GlyphPathError(Exception):
     pass
 
-import cPickle
+import pickle
 glyphs = {}
 try:
     # Load cached font glyph path information from nodebox/font/glyph.p.
     # By default, it has glyph path info for Droid Sans, Droid Sans Mono, Droid Serif.
     glyphs = path.join(path.dirname(__file__), "..", "font", "glyph.p")
-    glyphs = cPickle.load(open(glyphs))
+    glyphs = pickle.load(open(glyphs))
 except:
     pass
 
@@ -2456,7 +2465,7 @@ def textpath(string, x=0, y=0, **kwargs):
     for ch in string:
         try: glyph = glyphs[fontname][w][ch]
         except:
-            raise GlyphPathError, "no glyph path information for %s %s '%s'" % (w, fontname, ch)
+            raise GlyphPathError("no glyph path information for " + str(w) + " " + str(fontname) + " '" + str(ch) + "'")
         for pt in glyph:
             if pt[0] == MOVETO:
                 p.moveto(x+pt[1]*f, y-pt[2]*f)
@@ -2535,7 +2544,8 @@ class Prototype(object):
 
     def _deepcopy(self, value):
         if isinstance(value, FunctionType):
-            return instancemethod(value, self)
+            return getattr(self, value.__name__) # Replaces instancemethod(value, self)
+                                                 # Where value is <function draw() as 0x00000>
         elif hasattr(value, "copy"):
             return value.copy()
         elif isinstance(value, (list, tuple)):
@@ -2546,7 +2556,7 @@ class Prototype(object):
             return value
         else:
             # Biggest problem here is how to find/relink circular references.
-            raise TypeError, "Prototype can't bind %s." % str(value.__class__)
+            raise TypeError("Prototype can't bind " + str(value.__class__) + ".")
 
     def _bind(self, key, value):
         """ Adds a new method or property to the prototype.
@@ -2856,7 +2866,7 @@ class Layer(list, Prototype, EventHandler):
         for layer in self:
             if layer.name == key: 
                 return layer
-        raise AttributeError, "%s instance has no attribute '%s'" % (self.__class__.__name__, key)
+        raise AttributeError(str(self.__class__.__name__) + " instance has no attribute '" + str(key) + "'")
     
     def _set_container(self, key, value):
         # If Layer.canvas is set to None, the canvas should no longer contain the layer.
@@ -2953,7 +2963,8 @@ class Layer(list, Prototype, EventHandler):
 
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x, y = pos
         self.x = x
         self.y = y
         
@@ -3125,7 +3136,7 @@ class Layer(list, Prototype, EventHandler):
         """
         b = self.bounds
         if geometry.INFINITE in (b.x, b.y, b.width, b.height):
-            raise LayerRenderError, "can't render layer of infinite size"
+            raise LayerRenderError("can't render layer of infinite size")
         return render(lambda: (translate(-b.x,-b.y), self._draw()), b.width, b.height)
             
     def layer_at(self, x, y, clipped=False, enabled=False, transformed=True, _covered=False):
@@ -3615,7 +3626,8 @@ class Canvas(list, Prototype, EventHandler):
         self._window.set_location(self.x, v)
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x, y = pos
         self.x = x
         self.y = y
     def _get_width(self):
@@ -3628,7 +3640,8 @@ class Canvas(list, Prototype, EventHandler):
         self._window.width = v
     def _set_height(self, v):
         self._window.height = v
-    def _set_size(self, (w,h)):
+    def _set_size(self, dimensions):
+        w, h = dimensions
         self.width  = w
         self.height = h
     
@@ -3722,7 +3735,8 @@ class Canvas(list, Prototype, EventHandler):
         layer = self.layer_at(x, y, enabled=True)
         # If the layer differs from the layer which currently has the focus,
         # or the mouse is not over any layer, remove the current focus.
-        if self._focus is not None and (self._focus != layer or not self._focus.contains(x,y)):
+        if self._focus is not None and (self._focus != layer or not self._focus.containspos):
+            x, y = pos
             self._focus.on_mouse_leave(self._mouse)
             self._focus.focus = False
             self._focus = None
@@ -4131,4 +4145,4 @@ def ximport(library):
 #-----------------------------------------------------------------------------------------------------
 # Linear interpolation math for BezierPath.point() etc.
 
-import bezier
+import nodebox.graphics.bezier

@@ -66,7 +66,8 @@ class Vector(object):
             
     def _get_xyz(self):
         return (self.x, self.y, self.z)
-    def _set_xyz(self, (x,y,z)):
+    def _set_xyz(self, pos):
+        x, y, z = pos
         self.x = float(x)
         self.y = float(y)
         self.z = float(z)
@@ -74,7 +75,8 @@ class Vector(object):
         
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x, y = pos
         self.x = float(x)
         self.y = float(y)
     xy = property(_get_xy, _set_xy)
@@ -223,7 +225,7 @@ class Vector(object):
                       self.x*v.y - self.y*v.x)
 
     def __neg__(self):
-		return Vector(-self.x, -self.y, -self.z)
+        return Vector(-self.x, -self.y, -self.z)
 
     def __eq__(self, v):
         return isinstance(v, Vector) and self.x == v.x and self.y == v.y and self.z == v.z
@@ -957,7 +959,7 @@ def deepcopy(o):
         return o.__class__(deepcopy(v) for v in o)
     if isinstance(o, dict):
         return dict((deepcopy(k), deepcopy(v)) for k,v in o.iteritems())
-    raise Exception, "don't know how to copy %s" % o.__class__.__name__
+    raise Exception("don't know how to copy " + str(o.__class__.__name__))
 
 class Node(object):
     
@@ -1212,7 +1214,7 @@ class Graph(dict):
         try: 
             return dict.__getitem__(self, id)
         except KeyError:
-            raise KeyError, "no node with id '%s' in graph" % id
+            raise KeyError("no node with id '" + str(id) + "' in graph")
     
     def append(self, base, *args, **kwargs):
         """ Appends a Node or Edge to the graph: Graph.append(Node, id="rabbit").

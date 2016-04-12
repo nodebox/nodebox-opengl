@@ -227,11 +227,11 @@ class PD(object):
         """
         if self.patch is None \
         or not os.path.exists(self.patch):
-            raise PDError, "no PD patch file at '%s'" % self.patch
+            raise PDError("no PD patch file at '" + str(self.patch) + "'")
         if not self._path:
-            raise PDError, "no PD application found"
+            raise PDError("no PD application found")
         if not os.path.exists(self._path):
-            raise PDError, "no PD application at '%s'" % self._path
+            raise PDError("no PD application at '" + str(self._path) + "'")
         if not self._process:
             self._process = Process(program=self._path, options=self._options)
     

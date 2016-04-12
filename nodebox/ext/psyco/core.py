@@ -141,12 +141,12 @@ up to the given depth of indirection."""
                  if isinstance(o, types.MethodType)
                  or isinstance(o, types.FunctionType)]
         if not funcs:
-            raise error, ("nothing bindable found in %s object" %
+            raise error("nothing bindable found in %s object" %
                           type(x).__name__)
         for o in funcs:
             bind(o, rec)
         return
-    raise TypeError, "cannot bind %s objects" % type(x).__name__
+    raise TypeError("cannot bind %s objects" % type(x).__name__)
 
 
 def unbind(x):
@@ -167,7 +167,7 @@ def unbind(x):
              or isinstance(o, types.FunctionType)):
                 unbind(o)
         return
-    raise TypeError, "cannot unbind %s objects" % type(x).__name__
+    raise TypeError("cannot unbind %s objects" % type(x).__name__)
 
 
 def proxy(x, rec=None):
@@ -186,7 +186,7 @@ up to the given depth of indirection."""
     if isinstance(x, types.MethodType):
         p = proxy(x.im_func, rec)
         return new.instancemethod(p, x.im_self, x.im_class)
-    raise TypeError, "cannot proxy %s objects" % type(x).__name__
+    raise TypeError("cannot proxy %s objects" % type(x).__name__)
 
 
 def unproxy(proxy):
@@ -198,7 +198,7 @@ does not trigger compilation nor execution of any compiled code."""
     if isinstance(proxy, types.MethodType):
         f = unproxy(proxy.im_func)
         return new.instancemethod(f, proxy.im_self, proxy.im_class)
-    raise TypeError, "%s objects cannot be proxies" % type(proxy).__name__
+    raise TypeError("%s objects cannot be proxies" % type(proxy).__name__)
 
 
 def cannotcompile(x):
@@ -211,7 +211,7 @@ or code object."""
     if isinstance(x, types.CodeType):
         _psyco.cannotcompile(x)
     else:
-        raise TypeError, "unexpected %s object" % type(x).__name__
+        raise TypeError("unexpected %s object" % type(x).__name__)
 
 
 def dumpcodebuf():

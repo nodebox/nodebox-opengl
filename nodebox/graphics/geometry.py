@@ -312,7 +312,8 @@ class Point(object):
 
     def _get_xy(self):
         return (self.x, self.y)
-    def _set_xy(self, (x,y)):
+    def _set_xy(self, pos):
+        x, y = pos
         self.x = x
         self.y = y
         
@@ -562,7 +563,7 @@ def _tessellate_error(code):
     while e[i]: 
         s += chr(e[i])
         i += 1
-    raise TessellationError, s
+    raise TessellationError(s)
 
 _cache = {}
 

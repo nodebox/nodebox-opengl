@@ -1,11 +1,11 @@
-import bezier
-import context
-import geometry
-import physics
-import shader
+import nodebox.graphics.bezier
+import nodebox.graphics.context
+import nodebox.graphics.geometry
+import nodebox.graphics.physics
+import nodebox.graphics.shader
 
-from noise   import noise
-from context import *
+from nodebox.graphics.noise   import noise
+from nodebox.graphics.context import *
 
 physics.line    = context.line
 physics.ellipse = context.ellipse
@@ -19,6 +19,9 @@ physics.Text    = context.Text
 # - FRAME  => frame()
 
 canvas = Canvas()
+
+def get_canvas():
+    return canvas
 
 def size(width=None, height=None):
     if width is not None:

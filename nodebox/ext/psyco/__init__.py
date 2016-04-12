@@ -28,7 +28,7 @@ except ImportError:
 # Try to import the dynamic-loading _psyco and report errors
 try:
     import _psyco
-except ImportError, e:
+except ImportError as e:
     extramsg = ''
     import sys, imp
     try:
@@ -43,7 +43,7 @@ except ImportError, e:
         extramsg = (" (check that the compiled extension '%s' is for "
                     "the correct Python version; this is Python %s)" %
                     (filename, sys.version.split()[0]))
-    raise ImportError, str(e) + extramsg
+    raise ImportError(str(e) + extramsg)
 
 # Publish important data by importing them in the package
 from support import __version__, error, warning, _getrealframe, _getemulframe
