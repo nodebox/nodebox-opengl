@@ -26,7 +26,7 @@ def warn(msg):
 #
 __version__ = 0x010502f0
 if _psyco.PSYVER != __version__:
-    raise error, "version mismatch between Psyco parts, reinstall it"
+    raise error("version mismatch between Psyco parts, reinstall it")
 
 version_info = (__version__ >> 24,
                 (__version__ >> 16) & 0xff,
@@ -123,16 +123,16 @@ class PsycoFrame(Frame):
         elif attr == 'f_restricted':
             result = self.f_builtins is not __builtins__
         elif attr == 'f_locals':
-            raise AttributeError, ("local variables of functions run by Psyco "
+            raise AttributeError("local variables of functions run by Psyco "
                                    "cannot be accessed in any way, sorry")
         else:
-            raise AttributeError, ("emulated Psyco frames have "
-                                   "no '%s' attribute" % attr)
+            raise AttributeError("emulated Psyco frames have "
+                                   "no '" + str(attr) + "' attribute" )
         self.__dict__[attr] = result
         return result
 
     def __setattr__(self, attr, value):
-        raise AttributeError, "Psyco frame objects are read-only"
+        raise AttributeError("Psyco frame objects are read-only")
 
     def __delattr__(self, attr):
         if attr == 'f_trace':
@@ -140,7 +140,7 @@ class PsycoFrame(Frame):
             # buggy behavior: you can 'del f.f_trace' as often as you like
             # even without having set it previously.
             return
-        raise AttributeError, "Psyco frame objects are read-only"
+        raise AttributeError("Psyco frame objects are read-only")
 
 
 def embedframe(result):
