@@ -1,0 +1,210 @@
+Index: c/codegen.c
+===================================================================
+--- c/codegen.c	(revision 45659)
++++ c/codegen.c	(working copy)
+@@ -308,7 +308,12 @@
+ #endif
+                     }
+                 }
++				#ifdef __APPLE__
++				/* Adjust # of arguments for MacOS 16-byte stack alignment */
++                result = psyco_call_var(c_function, (count+3)&~3, args);
++				#else
+                 result = psyco_call_var(c_function, count, args);
++				#endif
+                 if (PyErr_Occurred()) {
+                     if (has_refs)
+                         for (i = 0; i < count; i++) 
+@@ -387,6 +392,7 @@
+ 	stackbase = po->stack_depth;
+ 	po->stack_depth += totalstackspace;
+ 	STACK_CORRECTION(totalstackspace);
++	CALL_STACK_ALIGN(count);
+ 	for (i=count; i--; ) {
+ 		switch (argtags[i]) {
+ 			
+@@ -467,6 +473,7 @@
+ 				}
+                         }
+ 	}
++
+ 	return NULL;
+ }
+ 
+Index: c/ivm/iencoding.h
+===================================================================
+--- c/ivm/iencoding.h	(revision 45659)
++++ c/ivm/iencoding.h	(working copy)
+@@ -248,6 +248,10 @@
+   else if (_stackcorr > 0)                              \
+     INSN_pushn(_stackcorr / sizeof(long));              \
+ } while (0)
++/* Dummy stack alignment for non-MacOS X */
++#define CALL_STACK_ALIGN_DELTA(nbargs, delta)
++#define CALL_STACK_ALIGN(nbargs)
++#define CALL_STACK_ALIGN_RESTORE(delta)
+ 
+ #define FUNCTION_RET(popbytes)      do {                                        \
+   INSN_ret((popbytes) / sizeof(long) + 1);   /* +1 for the retaddr itself */    \
+Index: c/i386/iencoding.c
+===================================================================
+--- c/i386/iencoding.c	(revision 45659)
++++ c/i386/iencoding.c	(working copy)
+@@ -48,12 +48,17 @@
+   code_t* code = po->code;
+   void* result;
+   code_t* fixvalue;
++  #ifdef __APPLE__
++  int aligndelta;
++  #endif
+ 
+   if (restore)
+     TEMP_SAVE_REGS_FN_CALLS;
+   else
+     SAVE_REGS_FN_CALLS(true);
+ 
++  CALL_STACK_ALIGN_DELTA(1+(extraarg != SOURCE_DUMMY), aligndelta);
++  
+   /* first pushed argument */
+   if (extraarg != SOURCE_DUMMY)
+     CALL_SET_ARG_FROM_RT(extraarg, 1, 2);  /* argument index 1 out of total 2 */
+@@ -79,6 +84,7 @@
+                       4*nb_args,  /*           4*nb_args  */
+                       0);         /* not used             */
+       code += 3;
++	  CALL_STACK_ALIGN_RESTORE(aligndelta);
+       TEMP_RESTORE_REGS_FN_CALLS_AND_JUMP;
+     }
+   else
+@@ -109,10 +115,25 @@
+ 	int i, initial_depth;
+ 	Source* p;
+ 	bool ccflags;
++	#ifdef __APPLE__
++	int aligncount=0;
++	#endif
+ 	BEGIN_CODE
+ 	/* cannot use NEED_CC(): it might clobber one of the registers
+ 	   mentioned in argsources */
+         ccflags = HAS_CCREG(po);
++    #ifdef __APPLE__
++	/* Calculate number of registers that will be pushed by
++	   NEED_REGISTER */
++	for (i=0; i<REG_TOTAL; i++)
++	{
++		vinfo_t* _content = REG_NUMBER(po, i);
++		if (_content != NULL)
++			if (RUNTIME_STACK(_content) == RUNTIME_STACK_NONE)
++				aligncount++;
++	}
++	#endif
++	CALL_STACK_ALIGN(1+(ccflags!=0)+aligncount);
+ 	if (ccflags)
+ 		PUSH_CC_FLAGS();
+ 	for (i=0; i<REG_TOTAL; i++)
+Index: c/i386/iencoding.h
+===================================================================
+--- c/i386/iencoding.h	(revision 45659)
++++ c/i386/iencoding.h	(working copy)
+@@ -20,8 +20,13 @@
+     (a quite minor overhead). Set to 0 to disable. No effect on real
+     optimizations. */
+ #ifndef COMPACT_ENCODING
++#ifdef __APPLE__
++/* COMPACT_ENCODING not yet supported on MacOS X */
++# define COMPACT_ENCODING   0
++#else
+ # define COMPACT_ENCODING   1
+ #endif
++#endif
+ 
+ /* Define to 0 to use EBP as any other register, or to 1 to reserve it */
+ #ifndef EBP_IS_RESERVED
+@@ -652,6 +657,31 @@
+   JUMP_TO((code_t*)(target));                                           \
+ } while (0)
+ 
++#ifdef __APPLE__
++/* Stack alignment for MacOS X IA-32 ABI */
++#define CALL_STACK_ALIGN_DELTA(nbargs, delta) do { \
++    int sp = po->stack_depth-INITIAL_STACK_DEPTH+(nbargs)*4;	\
++	delta = ((sp+15)&~15)-sp; \
++	po->stack_depth += delta; \
++	STACK_CORRECTION(delta); \
++} while (0)
++
++#define CALL_STACK_ALIGN(nbargs) do { \
++	int delta; \
++    CALL_STACK_ALIGN_DELTA(nbargs, delta); \
++} while (0)
++
++#define CALL_STACK_ALIGN_RESTORE(delta) do { \
++	po->stack_depth -= delta; \
++	STACK_CORRECTION(-delta); \
++} while (0)
++#else
++/* Dummy stack alignment for non-MacOS X */
++#define CALL_STACK_ALIGN_DELTA(nbargs, delta)
++#define CALL_STACK_ALIGN(nbargs)
++#define CALL_STACK_ALIGN_RESTORE(delta)
++#endif
++	
+ /* load the 'dst' register with the run-time address of 'source'
+    which must be in the stack */
+ #define LOAD_ADDRESS_FROM_RT(source, dst)    do {                               \
+Index: c/i386/iprocessor.c
+===================================================================
+--- c/i386/iprocessor.c	(revision 45659)
++++ c/i386/iprocessor.c	(working copy)
+@@ -21,6 +21,10 @@
+   PUSH_REG_INSTR(REG_386_ESI),  /*   PUSH ESI        */
+   PUSH_REG_INSTR(REG_386_EDI),  /*   PUSH EDI        */
+   0x8B, 0x5C, 0x24, 32,         /*   MOV EBX, [ESP+32] (finfo frame stack ptr) */
++#ifdef __APPLE__
++  /* Align stack on 16-byte boundary for MacOS X */
++  0x83, 0xEC, 8,                /*   SUB ESP, 8      */
++#endif
+   0x6A, -1,                     /*   PUSH -1         */
+   0x89, 0x23,                   /*   MOV [EBX], ESP  */
+   0xEB, +5,                     /*   JMP Label2      */
+@@ -31,6 +35,10 @@
+   0x39, 0xCA,                   /*   CMP EDX, ECX    */
+   0x75, -9,                     /*   JNE Label1      */
+   0xFF, 0xD0,                   /*   CALL *EAX     (callee removes args)  */
++#ifdef __APPLE__
++  /* Restore stack from 16-byte alignment on MacOS X */
++  0x83, 0xC4, 8,                /*   ADD ESP, 8      */
++#endif
+   POP_REG_INSTR(REG_386_EDI),   /*   POP EDI         */
+   POP_REG_INSTR(REG_386_ESI),   /*   POP ESI         */
+   POP_REG_INSTR(REG_386_EBX),   /*   POP EBX         */
+@@ -67,9 +75,18 @@
+ 	0x53,			/*   PUSH EBX                      */
+ 	0x8B, 0x5C, 0x24, 12,	/*   MOV EBX, [ESP+12]  (argcount) */
+ 	0x8B, 0x44, 0x24, 8,	/*   MOV EAX, [ESP+8]   (c_func)   */
++#ifdef __APPLE__
++    /* Align stack on 16-byte boundary for MacOS X */
++    0x83, 0xEC, 8,                /*   SUB ESP, 8      */
++#endif
+ 	0x09, 0xDB,		/*   OR EBX, EBX                   */
+ 	0x74, +16,		/*   JZ Label1                     */
++#ifdef __APPLE__
++	/* Arguments are 8 bytes further up stack on MacOS X */
++	0x8B, 0x54, 0x24, 24,	/*   MOV EDX, [ESP+24] (arguments) */
++#else
+ 	0x8B, 0x54, 0x24, 16,	/*   MOV EDX, [ESP+16] (arguments) */
++#endif
+ 	0x8D, 0x0C, 0x9A,	/*   LEA ECX, [EDX+4*EBX]          */
+ 				/* Label2:                         */
+ 	0x83, 0xE9, 4,		/*   SUB ECX, 4                    */
+@@ -78,6 +95,10 @@
+ 	0x75, -9,		/*   JNE Label2                    */
+ 				/* Label1:                         */
+ 	0xFF, 0xD0,		/*   CALL *EAX                     */
++#ifdef __APPLE__
++    /* Restore stack from 16-byte alignment on MacOS X */
++    0x83, 0xC4, 8,                /*   ADD ESP, 8      */
++#endif
+ 	0x8D, 0x24, 0x9C,	/*   LEA ESP, [ESP+4*EBX]          */
+ 	0x5B,			/*   POP EBX                       */
+ 	0xC3,			/*   RET                           */
