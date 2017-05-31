@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # When you run a script, NodeBox reads the code from top to bottom, like a recipe. 
 # When it encounters coloring or transformation commands, it changes the current state. 

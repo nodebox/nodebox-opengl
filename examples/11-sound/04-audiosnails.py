@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.sound import PD
+from nodeboxgl.graphics import *
+from nodeboxgl.sound import PD
 from math import sqrt
 
 # SCREECHING AUDIO SNAILS!

@@ -1,8 +1,6 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import * 
-from nodebox.graphics.geometry import distance, angle, smoothstep
+import os
+from nodeboxgl.graphics import * 
+from nodeboxgl.graphics.geometry import distance, angle, smoothstep
 
 # Circle-packing algorithm.
 # This script was used to produce one of the panels in NANOPHYSICAL:

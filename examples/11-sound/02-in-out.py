@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.sound import PD, LOCALHOST, IN, OUT
+from nodeboxgl.graphics import *
+from nodeboxgl.sound import PD, LOCALHOST, IN, OUT
 
 # This script demonstrates how to simultaneously receive from and send to Pd.
 # We need two communication ports. By default, NodeBox receives on port 44000 (IN),

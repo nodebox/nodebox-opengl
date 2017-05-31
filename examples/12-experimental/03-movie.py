@@ -1,6 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..", ".."))
-
+import os
 import tempfile
 import subprocess
 import shutil
@@ -60,7 +58,7 @@ class Movie:
         except:
             pass
 
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 movie = Movie(canvas)
 

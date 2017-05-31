@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.graphics.physics import System, Emitter, Particle, MASS
+from nodeboxgl.graphics import *
+from nodeboxgl.graphics.physics import System, Emitter, Particle, MASS
 
 # 1) An emitter will be firing particles with a constant velocity.
 # 2) Drag in the system slows down the particles.

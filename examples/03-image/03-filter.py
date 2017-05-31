@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # This example will make more sense after you've seen the examples in /07-filter
 

@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.sound import PD, LOCALHOST
+from nodeboxgl.graphics import *
+from nodeboxgl.sound import PD, LOCALHOST
 
 # PureData is a free, real-time graphical programming environment for audio processing.
 # You can connect building blocks to manipulate audio input, or generate audio output.

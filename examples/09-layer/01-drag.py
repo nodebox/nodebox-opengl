@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # In the previous examples, drawing occurs directly to the canvas.
 # It is also possible to draw into different layers, 

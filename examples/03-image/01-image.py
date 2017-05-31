@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # The main purpose of NodeBox for OpenGL is drawing images to the canvas.
 # Typically, an image can be a JPEG or TIFF file, or a PNG if it uses transparency.
