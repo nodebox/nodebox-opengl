@@ -143,18 +143,18 @@ curvelength(PyObject *self, PyObject *args) {
 static PyObject *BezierMathError;
 
 static PyMethodDef bezier_methods[] = {
-    { "linepoint", linepoint, METH_VARARGS },
-    { "linelength", linelength, METH_VARARGS },
-    { "curvepoint", curvepoint, METH_VARARGS },
-    { "curvelength", curvelength, METH_VARARGS },
-    { NULL, NULL }
+    { "linepoint", linepoint, METH_VARARGS, "linepoint(t, x0, y0, x1, y1)." },
+    { "linelength", linelength, METH_VARARGS, "linelength(x0, y0, x1, y1)." },
+    { "curvepoint", curvepoint, METH_VARARGS, "curvepoint(t, x0, y0, x1, y1, x2, y2, x3, y3, handles)." },
+    { "curvelength", curvelength, METH_VARARGS, "curvelength(x0, y0, x1, y1, x2, y2, x3, y3, n)" },
+    { NULL, NULL, 0, NULL }
 };
 
 PyMODINIT_FUNC
-initbezier(void) {
+initnglbezier(void) {
     PyObject *m;
-    m = Py_InitModule("bezier", bezier_methods);
-    BezierMathError = PyErr_NewException("bezier.error", NULL, NULL);
+    m = Py_InitModule("nglbezier", bezier_methods);
+    BezierMathError = PyErr_NewException("nglbezier.error", NULL, NULL);
     Py_INCREF(BezierMathError);
     PyModule_AddObject(m, "error", BezierMathError);
 }
@@ -162,6 +162,6 @@ initbezier(void) {
 int main(int argc, char *argv[]) {
     Py_SetProgramName(argv[0]);
     Py_Initialize();
-    initbezier();
+    initnglbezier();
     return 0;
 }
