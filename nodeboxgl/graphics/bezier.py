@@ -90,7 +90,10 @@ def curvelength(x0, y0, x1, y1, x2, y2, x3, y3, n=20):
 # Fast C implementations:
 try:
     from nglbezier import linepoint, linelength, curvepoint, curvelength
-except:
+    #print "FAST BEZIER"
+except Exception, err:
+    #print err
+    #print "SLOW BEZIER"
     pass
 
 #--- BEZIER PATH LENGTH ------------------------------------------------------------------------------
