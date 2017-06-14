@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.graphics.physics import Node, Edge, Graph
+from nodeboxgl.graphics import *
+from nodeboxgl.graphics.physics import Node, Edge, Graph
 
 # Create a graph with randomly connected nodes.
 # Nodes and edges can be styled with fill, stroke, strokewidth parameters.

@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.graphics.physics import Particle, Spring, System
+from nodeboxgl.graphics import *
+from nodeboxgl.graphics.physics import Particle, Spring, System
 
 # A "particle system" is used to simulate effects such as explosions, smoke, water, ...
 # It consists of object with a mass (particles) that are subjected to forces

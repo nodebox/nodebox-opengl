@@ -43,8 +43,12 @@ def reflect(x, y, x0, y0, d=1.0, a=180):
     return coordinates(x0, y0, d*distance(x0,y0,x,y), a+angle(x0,y0,x,y))
     
 # Fast C implementations:
-try: from nodebox.ext.geometry import angle, distance, coordinates, rotate
-except:
+try:
+    from nglgeometry import angle, distance, coordinates, rotate
+    #print "FAST GEOMETRY"
+except Exception, err:
+    #print err
+    #print "SLOW GEOMETRY"
     pass
 
 #--- INTERPOLATION -----------------------------------------------------------------------------------
@@ -76,8 +80,12 @@ def clamp(v, a, b):
     return max(a, min(v, b))
     
 # Fast C implementations:
-try: from nodebox.ext.geometry import smoothstep
-except:
+try:
+    from nglgeometry import smoothstep
+    # print "FAST GEOMETRY"
+except Exception, err:
+    # print err
+    # print "SLOW GEOMETRY"
     pass
 
 #--- INTERSECTION ------------------------------------------------------------------------------------
@@ -178,8 +186,12 @@ def superformula(m, n1, n2, n3, phi):
     return (r*cos(phi), r*sin(phi))
 
 # Fast C implementation:
-try: from nodebox.ext.geometry import superformula
-except:
+try:
+    from nglgeometry import superformula
+    # print "FAST GEOMETRY"
+except Exception, err:
+    # print err
+    # print "SLOW GEOMETRY"
     pass
 
 #=====================================================================================================

@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # Here is the "Hypnoval", a classic example in NodeBox for Mac OS X.
 # It uses the canvas.frame counter to create variation in each frame.

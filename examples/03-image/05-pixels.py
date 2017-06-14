@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # The pixels() command yields a list of pixels from a given image.
 # Since this is a relatively slow operation, this is not useful for dynamic image processing,
@@ -25,8 +22,8 @@ def draw(canvas):
     
     # Here we simply use pixels from the image as a color palette.
     for i in range(15):
-        x = random(p.width)
-        y = random(p.height)
+        x = int(random(p.width))
+        y = int(random(p.height))
         clr = p.get(x, y)
         clr.alpha *= 0.5
         fill(clr)

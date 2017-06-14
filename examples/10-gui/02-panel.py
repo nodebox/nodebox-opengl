@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.gui import *
+from nodeboxgl.graphics import *
+from nodeboxgl.gui import *
 
 # A panel is a container for other GUI controls.
 # Controls can be added to the panel, 

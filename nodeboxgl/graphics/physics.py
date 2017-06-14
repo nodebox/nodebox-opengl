@@ -945,7 +945,7 @@ emitter = Emitter
 #--- NODE --------------------------------------------------------------------------------------------
 
 def deepcopy(o):
-    # A color can be represented as a tuple or as a nodebox.graphics.Color object,
+    # A color can be represented as a tuple or as a nodeboxgl.graphics.Color object,
     # in which case it needs to be copied by invoking Color.copy().
     if o is None:
         return o

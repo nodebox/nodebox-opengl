@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.gui import *
+from nodeboxgl.graphics import *
+from nodeboxgl.gui import *
 
 # Comparison between Rows and Row containers.
 # Both are subclasses of Layout.

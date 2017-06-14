@@ -1,6 +1,7 @@
 import os
 from setuptools import setup
 from setuptools import find_packages
+from setuptools.extension import Extension
 
 # Utility function to read the README file.
 # From http://packages.python.org/an_example_pypi_project/setuptools.html.
@@ -17,8 +18,13 @@ long_description = read("README.txt"),
           author = "Tom De Smedt",
              url = "http://www.cityinabottle.org/nodebox/",
         packages = find_packages(),
-    package_data = {"nodebox.gui": ["theme/*"]},
+    package_data = {"nodeboxgl.gui": ["theme/*"], "nodeboxgl.font":["glyph.p"]},
 install_requires = ["pyglet",],
+      py_modules = ["nodeboxgl", "nodeboxgl.graphics", "nodeboxgl.gui", "nodeboxgl.sound", "nodeboxgl.font"],
+     ext_modules = [
+        Extension("nglbezier",   sources=["nodeboxgl/ext/nglbezier.c"]),
+        Extension("nglgeometry", sources=["nodeboxgl/ext/nglgeometry.c"]),
+        Extension("nglnoise",    sources=["nodeboxgl/ext/nglnoise.c"]) ],
      classifiers = [
         "Development Status :: 4 - Beta",
         "Environment :: MacOS X",

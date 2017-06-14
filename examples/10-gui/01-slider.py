@@ -1,9 +1,6 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.graphics.geometry import coordinates
-from nodebox.gui import Slider
+from nodeboxgl.graphics import *
+from nodeboxgl.graphics.geometry import coordinates
+from nodeboxgl.gui import Slider
 
 # The nodebox.gui module provides simple visual controls, such as Slider, Button, CheckBox and Field.
 # Each control inherits from a Control class, which in turn inherits from Layer.

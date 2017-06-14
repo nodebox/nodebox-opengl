@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
-from nodebox.gui import *
+from nodeboxgl.graphics import *
+from nodeboxgl.gui import *
 
 # This is the same example as the previous, but with a button added to the panel.
 # All controls have a Control.on_action() event that fires when the user

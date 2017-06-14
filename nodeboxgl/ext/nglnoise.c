@@ -69,20 +69,20 @@ init(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef methods[]={ 
-    { "generate", generate, METH_VARARGS },
-    { "init", init, METH_VARARGS },
-    { NULL, NULL }
+    { "generate", generate, METH_VARARGS, "generate(x, y, z)." },
+    { "init", init, METH_VARARGS, "init(a)." },
+    { NULL, NULL, 0, NULL }
 };
 
-PyMODINIT_FUNC initnoise(void) { 
+PyMODINIT_FUNC initnglnoise(void) { 
     PyObject *m;
-    m = Py_InitModule("noise", methods);
+    m = Py_InitModule("nglnoise", methods);
 }
 
 int main(int argc, char *argv[]) {
     Py_SetProgramName(argv[0]);
     Py_Initialize();
-    initnoise();
+    initnglnoise();
     return 0;
 }
 

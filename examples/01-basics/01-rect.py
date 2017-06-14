@@ -1,8 +1,5 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
 # Import the drawing commands from the NodeBox module.
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 # This includes:
 # - drawing primitives such as line(), rect(), ellipse(), triangle(),
 # - color commands such as fill(), stroke(), strokewidth(),

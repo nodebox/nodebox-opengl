@@ -1,7 +1,4 @@
-# Add the upper directory (where the nodebox module is) to the search path.
-import os, sys; sys.path.insert(0, os.path.join("..",".."))
-
-from nodebox.graphics import *
+from nodeboxgl.graphics import *
 
 # Since a layer is a rectangular area, all mouse events are also triggered in a rectangle.
 # This can be a bit clumsy in some situations. 

@@ -12,8 +12,8 @@ from time import time
 from pyglet.text.layout import IncrementalTextLayout
 from pyglet.text.caret  import Caret
 
-from nodebox.graphics.geometry import angle, distance, clamp, Bounds, INFINITE
-from nodebox.graphics import \
+from nodeboxgl.graphics.geometry import angle, distance, clamp, Bounds, INFINITE
+from nodeboxgl.graphics import \
     Layer, Color, Image, image, crop, rect, \
     Text, font, NORMAL, BOLD, CENTER, DEFAULT_FONT, install_font, \
     translate, rotate, \

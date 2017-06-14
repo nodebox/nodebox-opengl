@@ -61,10 +61,13 @@ class PerlinNoise:
 
 try:
     # Fast C implementations:
-    from nodebox.ext.noise import init, generate
+    from nglnoise import init, generate
     PerlinNoise._init = init
     PerlinNoise.generate = generate
-except:
+    # print "FAST NOISE"
+except Exception, err:
+    # print err
+    # print "SLOW NOISE"
     pass
 
 _generator = PerlinNoise()
