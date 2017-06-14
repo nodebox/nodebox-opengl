@@ -167,25 +167,24 @@ mmult(PyObject *self, PyObject *args) {
 // ------------------------------------------------------------------------------
 
 static PyMethodDef geometry_methods[]={
-    { "fast_inverse_sqrt", fast_inverse_sqrt, METH_VARARGS },
-    { "angle", angle, METH_VARARGS },
-    { "distance", distance, METH_VARARGS },
-    { "coordinates", coordinates, METH_VARARGS }, 
-    { "rotate", rotate, METH_VARARGS },
-    { "smoothstep", smoothstep, METH_VARARGS },
-    { "superformula", superformula, METH_VARARGS },
-    { "mmult", mmult, METH_VARARGS }, 
-    { NULL, NULL }
+    { "fast_inverse_sqrt", fast_inverse_sqrt, METH_VARARGS, "Fast inverse square root." },
+    { "angle", angle, METH_VARARGS, "angle(x1,y1,x2,y2)." },
+    { "distance", distance, METH_VARARGS, "distance(x1,y1,x2,y2)." },
+    { "coordinates", coordinates, METH_VARARGS, "coordinates(x0, y0, d, a, x1, y1)." }, 
+    { "rotate", rotate, METH_VARARGS, "rotate( x, y, x0, y0, a, x1, y1)." },
+    { "smoothstep", smoothstep, METH_VARARGS, "smoothstep(a, b, x, t)." },
+    { "superformula", superformula, METH_VARARGS, "superformula(m, n1, n2, n3, phi)." },
+    { "mmult", mmult, METH_VARARGS, "mmult(a0, a1, a2, a3, a4, a5, a6, a7, a8, b0, b1, b2, b3, b4, b5, b6, b7, b8)." }, 
+    { NULL, NULL, 0, NULL }
 };
 
-PyMODINIT_FUNC initgeometry(void){
-    PyObject *m;
-    m = Py_InitModule("geometry", geometry_methods);
+PyMODINIT_FUNC initnglgeometry(void){
+    Py_InitModule("nglgeometry", geometry_methods);
 }
 
 int main(int argc, char *argv[]) {
     Py_SetProgramName(argv[0]);
     Py_Initialize();
-    initgeometry();
+    initnglgeometry();
     return 0;
 }

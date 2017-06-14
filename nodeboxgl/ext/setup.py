@@ -1,8 +1,8 @@
 from distutils.core import setup, Extension
 
-bezier   = Extension("nglbezier",   sources=["bezier.c"])
-geometry = Extension("nglgeometry", sources=["geometry.c"])
-noise    = Extension("nglnoise",    sources=["noise.c"])
+bezier   = Extension("nglbezier",   sources=["nglbezier.c"])
+geometry = Extension("nglgeometry", sources=["nglgeometry.c"])
+noise    = Extension("nglnoise",    sources=["nglnoise.c"])
 
 setup(
          name = "Nodebox for OpenGL c-extensions",
